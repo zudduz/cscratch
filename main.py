@@ -3,9 +3,19 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from langchain_google_vertexai import ChatVertexAI
+from fastapi.middleware.cors import CORSMiddleware
 
 # 1. Initialize FastAPI
 app = FastAPI()
+
+# Add CORSMiddleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*.zudduz.com"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # 2. Initialize Gemini (Vertex AI)
 llm = ChatVertexAI(

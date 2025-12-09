@@ -1,11 +1,18 @@
 import os
+import uuid
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
-from langchain_google_vertexai import ChatVertexAI
 from fastapi.middleware.cors import CORSMiddleware
 
-# 1. Initialize FastAPI
+# Vertex AI & LangChain Imports
+from langchain_google_vertexai import ChatVertexAI
+from langchain_core.messages import HumanMessage
+
+# LangGraph Imports
+from langgraph.graph import START, MessagesState, StateGraph
+from langgraph.checkpoint.memory import MemorySaver # <--- The "Goldfish" Memory (RAM)
+
 app = FastAPI()
 
 # Add CORSMiddleware
@@ -17,37 +24,57 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 2. Initialize Gemini (Vertex AI)
 llm = ChatVertexAI(
     model="gemini-2.5-flash",
-    temperature=0.7,
-    max_retries=1
+    temperature=0.7
 )
 
-# Data model for the request
+# --- 2. The Graph Definition ---
+# We use the pre-built "MessagesState" which automatically handles 
+# appending new messages to history.
+workflow = StateGraph(state_schema=MessagesState)
+
+# Define the node that calls Gemini
+def call_model(state: MessagesState):
+    response = llm.invoke(state["messages"])
+    # We return a list, and LangGraph knows to APPEND it to the existing state
+    return {"messages": [response]}
+
+# Build the graph
+workflow.add_edge(START, "model")
+workflow.add_node("model", call_model)
+
+# Compile with Memory (The crucial step)
+memory = MemorySaver()
+app_graph = workflow.compile(checkpointer=memory)
+
 class UserInput(BaseModel):
     message: str
+    thread_id: str = None # Client will send this
 
-# 3. The UI Endpoint (Serves the Browser Interface)
-@app.get("/", response_class=HTMLResponse)
-async def get_ui():
-    with open("index.html", "r") as f:
-        return f.read()
-
-# 4. The AI Endpoint (The "Round Trip")
 @app.post("/chat")
 async def chat(input_data: UserInput):
-    print(f"Received: {input_data.message}") # Logs to Cloud Logging
+    # Use the provided thread_id or generate a new one
+    thread_id = input_data.thread_id or str(uuid.uuid4())
     
-    try:
-        # Call Gemini
-        response = llm.invoke(input_data.message)
-        return {"reply": response.content}
-    except Exception as e:
-        print(f"Error: {e}")
-        return {"reply": f"System Error: {str(e)}"}
+    # Config tells LangGraph WHICH memory to load
+    config = {"configurable": {"thread_id": thread_id}}
+    
+    # Prepare the input message
+    input_message = HumanMessage(content=input_data.message)
+    
+    # Run the graph!
+    # It automatically loads history for this thread_id, runs Gemini, and saves the new result.
+    output = app_graph.invoke({"messages": [input_message]}, config=config)
+    
+    # Get the last message (Gemini's reply)
+    bot_reply = output["messages"][-1].content
+    
+    return {
+        "reply": bot_reply, 
+        "thread_id": thread_id 
+    }
 
 if __name__ == "__main__":
     import uvicorn
-    # Local development convenience
     uvicorn.run(app, host="0.0.0.0", port=8080)

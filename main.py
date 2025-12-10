@@ -6,12 +6,12 @@ from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 
 # Vertex AI & LangChain Imports
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_google_vertexai import ChatVertexAI
 from langchain_core.messages import HumanMessage
 
 # LangGraph Imports
 from langgraph.graph import START, MessagesState, StateGraph
-from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.checkpoint.memory import MemorySaver # <--- The "Goldfish" Memory (RAM)
 
 app = FastAPI()
 
@@ -24,7 +24,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-llm = ChatGoogleGenerativeAI(
+llm = ChatVertexAI(
     model="gemini-2.5-flash",
     temperature=0.7
 )
@@ -45,7 +45,7 @@ workflow.add_edge(START, "model")
 workflow.add_node("model", call_model)
 
 # Compile with Memory (The crucial step)
-memory = InMemorySaver()
+memory = MemorySaver()
 app_graph = workflow.compile(checkpointer=memory)
 
 class UserInput(BaseModel):

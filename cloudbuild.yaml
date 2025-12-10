@@ -1,16 +1,11 @@
-
-substitutions:
-  _LOCATION: us-central1
-  _AR_REPO: docker-artifact-registry
-  _IMAGE_NAME: cscratch
-
 steps:
-# Build and push with Kaniko to Artifact Registry
-- name: 'gcr.io/kaniko-project/executor:latest'
-  args:
-  - --destination=${_LOCATION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_IMAGE_NAME}:latest
-  - --cache=true
-  - --cache-ttl=24h
+# Build the container image
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['build', '-t', 'gcr.io/$PROJECT_ID/cscratch', '.']
+
+# Push the container image to Container Registry
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['push', 'gcr.io/$PROJECT_ID/cscratch']
 
 # Deploy container image to Cloud Run
 - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -18,17 +13,17 @@ steps:
   args:
   - 'run'
   - 'deploy'
-  - '${_IMAGE_NAME}'
+  - 'cscratch'
   - '--image'
-  - '${_LOCATION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_IMAGE_NAME}'
+  - 'gcr.io/$PROJECT_ID/cscratch'
   - '--region'
-  - '${_LOCATION}'
+  - 'us-central1'
   - '--platform'
   - 'managed'
   - '--allow-unauthenticated'
 
 images:
-- '${_LOCATION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_IMAGE_NAME}'
+- 'gcr.io/$PROJECT_ID/cscratch'
 
 options:
   logging: CLOUD_LOGGING_ONLY

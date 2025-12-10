@@ -1,5 +1,5 @@
 fastapi
 uvicorn
 google-cloud-aiplatform
-langchain-google-genai
+langchain-google-vertexai
 langgraph

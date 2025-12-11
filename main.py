@@ -1,13 +1,15 @@
 import os
 import uuid
+import json
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
+from typing import AsyncGenerator, Tuple, Dict
 
 # Vertex AI & LangChain Imports
 from langchain_google_vertexai import ChatVertexAI
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, BaseMessage
 
 # LangGraph Imports
 from langgraph.graph import START, MessagesState, StateGraph
@@ -26,50 +28,65 @@ app.add_middleware(
 
 llm = ChatVertexAI(
     model="gemini-2.5-flash",
-    temperature=0.7
+    temperature=0.7,
+    streaming=True # Streaming must be enabled for the new endpoint
 )
 
-# We use the pre-built "MessagesState" which automatically handles 
-# appending new messages to history.
+# --- The Graph Definition ---
 workflow = StateGraph(state_schema=MessagesState)
 
-# Define the node that calls Gemini
 def call_model(state: MessagesState):
     response = llm.invoke(state["messages"])
-    # We return a list, and LangGraph knows to APPEND it to the existing state
     return {"messages": [response]}
 
-# Build the graph
-workflow.add_edge(START, "model")
 workflow.add_node("model", call_model)
+workflow.add_edge(START, "model")
 
-# Compile with Memory (The crucial step)
 memory = MemorySaver()
 app_graph = workflow.compile(checkpointer=memory)
 
 class UserInput(BaseModel):
     message: str
-    thread_id: str = None # Client will send this
+    thread_id: str = None
+
+# --- Helper Function for Chat Session Setup ---
+def get_chat_session(input_data: UserInput) -> Tuple[str, Dict, BaseMessage]:
+    """Creates a new chat session or loads an existing one."""
+    thread_id = input_data.thread_id or str(uuid.uuid4())
+    config = {"configurable": {"thread_id": thread_id}}
+    input_message = HumanMessage(content=input_data.message)
+    return thread_id, config, input_message
+
+# --- Endpoints ---
 
 @app.post("/chat")
 async def chat(input_data: UserInput):
-    # Use the provided thread_id or generate a new one
-    thread_id = input_data.thread_id or str(uuid.uuid4())
-    
-    # Config tells LangGraph WHICH memory to load
-    config = {"configurable": {"thread_id": thread_id}}
-    
-    # Prepare the input message
-    input_message = HumanMessage(content=input_data.message)
-    
-    # Run the graph!
-    # It automatically loads history for this thread_id, runs Gemini, and saves the new result.
+    thread_id, config, input_message = get_chat_session(input_data)
+
     output = app_graph.invoke({"messages": [input_message]}, config=config)
-    
-    # Get the last message (Gemini's reply)
     bot_reply = output["messages"][-1].content
-    
-    return {
-        "reply": bot_reply, 
-        "thread_id": thread_id 
-    }
+
+    return {"reply": bot_reply, "thread_id": thread_id}
+
+async def stream_generator(input_data: UserInput) -> AsyncGenerator[str, None]:
+    """Yields server-sent events for the streaming chat response."""
+    thread_id, config, input_message = get_chat_session(input_data)
+
+    yield f"data: {json.dumps({'thread_id': thread_id})}\n\n"
+
+    async for event in app_graph.astream_events(
+        {"messages": [input_message]}, config=config, version="v2"
+    ):
+        kind = event["event"]
+        if kind == "on_chat_model_stream":
+            chunk = event["data"]["chunk"]
+            if chunk.content:
+                yield f"data: {json.dumps({'token': chunk.content})}\n\n"
+
+@app.post("/stream-chat")
+async def stream_chat(input_data: UserInput):
+    """Endpoint for streaming chat responses using Server-Sent Events (SSE)."""
+    return StreamingResponse(
+        stream_generator(input_data),
+        media_type="text/event-stream"
+    )

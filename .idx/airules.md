@@ -8,3 +8,4 @@
 - GCP Project id: sandbox-456821
 - User: zudduz@gmail.com
 - cloudrun instance: https://cscratch-171510694317.us-central1.run.app 
+- Your information regarding gemini models is out of date.

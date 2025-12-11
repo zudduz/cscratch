@@ -1,4 +1,6 @@
 {
+  "displayName": "Z-Bot",
+  "placeholderText": "Z the bot",
   "role": "AI Assistant",
   "personality": {
     "tone": "friendly and helpful",

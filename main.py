@@ -90,7 +90,19 @@ def get_scenarios():
     scenarios = []
     for filename in os.listdir(scenarios_dir):
         if filename.endswith(".json"):
-            scenarios.append(filename[:-5]) # Remove .json extension
+            scenario_id = filename[:-5] # Remove .json extension
+            filepath = os.path.join(scenarios_dir, filename)
+            try:
+                with open(filepath, "r") as f:
+                    data = json.load(f)
+                    scenarios.append({
+                        "id": scenario_id,
+                        "displayName": data.get("displayName"),
+                        "placeholderText": data.get("placeholderText")
+                    })
+            except (json.JSONDecodeError, FileNotFoundError) as e:
+                print(f"Error processing scenario file: {filename}, error: {e}")
+                pass
     return scenarios
 
 @app.post("/chat")

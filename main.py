@@ -11,14 +11,14 @@ from langchain_core.messages import HumanMessage
 
 # LangGraph Imports
 from langgraph.graph import START, MessagesState, StateGraph
-from langgraph.checkpoint.memory import MemorySaver # <--- The "Goldfish" Memory (RAM)
+from langgraph.checkpoint.memory import MemorySaver
 
 app = FastAPI()
 
 # Add CORSMiddleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://www.zudduz.com", "https://zudduz.com", "http://www.zudduz.com", "http://zudduz.com"],
+    allow_origin_regex=r"https?://(www\.)?zudduz\.com",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -29,7 +29,6 @@ llm = ChatVertexAI(
     temperature=0.7
 )
 
-# --- 2. The Graph Definition ---
 # We use the pre-built "MessagesState" which automatically handles 
 # appending new messages to history.
 workflow = StateGraph(state_schema=MessagesState)

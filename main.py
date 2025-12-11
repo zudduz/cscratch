@@ -27,7 +27,7 @@ app.add_middleware(
 )
 
 llm = ChatVertexAI(
-    model="gemini-2.5-flash",
+    model="gemini-1.5-flash",
     temperature=0.7,
     streaming=True
 )
@@ -79,6 +79,19 @@ def get_chat_session(input_data: UserInput) -> Tuple[str, Dict, List[BaseMessage
     return thread_id, config, messages
 
 # --- Endpoints ---
+
+@app.get("/scenarios")
+def get_scenarios():
+    """Returns a list of available scenarios."""
+    scenarios_dir = "scenarios"
+    if not os.path.exists(scenarios_dir):
+        return []
+    
+    scenarios = []
+    for filename in os.listdir(scenarios_dir):
+        if filename.endswith(".json"):
+            scenarios.append(filename[:-5]) # Remove .json extension
+    return scenarios
 
 @app.post("/chat")
 async def chat(input_data: UserInput):

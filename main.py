@@ -1,7 +1,7 @@
 import os
 import uuid
 import json
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
@@ -47,13 +47,16 @@ app_graph = workflow.compile(checkpointer=memory)
 
 class UserInput(BaseModel):
     message: str
-    thread_id: str = None
+    thread_id: str
     scenario: Optional[str] = None
 
 # --- Helper Function for Chat Session Setup ---
 def get_chat_session(input_data: UserInput) -> Tuple[str, Dict, List[BaseMessage]]:
     """Creates a new chat session or loads an existing one, adding instructions for new sessions."""
-    thread_id = input_data.thread_id or str(uuid.uuid4())
+    if not input_data.thread_id:
+        raise HTTPException(status_code=400, detail="thread_id is required")
+    
+    thread_id = input_data.thread_id
     config = {"configurable": {"thread_id": thread_id}}
 
     # Check if a checkpoint exists for this thread_id.

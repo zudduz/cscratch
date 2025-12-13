@@ -3,5 +3,5 @@ uvicorn
 google-cloud-aiplatform
 langchain-google-vertexai
 langgraph
-langgraph-google-genai
+langgraph-google-genai==0.0.5
 google-cloud-firestore

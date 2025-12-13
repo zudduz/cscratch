@@ -112,6 +112,27 @@ def get_scenarios():
                 pass
     return scenarios
 
+@app.get("/history/{thread_id}")
+def get_history(thread_id: str):
+    """Retrieves the conversation history for a given thread_id."""
+    config = {"configurable": {"thread_id": thread_id}}
+    checkpoint = checkpointer.get(config)
+    if not checkpoint:
+        return []
+
+    messages = checkpoint.get('channel_values', {}).get('messages')
+    if not messages:
+        return []
+    
+    history = []
+    for msg in messages:
+        history.append({
+            "type": msg.type,
+            "content": msg.content
+        })
+
+    return history
+
 @app.post("/chat")
 async def chat(input_data: UserInput):
     thread_id, config, messages = get_chat_session(input_data)

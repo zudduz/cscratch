@@ -14,7 +14,7 @@ from langchain_core.messages import HumanMessage, BaseMessage, SystemMessage
 # LangGraph Imports
 from langgraph.graph import START, MessagesState, StateGraph
 from google.cloud import firestore
-from langgraph_google_genai import FirestoreSaver
+from langchain_google_firestore import FirestoreSaver
 
 app = FastAPI()
 

@@ -13,7 +13,8 @@ from langchain_core.messages import HumanMessage, BaseMessage, SystemMessage
 
 # LangGraph Imports
 from langgraph.graph import START, MessagesState, StateGraph
-from langgraph.checkpoint.memory import MemorySaver
+from google.cloud import firestore
+from langgraph_google_genai import FirestoreSaver
 
 app = FastAPI()
 
@@ -32,6 +33,10 @@ llm = ChatVertexAI(
     streaming=True
 )
 
+# --- Persistence ---
+firestore_client = firestore.Client()
+checkpointer = FirestoreSaver(db=firestore_client, collection="conversations")
+
 # --- The Graph Definition ---
 workflow = StateGraph(state_schema=MessagesState)
 
@@ -42,8 +47,7 @@ def call_model(state: MessagesState):
 workflow.add_node("model", call_model)
 workflow.add_edge(START, "model")
 
-memory = MemorySaver()
-app_graph = workflow.compile(checkpointer=memory)
+app_graph = workflow.compile(checkpointer=checkpointer)
 
 class UserInput(BaseModel):
     message: str
@@ -60,7 +64,7 @@ def get_chat_session(input_data: UserInput) -> Tuple[str, Dict, List[BaseMessage
     config = {"configurable": {"thread_id": thread_id}}
 
     # Check if a checkpoint exists for this thread_id.
-    checkpoint = memory.get(config)
+    checkpoint = checkpointer.get(config)
 
     messages = []
     # If no checkpoint, it's a new conversation, so add the system message.

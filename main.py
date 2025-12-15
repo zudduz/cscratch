@@ -18,7 +18,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.graph import START, MessagesState, StateGraph
 from google.cloud import firestore
 from google.cloud.exceptions import NotFound
-from langchain_google_firestore import FirestoreSaver
+from langgraph.checkpoint.firestore import FirestoreSaver
 
 # --- Logging Setup ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -42,7 +42,7 @@ llm = ChatVertexAI(
 
 # --- Persistence ---
 firestore_client = firestore.Client(database="sandbox")
-checkpointer = FirestoreSaver(client=firestore_client, collection="conversations")
+checkpointer = FirestoreSaver.from_client(client=firestore_client, collection="conversations")
 
 # --- The Graph Definition ---
 workflow = StateGraph(state_schema=MessagesState)

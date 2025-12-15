@@ -133,17 +133,6 @@ def get_history(thread_id: str):
 
     return history
 
-@app.post("/chat")
-async def chat(input_data: UserInput):
-    try:
-        config, messages = get_chat_session(input_data)
-        output = app_graph.invoke({"messages": messages}, config=config)
-        bot_reply = output["messages"][-1].content
-        return {"reply": bot_reply, "thread_id": input_data.thread_id}
-    except Exception as e:
-        logging.error(f"Error in /chat endpoint: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
 async def stream_generator(input_data: UserInput) -> AsyncGenerator[str, None]:
     """Yields server-sent events for the streaming chat response."""
     config, messages = get_chat_session(input_data)

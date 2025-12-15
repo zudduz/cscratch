@@ -96,8 +96,28 @@ def get_chat_session(input_data: UserInput) -> Tuple[RunnableConfig, List[BaseMe
 
 @app.get("/scenarios")
 def get_scenarios():
-    # ... (implementation remains the same)
-    return []
+    '''Returns a list of available scenarios.'''
+    scenarios_dir = "scenarios"
+    if not os.path.exists(scenarios_dir):
+        return []
+    
+    scenarios = []
+    for filename in os.listdir(scenarios_dir):
+        if filename.endswith(".json"):
+            scenario_id = filename[:-5] # Remove .json extension
+            filepath = os.path.join(scenarios_dir, filename)
+            try:
+                with open(filepath, "r") as f:
+                    data = json.load(f)
+                    scenarios.append({
+                        "id": scenario_id,
+                        "displayName": data.get("displayName"),
+                        "placeholderText": data.get("placeholderText")
+                    })
+            except (json.JSONDecodeError, FileNotFoundError) as e:
+                logging.error(f"Error processing scenario file: {filename}, error: {e}")
+                pass
+    return scenarios
 
 @app.get("/history/{thread_id}")
 def get_history(thread_id: str):

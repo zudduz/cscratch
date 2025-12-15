@@ -35,7 +35,8 @@ llm = ChatVertexAI(
 
 # --- Persistence ---
 firestore_client = firestore.Client()
-checkpointer = FirestoreSaver(db=firestore_client, collection="conversations")
+# The following line has been corrected to use 'client' instead of 'db'
+checkpointer = FirestoreSaver(client=firestore_client, collection="conversations")
 
 # --- The Graph Definition ---
 workflow = StateGraph(state_schema=MessagesState)

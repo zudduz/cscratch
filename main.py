@@ -62,7 +62,7 @@ class UserInput(BaseModel):
 
 # --- Helper Function for Chat Session Setup ---
 def get_chat_session(input_data: UserInput) -> Tuple[RunnableConfig, List[BaseMessage]]:
-    '''Creates a new chat session or loads an existing one, adding instructions for new sessions.'''
+    """Creates a new chat session or loads an existing one, adding instructions for new sessions."""
     logging.info(f"--- Getting chat session for thread_id: {input_data.thread_id} ---")
     config = RunnableConfig(configurable={"thread_id": input_data.thread_id})
 
@@ -96,7 +96,7 @@ def get_chat_session(input_data: UserInput) -> Tuple[RunnableConfig, List[BaseMe
 
 @app.get("/scenarios")
 def get_scenarios():
-    '''Returns a list of available scenarios.'''
+    """Returns a list of available scenarios."""
     scenarios_dir = "scenarios"
     if not os.path.exists(scenarios_dir):
         return []
@@ -121,7 +121,7 @@ def get_scenarios():
 
 @app.get("/history/{thread_id}")
 def get_history(thread_id: str):
-    '''Retrieves the conversation history for a given thread_id.'''
+    """Retrieves the conversation history for a given thread_id."""
     config = RunnableConfig(configurable={"thread_id": thread_id})
     try:
         state = app_graph.get_state(config)
@@ -146,21 +146,29 @@ async def chat(input_data: UserInput):
     return {"reply": bot_reply, "thread_id": input_data.thread_id}
 
 async def stream_generator(input_data: UserInput) -> AsyncGenerator[str, None]:
-    '''Yields server-sent events for the streaming chat response.'''
+    """Yields server-sent events for the streaming chat response."""
+    logging.info("--- Entered stream_generator ---")
     config, messages = get_chat_session(input_data)
+    logging.info(f"--- Config: {config} ---")
+    logging.info(f"--- Initial messages: {messages} ---")
 
-    yield f"data: {json.dumps({'thread_id': input_data.thread_id})}\n\n"
+    yield f'data: {json.dumps({"thread_id": input_data.thread_id})}\n\n'
+    logging.info("--- Yielded thread_id ---")
 
+    logging.info("--- Starting astream_events ---")
     async for event in app_graph.astream_events(
         {"messages": messages}, config=config, version="v2"
     ):
+        logging.info(f"--- Received event: {event} ---")
         kind = event["event"]
         if kind == "on_chat_model_stream":
             chunk = event["data"]["chunk"]
             if chunk.content:
-                yield f"data: {json.dumps({'token': chunk.content})}\n\n"
+                logging.info(f"--- Yielding chunk: {chunk.content} ---")
+                yield f'data: {json.dumps({"token": chunk.content})}\n\n'
+    logging.info("--- Finished astream_events ---")
 
 @app.post("/stream-chat")
 async def stream_chat(input_data: UserInput):
-    '''Endpoint for streaming chat responses using Server-Sent Events (SSE).'''
+    """Endpoint for streaming chat responses using Server-Sent Events (SSE)."""
     return StreamingResponse(stream_generator(input_data), media_type="text/event-stream")

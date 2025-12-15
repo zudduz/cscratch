@@ -133,22 +133,28 @@ def get_history(thread_id: str):
 
     return history
 
-async def stream_generator(input_data: UserInput) -> AsyncGenerator[str, None]:
-    """Yields server-sent events for the streaming chat response."""
-    config, messages = get_chat_session(input_data)
-
-    yield f'data: {json.dumps({"thread_id": input_data.thread_id})}\n\n'
-
-    async for event in app_graph.astream_events(
-        {"messages": messages}, config=config, version="v2"
-    ):
-        kind = event["event"]
-        if kind == "on_chat_model_stream":
-            chunk = event["data"]["chunk"]
-            if chunk.content:
-                yield f'data: {json.dumps({"token": chunk.content})}\n\n'
 
 @app.post("/stream-chat")
 async def stream_chat(input_data: UserInput):
     """Endpoint for streaming chat responses using Server-Sent Events (SSE)."""
-    return StreamingResponse(stream_generator(input_data), media_type="text/event-stream")
+
+    async def stream_generator() -> AsyncGenerator[str, None]:
+        """Yields server-sent events for the streaming chat response."""
+        try:
+            config, messages = get_chat_session(input_data)
+
+            yield f'data: {json.dumps({"thread_id": input_data.thread_id})}\n\n'
+
+            async for event in app_graph.astream_events(
+                {"messages": messages}, config=config, version="v2"
+            ):
+                kind = event["event"]
+                if kind == "on_chat_model_stream":
+                    chunk = event["data"]["chunk"]
+                    if chunk.content:
+                        yield f'data: {json.dumps({"token": chunk.content})}\n\n'
+        except Exception as e:
+            logging.error(f"Error in stream_generator: {e}")
+            yield f'data: {json.dumps({"error": str(e)})}\n\n'
+
+    return StreamingResponse(stream_generator(), media_type="text/event-stream")

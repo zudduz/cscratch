@@ -18,7 +18,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.graph import START, MessagesState, StateGraph
 from google.cloud import firestore
 from google.cloud.exceptions import NotFound
-from langgraph_google_firestore import FirestoreSaver
+from langgraph_gcp import FirestoreSaver
 
 # --- Logging Setup ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

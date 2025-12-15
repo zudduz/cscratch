@@ -10,6 +10,7 @@ from typing import AsyncGenerator, Tuple, Dict, List, Optional
 # Vertex AI & LangChain Imports
 from langchain_google_vertexai import ChatVertexAI
 from langchain_core.messages import HumanMessage, BaseMessage, SystemMessage
+from langchain_core.runnables import RunnableConfig
 
 # LangGraph Imports
 from langgraph.graph import START, MessagesState, StateGraph
@@ -34,8 +35,8 @@ llm = ChatVertexAI(
 )
 
 # --- Persistence ---
-firestore_client = firestore.Client()
-# The following line has been corrected to use 'client' instead of 'db'
+# Connect to the specific "sandbox" database
+firestore_client = firestore.Client(database="sandbox")
 checkpointer = FirestoreSaver(client=firestore_client, collection="conversations")
 
 # --- The Graph Definition ---
@@ -56,18 +57,17 @@ class UserInput(BaseModel):
     scenario: Optional[str] = None
 
 # --- Helper Function for Chat Session Setup ---
-def get_chat_session(input_data: UserInput) -> Tuple[str, Dict, List[BaseMessage]]:
+def get_chat_session(input_data: UserInput) -> Tuple[RunnableConfig, List[BaseMessage]]:
     """Creates a new chat session or loads an existing one, adding instructions for new sessions."""
     if not input_data.thread_id:
         raise HTTPException(status_code=400, detail="thread_id is required")
-    
-    thread_id = input_data.thread_id
-    config = {"configurable": {"thread_id": thread_id}}
+
+    config = RunnableConfig(configurable={"thread_id": input_data.thread_id})
 
     # Check if a checkpoint exists for this thread_id.
     checkpoint = checkpointer.get(config)
 
-    messages = []
+    messages_for_graph = []
     # If no checkpoint, it's a new conversation, so add the system message.
     if checkpoint is None:
         system_message_content = "You are a helpful and friendly AI assistant."
@@ -79,12 +79,12 @@ def get_chat_session(input_data: UserInput) -> Tuple[str, Dict, List[BaseMessage
                         system_message_content = json.dumps(json.load(f))
                 except (json.JSONDecodeError, FileNotFoundError):
                     pass # Keep the default message
-        messages.append(SystemMessage(content=system_message_content))
+        messages_for_graph.append(SystemMessage(content=system_message_content))
 
+    # Add the new user message to the list to be processed by the graph.
+    messages_for_graph.append(HumanMessage(content=input_data.message))
 
-    messages.append(HumanMessage(content=input_data.message))
-
-    return thread_id, config, messages
+    return config, messages_for_graph
 
 # --- Endpoints ---
 
@@ -116,7 +116,7 @@ def get_scenarios():
 @app.get("/history/{thread_id}")
 def get_history(thread_id: str):
     """Retrieves the conversation history for a given thread_id."""
-    config = {"configurable": {"thread_id": thread_id}}
+    config = RunnableConfig(configurable={"thread_id": thread_id})
     checkpoint = checkpointer.get(config)
     if not checkpoint:
         return []
@@ -136,18 +136,18 @@ def get_history(thread_id: str):
 
 @app.post("/chat")
 async def chat(input_data: UserInput):
-    thread_id, config, messages = get_chat_session(input_data)
+    config, messages = get_chat_session(input_data)
 
     output = app_graph.invoke({"messages": messages}, config=config)
     bot_reply = output["messages"][-1].content
 
-    return {"reply": bot_reply, "thread_id": thread_id}
+    return {"reply": bot_reply, "thread_id": input_data.thread_id}
 
 async def stream_generator(input_data: UserInput) -> AsyncGenerator[str, None]:
     """Yields server-sent events for the streaming chat response."""
-    thread_id, config, messages = get_chat_session(input_data)
+    config, messages = get_chat_session(input_data)
 
-    yield f"data: {json.dumps({'thread_id': thread_id})}\n\n"
+    yield f"data: {json.dumps({'thread_id': input_data.thread_id})}\n\n"
 
     async for event in app_graph.astream_events(
         {"messages": messages}, config=config, version="v2"

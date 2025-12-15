@@ -18,7 +18,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.graph import START, MessagesState, StateGraph
 from google.cloud import firestore
 from google.cloud.exceptions import NotFound
-from langgraph.checkpoint.firestore import FirestoreSaver
+from langgraph_google_firestore import FirestoreSaver
 
 # --- Logging Setup ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -42,7 +42,7 @@ llm = ChatVertexAI(
 
 # --- Persistence ---
 firestore_client = firestore.Client(database="sandbox")
-checkpointer = FirestoreSaver.from_client(client=firestore_client, collection="conversations")
+checkpointer = FirestoreSaver(client=firestore_client, collection="conversations")
 
 # --- The Graph Definition ---
 workflow = StateGraph(state_schema=MessagesState)
@@ -63,7 +63,6 @@ class UserInput(BaseModel):
 # --- Helper Function for Chat Session Setup ---
 def get_chat_session(input_data: UserInput) -> Tuple[RunnableConfig, List[BaseMessage]]:
     """Creates a new chat session or loads an existing one, adding instructions for new sessions."""
-    logging.info(f"--- Getting chat session for thread_id: {input_data.thread_id} ---")
     config = RunnableConfig(configurable={"thread_id": input_data.thread_id})
 
     try:
@@ -73,7 +72,6 @@ def get_chat_session(input_data: UserInput) -> Tuple[RunnableConfig, List[BaseMe
 
     messages_for_graph = []
     if existing_state is None or not existing_state.values.get('messages'):
-        logging.info("--- No state found, creating new conversation. ---")
         system_message_content = "You are a helpful and friendly AI assistant."
         if input_data.scenario:
             scenario_path = f"scenarios/{input_data.scenario}.json"
@@ -84,11 +82,8 @@ def get_chat_session(input_data: UserInput) -> Tuple[RunnableConfig, List[BaseMe
                 except (json.JSONDecodeError, FileNotFoundError):
                     pass
         messages_for_graph.append(SystemMessage(content=system_message_content))
-    else:
-        logging.info("--- State found, continuing conversation. ---")
 
     messages_for_graph.append(HumanMessage(content=input_data.message))
-    logging.info(f"--- Messages for graph: {messages_for_graph} ---")
 
     return config, messages_for_graph
 
@@ -147,26 +142,18 @@ async def chat(input_data: UserInput):
 
 async def stream_generator(input_data: UserInput) -> AsyncGenerator[str, None]:
     """Yields server-sent events for the streaming chat response."""
-    logging.info("--- Entered stream_generator ---")
     config, messages = get_chat_session(input_data)
-    logging.info(f"--- Config: {config} ---")
-    logging.info(f"--- Initial messages: {messages} ---")
 
     yield f'data: {json.dumps({"thread_id": input_data.thread_id})}\n\n'
-    logging.info("--- Yielded thread_id ---")
 
-    logging.info("--- Starting astream_events ---")
     async for event in app_graph.astream_events(
         {"messages": messages}, config=config, version="v2"
     ):
-        logging.info(f"--- Received event: {event} ---")
         kind = event["event"]
         if kind == "on_chat_model_stream":
             chunk = event["data"]["chunk"]
             if chunk.content:
-                logging.info(f"--- Yielding chunk: {chunk.content} ---")
                 yield f'data: {json.dumps({"token": chunk.content})}\n\n'
-    logging.info("--- Finished astream_events ---")
 
 @app.post("/stream-chat")
 async def stream_chat(input_data: UserInput):

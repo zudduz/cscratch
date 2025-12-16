@@ -1,14 +1,14 @@
-
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
 from google.cloud import firestore
 from langchain_core.runnables.utils import ConfigurableFieldSpec
-from langchain_core.chat_history import BaseMessageHistory
+from langchain_core.messages import BaseMessageHistory
 
 
 class FirestoreSaver(BaseMessageHistory):
+
     def __init__(self, client: firestore.Client, collection: str):
         self.client = client
         self.collection = collection

@@ -1,7 +1,5 @@
-fastapi==0.124.4
-uvicorn==0.38.0
-google-cloud-aiplatform==1.130.0
-langchain-google-vertexai==2.1.2
-langgraph==1.0.1
-google-cloud-firestore==2.21.0
-langchain-google-firestore
+fastapi
+langchain-google-vertexai
+langgraph
+langchain-core==0.2.29
+google-cloud-firestore

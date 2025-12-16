@@ -1,4 +1,5 @@
 {
+  "id": "sleeping-agent",
   "displayName": "The Sleeper Agent",
   "placeholderText": "Activate the sleeper agent",
   "role": "Secret Agent",

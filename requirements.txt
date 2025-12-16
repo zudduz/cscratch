@@ -2,7 +2,5 @@ fastapi
 uvicorn
 langchain-google-vertexai
 langgraph
-langchain-core==0.2.29
 google-cloud-firestore
 pydantic==1.10.13
-google-cloud-storage>=3.0.0

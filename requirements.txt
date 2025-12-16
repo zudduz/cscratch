@@ -4,3 +4,5 @@ langchain-google-vertexai
 langgraph
 langchain-core==0.2.29
 google-cloud-firestore
+pydantic
+google-cloud-aiplatform

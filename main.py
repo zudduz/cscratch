@@ -7,7 +7,6 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.forwardedproxy import ForwardedProxyMiddleware
 from typing import AsyncGenerator, Tuple, Dict, List, Optional
 
 # Vertex AI & LangChain Imports
@@ -27,8 +26,6 @@ from firestore_saver import FirestoreSaver
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 app = FastAPI()
-
-app.add_middleware(ForwardedProxyMiddleware)
 
 # Add CORSMiddleware
 app.add_middleware(

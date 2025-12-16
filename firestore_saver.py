@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import pickle
-from typing import Any, AsyncIterator, Optional
+from typing import Any, AsyncIterator, Optional, Dict
 
 from google.cloud.firestore import AsyncClient
 from pydantic import Field
@@ -46,18 +46,24 @@ class FirestoreSaver(BaseCheckpointSaver):
             )
         return None
 
-    def put(self, config: RunnableConfig, checkpoint: Checkpoint) -> RunnableConfig:
+    def put(self, config: RunnableConfig, checkpoint: Checkpoint, metadata: Optional[Dict[str, Any]] = None) -> RunnableConfig:
         raise NotImplementedError("Use aput instead.")
 
 
-    async def aput(self, config: RunnableConfig, checkpoint: Checkpoint) -> RunnableConfig:
+    async def aput(
+        self,
+        config: RunnableConfig,
+        checkpoint: Checkpoint,
+        parent_config: Optional[RunnableConfig] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> RunnableConfig:
         thread_id = config["configurable"]["thread_id"]
         doc_ref = self.client.collection(self.collection).document(thread_id)
         checkpoint_bytes = pickle.dumps(checkpoint)
-        await doc_ref.set({"checkpoint": checkpoint_bytes})
+        await doc_ref.set({"checkpoint": checkpoint_bytes, "parent_config": parent_config, "metadata": metadata})
         return config
 
-    async def alist(self, filter: Optional[RunnableConfig] = None) -> AsyncIterator[CheckpointTuple]:
+    async def alist(self, filter: Optional[RunnableConfig] = None, *, before: Optional[RunnableConfig] = None, limit: Optional[int] = None) -> AsyncIterator[CheckpointTuple]:
         collection_ref = self.client.collection(self.collection)
         async for doc in collection_ref.stream():
             checkpoint_bytes = doc.get("checkpoint")

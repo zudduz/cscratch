@@ -1,4 +1,3 @@
-
 import os
 import uuid
 import json
@@ -60,13 +59,12 @@ app_graph = workflow.compile(checkpointer=checkpointer)
 
 class UserInput(BaseModel):
     message: str
-    thread_id: str
-    scenario: Optional[str] = None
 
 # --- Helper Function for Chat Session Setup ---
-async def get_chat_session(input_data: UserInput) -> Tuple[RunnableConfig, List[BaseMessage]]:
+async def get_chat_session(story_id: str, game_id: str, message: str) -> Tuple[RunnableConfig, List[BaseMessage]]:
     """Creates a new chat session or loads an existing one, adding instructions for new sessions."""
-    config = RunnableConfig(configurable={"thread_id": input_data.thread_id})
+    thread_id = f"{story_id}-{game_id}"
+    config = RunnableConfig(configurable={"thread_id": thread_id})
 
     try:
         existing_state = await app_graph.aget_state(config)
@@ -76,50 +74,50 @@ async def get_chat_session(input_data: UserInput) -> Tuple[RunnableConfig, List[
     messages_for_graph = []
     if existing_state is None or not existing_state.values.get('messages'):
         system_message_content = "You are a helpful and friendly AI assistant."
-        if input_data.scenario:
-            scenario_path = f"scenarios/{input_data.scenario}.json"
-            if os.path.exists(scenario_path):
-                try:
-                    with open(scenario_path, "r") as f:
-                        system_message_content = json.dumps(json.load(f))
-                except (json.JSONDecodeError, FileNotFoundError):
-                    pass
+        scenario_path = f"scenarios/{story_id}.json"
+        if os.path.exists(scenario_path):
+            try:
+                with open(scenario_path, "r") as f:
+                    system_message_content = json.dumps(json.load(f))
+            except (json.JSONDecodeError, FileNotFoundError):
+                pass
         messages_for_graph.append(SystemMessage(content=system_message_content))
 
-    messages_for_graph.append(HumanMessage(content=input_data.message))
+    messages_for_graph.append(HumanMessage(content=message))
 
     return config, messages_for_graph
 
 # --- Endpoints ---
 
-@app.get("/scenarios")
-def get_scenarios():
-    """Returns a list of available scenarios."""
+@app.get("/stories/")
+def get_stories():
+    """Returns a list of available stories."""
     scenarios_dir = "scenarios"
     if not os.path.exists(scenarios_dir):
         return []
     
-    scenarios = []
+    stories = []
     for filename in os.listdir(scenarios_dir):
         if filename.endswith(".json"):
-            scenario_id = filename[:-5] # Remove .json extension
+            story_id = filename[:-5] # Remove .json extension
             filepath = os.path.join(scenarios_dir, filename)
             try:
                 with open(filepath, "r") as f:
                     data = json.load(f)
-                    scenarios.append({
-                        "id": scenario_id,
+                    stories.append({
+                        "id": story_id,
                         "displayName": data.get("displayName"),
                         "placeholderText": data.get("placeholderText")
                     })
             except (json.JSONDecodeError, FileNotFoundError) as e:
                 logging.error(f"Error processing scenario file: {filename}, error: {e}")
                 pass
-    return scenarios
+    return stories
 
-@app.get("/history/{thread_id}")
-async def get_history(thread_id: str):
-    """Retrieves the conversation history for a given thread_id."""
+@app.get("/stories/{story_id}/games/{game_id}")
+async def get_game_history(story_id: str, game_id: str):
+    """Retrieves the conversation history for a given game."""
+    thread_id = f"{story_id}-{game_id}"
     config = RunnableConfig(configurable={"thread_id": thread_id})
     try:
         state = await app_graph.aget_state(config)
@@ -137,16 +135,16 @@ async def get_history(thread_id: str):
     return history
 
 
-@app.post("/stream-chat")
-async def stream_chat(input_data: UserInput):
+@app.post("/stories/{story_id}/games/{game_id}/chat")
+async def stream_chat(story_id: str, game_id: str, input_data: UserInput):
     """Endpoint for streaming chat responses using Server-Sent Events (SSE)."""
 
     async def stream_generator() -> AsyncGenerator[str, None]:
         """Yields server-sent events for the streaming chat response."""
         try:
-            config, messages = await get_chat_session(input_data)
+            config, messages = await get_chat_session(story_id, game_id, input_data.message)
 
-            yield f'data: {json.dumps({"thread_id": input_data.thread_id})}\n\n'
+            yield f'data: {json.dumps({"game_id": game_id})}\n\n'
 
             async for event in app_graph.astream_events(
                 {"messages": messages}, config=config, version="v2"

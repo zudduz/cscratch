@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import pickle
-from typing import Any, AsyncIterator, Optional, Dict
+from typing import Any, AsyncIterator, Optional, Dict, Sequence
 
 from google.cloud.firestore import AsyncClient
 from pydantic import Field
@@ -54,7 +54,6 @@ class FirestoreSaver(BaseCheckpointSaver):
     def put(self, config: RunnableConfig, checkpoint: Checkpoint, metadata: Optional[Dict[str, Any]] = None) -> RunnableConfig:
         raise NotImplementedError("Use aput instead.")
 
-
     async def aput(
         self,
         config: RunnableConfig,
@@ -62,13 +61,23 @@ class FirestoreSaver(BaseCheckpointSaver):
         parent_config: Optional[RunnableConfig] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> RunnableConfig:
-        thread_id = config["configurable"]["thread_id"]
-        doc_ref = self.client.collection(self.collection).document(thread_id)
-        checkpoint_bytes = pickle.dumps(checkpoint)
-        if metadata and "__start__" in metadata:
-            del metadata["__start__"]
-        await doc_ref.set({"checkpoint": checkpoint_bytes, "metadata": metadata or {}})
+        await self.aput_writes(config, [(config, checkpoint, metadata)])
         return config
+
+    async def aput_writes(
+        self,
+        config: RunnableConfig,
+        writes: Sequence[tuple[RunnableConfig, Checkpoint, Optional[dict[str, Any]]]],
+    ) -> None:
+        batch = self.client.batch()
+        for write_config, checkpoint, metadata in writes:
+            thread_id = write_config["configurable"]["thread_id"]
+            doc_ref = self.client.collection(self.collection).document(thread_id)
+            checkpoint_bytes = pickle.dumps(checkpoint)
+            if metadata and "__start__" in metadata:
+                del metadata["__start__"]
+            batch.set(doc_ref, {"checkpoint": checkpoint_bytes, "metadata": metadata or {}})
+        await batch.commit()
 
     async def alist(self, filter: Optional[RunnableConfig] = None, *, before: Optional[RunnableConfig] = None, limit: Optional[int] = None) -> AsyncIterator[CheckpointTuple]:
         collection_ref = self.client.collection(self.collection)

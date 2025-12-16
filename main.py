@@ -3,6 +3,7 @@ import os
 import uuid
 import json
 import logging
+import traceback
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -16,7 +17,7 @@ from langchain_core.runnables import RunnableConfig
 
 # LangGraph Imports
 from langgraph.graph import START, MessagesState, StateGraph
-from google.cloud import firestore
+from google.cloud.firestore import AsyncClient
 from google.cloud.exceptions import NotFound
 
 # Custom FirestoreSaver
@@ -43,7 +44,7 @@ llm = ChatVertexAI(
 )
 
 # --- Persistence ---
-firestore_client = firestore.Client(database="sandbox")
+firestore_client = AsyncClient(database="sandbox")
 checkpointer = FirestoreSaver(client=firestore_client, collection="conversations")
 
 # --- The Graph Definition ---
@@ -63,12 +64,12 @@ class UserInput(BaseModel):
     scenario: Optional[str] = None
 
 # --- Helper Function for Chat Session Setup ---
-def get_chat_session(input_data: UserInput) -> Tuple[RunnableConfig, List[BaseMessage]]:
+async def get_chat_session(input_data: UserInput) -> Tuple[RunnableConfig, List[BaseMessage]]:
     """Creates a new chat session or loads an existing one, adding instructions for new sessions."""
     config = RunnableConfig(configurable={"thread_id": input_data.thread_id})
 
     try:
-        existing_state = app_graph.get_state(config)
+        existing_state = await app_graph.aget_state(config)
     except NotFound:
         existing_state = None
 
@@ -117,11 +118,11 @@ def get_scenarios():
     return scenarios
 
 @app.get("/history/{thread_id}")
-def get_history(thread_id: str):
+async def get_history(thread_id: str):
     """Retrieves the conversation history for a given thread_id."""
     config = RunnableConfig(configurable={"thread_id": thread_id})
     try:
-        state = app_graph.get_state(config)
+        state = await app_graph.aget_state(config)
     except NotFound:
         return []
 
@@ -143,7 +144,7 @@ async def stream_chat(input_data: UserInput):
     async def stream_generator() -> AsyncGenerator[str, None]:
         """Yields server-sent events for the streaming chat response."""
         try:
-            config, messages = get_chat_session(input_data)
+            config, messages = await get_chat_session(input_data)
 
             yield f'data: {json.dumps({"thread_id": input_data.thread_id})}\n\n'
 
@@ -156,7 +157,7 @@ async def stream_chat(input_data: UserInput):
                     if chunk.content:
                         yield f'data: {json.dumps({"token": chunk.content})}\n\n'
         except Exception as e:
-            logging.error(f"Error in stream_generator: {e}")
+            logging.error(f"Error in stream_generator: {e}\n{traceback.format_exc()}")
             yield f'data: {json.dumps({"error": str(e)})}\n\n'
 
     return StreamingResponse(stream_generator(), media_type="text/event-stream")

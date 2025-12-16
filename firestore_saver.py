@@ -1,46 +1,70 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+import pickle
+from typing import Any, AsyncIterator, Optional
 
-from google.cloud import firestore
-from langchain_core.runnables.utils import ConfigurableFieldSpec
-from langchain_core.chat_history import BaseChatMessageHistory
+from google.cloud.firestore import AsyncClient
+from langchain_core.pydantic_v1 import Field
+from langchain_core.runnables import RunnableConfig
+from langgraph.checkpoint.base import BaseCheckpointSaver, Checkpoint, CheckpointTuple
 
 
-class FirestoreSaver(BaseChatMessageHistory):
+class FirestoreSaver(BaseCheckpointSaver):
+    client: AsyncClient = Field(
+        default_factory=lambda: AsyncClient(database="sandbox"),
+        description="The Firestore client to use for saving checkpoints.",
+    )
+    collection: str = Field(
+        default="conversations",
+        description="The name of the Firestore collection to use for storing checkpoints.",
+    )
 
-    def __init__(self, client: firestore.Client, collection: str):
-        self.client = client
+    def __init__(self, *, client: AsyncClient | None = None, collection: str = "conversations"):
+        super().__init__()
+        if client:
+            self.client = client
         self.collection = collection
 
-    def get(self, config: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        thread_id = config.get("configurable", {}).get("thread_id")
-        if not thread_id:
-            return None
+    @property
+    def is_async(self) -> bool:
+        return True
 
+    def get(self, config: RunnableConfig) -> Optional[CheckpointTuple]:
+        raise NotImplementedError("Use aget_tuple instead.")
+
+    async def aget_tuple(self, config: RunnableConfig) -> Optional[CheckpointTuple]:
+        thread_id = config["configurable"]["thread_id"]
         doc_ref = self.client.collection(self.collection).document(thread_id)
-        doc = doc_ref.get()
+        doc = await doc_ref.get()
         if doc.exists:
-            return doc.to_dict()
+            checkpoint_bytes = doc.get("checkpoint")
+            checkpoint = pickle.loads(checkpoint_bytes)
+            return CheckpointTuple(
+                config=config,
+                checkpoint=checkpoint,
+                parent_config=doc.get("parent_config"),
+            )
         return None
 
-    def put(self, config: Dict[str, Any], values: Dict[str, Any]) -> None:
-        thread_id = config.get("configurable", {}).get("thread_id")
-        if not thread_id:
-            return
+    def put(self, config: RunnableConfig, checkpoint: Checkpoint) -> RunnableConfig:
+        raise NotImplementedError("Use aput instead.")
 
+
+    async def aput(self, config: RunnableConfig, checkpoint: Checkpoint) -> RunnableConfig:
+        thread_id = config["configurable"]["thread_id"]
         doc_ref = self.client.collection(self.collection).document(thread_id)
-        doc_ref.set(values)
-    def clear(self) -> None:
-        # Not implemented
-        return
+        checkpoint_bytes = pickle.dumps(checkpoint)
+        await doc_ref.set({"checkpoint": checkpoint_bytes})
+        return config
 
-    @property
-    def config_specs(self) -> List[ConfigurableFieldSpec]:
-        return [
-            ConfigurableFieldSpec(
-                id="thread_id",
-                name="Thread ID",
-                description="The unique identifier for the conversation thread",
-            ),
-        ]
+    async def alist(self, filter: Optional[RunnableConfig] = None) -> AsyncIterator[CheckpointTuple]:
+        collection_ref = self.client.collection(self.collection)
+        async for doc in collection_ref.stream():
+            checkpoint_bytes = doc.get("checkpoint")
+            checkpoint = pickle.loads(checkpoint_bytes)
+            config = {"configurable": {"thread_id": doc.id}}
+            yield CheckpointTuple(
+                config=config,
+                checkpoint=checkpoint,
+                parent_config=doc.get("parent_config"),
+            )

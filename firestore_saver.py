@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional
 
 from google.cloud import firestore
 from langchain_core.runnables.utils import ConfigurableFieldSpec
-from langchain_core.messages import BaseMessageHistory
+from langchain_core.chat_history import BaseMessageHistory
 
 
 class FirestoreSaver(BaseMessageHistory):

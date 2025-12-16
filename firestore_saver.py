@@ -42,7 +42,7 @@ class FirestoreSaver(BaseCheckpointSaver):
             return CheckpointTuple(
                 config=config,
                 checkpoint=checkpoint,
-                parent_config=doc.get("parent_config"),
+                parent_config=None,
             )
         return None
 
@@ -60,7 +60,7 @@ class FirestoreSaver(BaseCheckpointSaver):
         thread_id = config["configurable"]["thread_id"]
         doc_ref = self.client.collection(self.collection).document(thread_id)
         checkpoint_bytes = pickle.dumps(checkpoint)
-        await doc_ref.set({"checkpoint": checkpoint_bytes, "parent_config": parent_config, "metadata": metadata})
+        await doc_ref.set({"checkpoint": checkpoint_bytes})
         return config
 
     async def alist(self, filter: Optional[RunnableConfig] = None, *, before: Optional[RunnableConfig] = None, limit: Optional[int] = None) -> AsyncIterator[CheckpointTuple]:
@@ -72,5 +72,5 @@ class FirestoreSaver(BaseCheckpointSaver):
             yield CheckpointTuple(
                 config=config,
                 checkpoint=checkpoint,
-                parent_config=doc.get("parent_config"),
+                parent_config=None,
             )

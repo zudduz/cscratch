@@ -78,16 +78,15 @@ class FirestoreSaver(BaseCheckpointSaver):
                 write_config, checkpoint = write
                 metadata = None
 
-            configurable = write_config.get("configurable")
-            if not configurable:
-                continue
-
-            if isinstance(configurable, str):
-                thread_id = configurable
-            elif isinstance(configurable, dict):
-                thread_id = configurable.get("thread_id")
-            else:
-                thread_id = None
+            thread_id = None
+            if isinstance(write_config, str):
+                thread_id = write_config
+            elif isinstance(write_config, dict):
+                configurable = write_config.get("configurable")
+                if isinstance(configurable, str):
+                    thread_id = configurable
+                elif isinstance(configurable, dict):
+                    thread_id = configurable.get("thread_id")
 
             if not thread_id:
                 continue

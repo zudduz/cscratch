@@ -39,13 +39,15 @@ class FirestoreSaver(BaseCheckpointSaver):
         if doc.exists:
             doc_dict = doc.to_dict()
             checkpoint_bytes = doc_dict.get("checkpoint")
-            metadata = doc_dict.get("metadata")
+            metadata = doc_dict.get("metadata") or {}
+            if "step" not in metadata:
+                metadata["step"] = 0
             checkpoint = pickle.loads(checkpoint_bytes)
             return CheckpointTuple(
                 config=config,
                 checkpoint=checkpoint,
                 parent_config=None,
-                metadata=metadata or {},
+                metadata=metadata,
             )
         return None
 
@@ -71,12 +73,14 @@ class FirestoreSaver(BaseCheckpointSaver):
         async for doc in collection_ref.stream():
             doc_dict = doc.to_dict()
             checkpoint_bytes = doc_dict.get("checkpoint")
-            metadata = doc_dict.get("metadata")
+            metadata = doc_dict.get("metadata") or {}
+            if "step" not in metadata:
+                metadata["step"] = 0
             checkpoint = pickle.loads(checkpoint_bytes)
             config = {"configurable": {"thread_id": doc.id}}
             yield CheckpointTuple(
                 config=config,
                 checkpoint=checkpoint,
                 parent_config=None,
-                metadata=metadata or {},
+                metadata=metadata,
             )

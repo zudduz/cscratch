@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 import pickle
@@ -61,13 +62,14 @@ class FirestoreSaver(BaseCheckpointSaver):
         parent_config: Optional[RunnableConfig] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> RunnableConfig:
-        await self.aput_writes(config, [(config, checkpoint, metadata)])
+        await self.aput_writes(config, [(config, checkpoint, metadata)], parent_config)
         return config
 
     async def aput_writes(
         self,
         config: RunnableConfig,
         writes: Sequence[tuple[RunnableConfig, Checkpoint, Optional[dict[str, Any]]]],
+        parent_config: Optional[RunnableConfig] = None,
     ) -> None:
         batch = self.client.batch()
         for write_config, checkpoint, metadata in writes:

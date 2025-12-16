@@ -16,7 +16,7 @@ from langchain_core.messages import HumanMessage, BaseMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 
 # LangGraph Imports
-from langgraph.graph import START, MessagesState, StateGraph
+from langgraph.graph import MessagesState, StateGraph
 from google.cloud.firestore import AsyncClient
 from google.cloud.exceptions import NotFound
 
@@ -54,7 +54,7 @@ def call_model(state: MessagesState):
     return {"messages": [llm.invoke(state["messages"])]}
 
 workflow.add_node("model", call_model)
-workflow.add_edge(START, "model")
+workflow.set_entry_point("model")
 
 app_graph = workflow.compile(checkpointer=checkpointer)
 

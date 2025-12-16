@@ -77,7 +77,21 @@ class FirestoreSaver(BaseCheckpointSaver):
             else:
                 write_config, checkpoint = write
                 metadata = None
-            thread_id = write_config["configurable"]["thread_id"]
+
+            configurable = write_config.get("configurable")
+            if not configurable:
+                continue
+
+            if isinstance(configurable, str):
+                thread_id = configurable
+            elif isinstance(configurable, dict):
+                thread_id = configurable.get("thread_id")
+            else:
+                thread_id = None
+
+            if not thread_id:
+                continue
+
             doc_ref = self.client.collection(self.collection).document(thread_id)
             checkpoint_bytes = pickle.dumps(checkpoint)
             if metadata and "__start__" in metadata:

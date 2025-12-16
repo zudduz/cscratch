@@ -4,7 +4,7 @@ import pickle
 from typing import Any, AsyncIterator, Optional
 
 from google.cloud.firestore import AsyncClient
-from langchain_core.pydantic_v1 import Field
+from pydantic import Field
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.base import BaseCheckpointSaver, Checkpoint, CheckpointTuple
 

@@ -65,6 +65,8 @@ class FirestoreSaver(BaseCheckpointSaver):
         thread_id = config["configurable"]["thread_id"]
         doc_ref = self.client.collection(self.collection).document(thread_id)
         checkpoint_bytes = pickle.dumps(checkpoint)
+        if metadata and "__start__" in metadata:
+            del metadata["__start__"]
         await doc_ref.set({"checkpoint": checkpoint_bytes, "metadata": metadata or {}})
         return config
 

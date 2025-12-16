@@ -31,6 +31,9 @@ class FirestoreSaver(BaseChatMessageHistory):
 
         doc_ref = self.client.collection(self.collection).document(thread_id)
         doc_ref.set(values)
+    def clear(self) -> None:
+        # Not implemented
+        return
 
     @property
     def config_specs(self) -> List[ConfigurableFieldSpec]:

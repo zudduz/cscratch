@@ -43,6 +43,7 @@ class FirestoreSaver(BaseCheckpointSaver):
                 config=config,
                 checkpoint=checkpoint,
                 parent_config=None,
+                metadata=None,
             )
         return None
 
@@ -73,4 +74,5 @@ class FirestoreSaver(BaseCheckpointSaver):
                 config=config,
                 checkpoint=checkpoint,
                 parent_config=None,
+                metadata=None,
             )

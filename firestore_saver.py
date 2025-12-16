@@ -38,12 +38,14 @@ class FirestoreSaver(BaseCheckpointSaver):
         doc = await doc_ref.get()
         if doc.exists:
             checkpoint_bytes = doc.get("checkpoint")
+            metadata_bytes = doc.get("metadata")
             checkpoint = pickle.loads(checkpoint_bytes)
+            metadata = pickle.loads(metadata_bytes) if metadata_bytes else {}
             return CheckpointTuple(
                 config=config,
                 checkpoint=checkpoint,
                 parent_config=None,
-                metadata={},
+                metadata=metadata,
             )
         return None
 
@@ -61,18 +63,21 @@ class FirestoreSaver(BaseCheckpointSaver):
         thread_id = config["configurable"]["thread_id"]
         doc_ref = self.client.collection(self.collection).document(thread_id)
         checkpoint_bytes = pickle.dumps(checkpoint)
-        await doc_ref.set({"checkpoint": checkpoint_bytes})
+        metadata_bytes = pickle.dumps(metadata or {})
+        await doc_ref.set({"checkpoint": checkpoint_bytes, "metadata": metadata_bytes})
         return config
 
     async def alist(self, filter: Optional[RunnableConfig] = None, *, before: Optional[RunnableConfig] = None, limit: Optional[int] = None) -> AsyncIterator[CheckpointTuple]:
         collection_ref = self.client.collection(self.collection)
         async for doc in collection_ref.stream():
             checkpoint_bytes = doc.get("checkpoint")
+            metadata_bytes = doc.get("metadata")
             checkpoint = pickle.loads(checkpoint_bytes)
+            metadata = pickle.loads(metadata_bytes) if metadata_bytes else {}
             config = {"configurable": {"thread_id": doc.id}}
             yield CheckpointTuple(
                 config=config,
                 checkpoint=checkpoint,
                 parent_config=None,
-                metadata={},
+                metadata=metadata,
             )

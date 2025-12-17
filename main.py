@@ -107,7 +107,8 @@ def get_stories():
                     stories.append({
                         "id": story_id,
                         "displayName": data.get("displayName"),
-                        "placeholderText": data.get("placeholderText")
+                        "placeholderText": data.get("placeholderText"),
+                        "description": data.get("description")
                     })
             except (json.JSONDecodeError, FileNotFoundError) as e:
                 logging.error(f"Error processing scenario file: {filename}, error: {e}")

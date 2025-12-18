@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "ops-manager": {
+      "command": "venv/bin/python", 
+      "args": ["ops_server.py"],
+      "env": {
+        "PYTHONUNBUFFERED": "1",
+        "GOOGLE_CLOUD_PROJECT": "sandbox-456821"
+      }
+    }
+  }
+}

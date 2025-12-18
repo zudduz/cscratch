@@ -92,6 +92,7 @@ async def get_chat_session(story_id: str, game_id: str, message: str) -> Tuple[R
 @app.get("/stories/")
 def get_stories():
     """Returns a list of available stories."""
+    logging.info("get_stories endpoint called")
     scenarios_dir = "scenarios"
     if not os.path.exists(scenarios_dir):
         return []

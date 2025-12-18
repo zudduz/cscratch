@@ -5,7 +5,8 @@
       "args": ["ops_server.py"],
       "env": {
         "PYTHONUNBUFFERED": "1",
-        "GOOGLE_CLOUD_PROJECT": "sandbox-456821"
+        "GOOGLE_CLOUD_PROJECT": "sandbox-456821",
+        "SERVICE_NAME": "cscratch"
       }
     }
   }

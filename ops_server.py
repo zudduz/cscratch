@@ -1,4 +1,3 @@
-
 from mcp.server.fastmcp import FastMCP
 from google.cloud import logging
 import inspect
@@ -75,6 +74,13 @@ def search_pydoc(keyword: str) -> str:
         return pydoc.render_doc(keyword, renderer=pydoc.plaintext)
     except Exception as e:
         return f"Error searching docs: {str(e)}"
+
+@mcp.tool()
+def echo_test(text: str) -> str:
+    """
+    A simple echo tool to verify the MCP server is running and accessible.
+    """
+    return f"Echo from OpsManager: {text}"
 
 if __name__ == "__main__":
     mcp.run()

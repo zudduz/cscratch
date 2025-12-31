@@ -1,33 +1,81 @@
-import os
-import uuid
+import asyncio
 import json
 import logging
+import os
 import traceback
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from contextlib import asynccontextmanager
+from typing import AsyncGenerator, List, Tuple
+
+import discord
+import nest_asyncio
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from typing import AsyncGenerator, Tuple, Dict, List, Optional
-
-# Vertex AI & LangChain Imports
-from langchain_google_vertexai import ChatVertexAI
-from langchain_core.messages import HumanMessage, BaseMessage, SystemMessage
-from langchain_core.runnables import RunnableConfig
-
-# LangGraph Imports
-from langgraph.graph import MessagesState, StateGraph
-from google.cloud.firestore import AsyncClient
+from fastapi.responses import StreamingResponse
+from google.cloud import secretmanager
 from google.cloud.exceptions import NotFound
+from google.cloud.firestore import AsyncClient
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+from langchain_core.runnables import RunnableConfig
+from langchain_google_vertexai import ChatVertexAI
+from langgraph.graph import MessagesState, StateGraph
+from pydantic import BaseModel
 
-# Custom FirestoreSaver
+# Custom Imports
 from firestore_saver import FirestoreSaver
 
-# --- Logging Setup ---
+# --- Configuration & Logging ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+nest_asyncio.apply()  # Allow nested event loops for Discord + FastAPI
 
-app = FastAPI()
+# --- Secret Manager Helper ---
+def get_discord_token():
+    """Retrieves the Discord API token from Google Secret Manager."""
+    try:
+        client = secretmanager.SecretManagerServiceClient()
+        # Note: 'versions/latest' is used to get the most recent version
+        name = "projects/171510694317/secrets/c-scratch-discord-api/versions/latest"
+        response = client.access_secret_version(request={"name": name})
+        return response.payload.data.decode("UTF-8")
+    except Exception as e:
+        logging.error(f"Failed to retrieve Discord token: {e}")
+        return None
 
-# Add CORSMiddleware
+# --- Discord Client Setup ---
+intents = discord.Intents.default()
+intents.message_content = True
+discord_client = discord.Client(intents=intents)
+
+@discord_client.event
+async def on_ready():
+    logging.info(f'Discord Bot Connected: We have logged in as {discord_client.user}')
+
+@discord_client.event
+async def on_message(message):
+    if message.author == discord_client.user:
+        return
+
+    if message.content.startswith('!ping'):
+        await message.channel.send('Pong! (Hello from Cloud Run)')
+
+# --- FastAPI Lifespan (Startup/Shutdown) ---
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Launch Discord Bot in background task
+    token = get_discord_token()
+    if token:
+        asyncio.create_task(discord_client.start(token))
+    else:
+        logging.warning("Discord token not found. Bot will not start.")
+    
+    yield
+    
+    # Shutdown: Clean up Discord connection
+    if not discord_client.is_closed():
+        await discord_client.close()
+
+# --- FastAPI Setup ---
+app = FastAPI(lifespan=lifespan)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origin_regex=r"https?://(www\.)?zudduz\.com",
@@ -36,17 +84,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# --- LangGraph & AI Setup ---
 llm = ChatVertexAI(
     model="gemini-2.5-flash",
     temperature=0.7,
     streaming=True
 )
 
-# --- Persistence ---
 firestore_client = AsyncClient(database="sandbox")
 checkpointer = FirestoreSaver(client=firestore_client, collection="conversations")
 
-# --- The Graph Definition ---
 workflow = StateGraph(state_schema=MessagesState)
 
 def call_model(state: MessagesState):
@@ -78,7 +125,9 @@ async def get_chat_session(story_id: str, game_id: str, message: str) -> Tuple[R
         if os.path.exists(scenario_path):
             try:
                 with open(scenario_path, "r") as f:
-                    system_message_content = json.dumps(json.load(f))
+                    data = json.load(f)
+                    # If the JSON is a scenario definition, dump it as context
+                    system_message_content = json.dumps(data)
             except (json.JSONDecodeError, FileNotFoundError):
                 pass
         messages_for_graph.append(SystemMessage(content=system_message_content))

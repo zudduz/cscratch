@@ -210,3 +210,5 @@ async def stream_chat(story_id: str, game_id: str, input_data: UserInput):
             yield f'data: {json.dumps({"error": str(e)})}\n\n'
 
     return StreamingResponse(stream_generator(), media_type="text/event-stream")
+
+# Force redeploy

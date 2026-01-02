@@ -21,6 +21,8 @@ steps:
   - '--platform'
   - 'managed'
   - '--allow-unauthenticated'
+  - '--min-instances=0'
+  - '--max-instances=1'
 
 images:
 - 'gcr.io/$PROJECT_ID/cscratch'

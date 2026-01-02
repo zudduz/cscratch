@@ -1,11 +1,9 @@
-import datetime
 import logging
 import discord
-from google.api_core.exceptions import AlreadyExists
-from google.cloud.firestore import AsyncClient
 
-# Import the Domain Logic
+# Import Domain & Data Layers
 import game_engine
+import persistence
 
 # --- Discord Client Setup ---
 intents = discord.Intents.default()
@@ -14,24 +12,6 @@ intents.members = True
 intents.presences = True
 
 client = discord.Client(intents=intents)
-
-# Independent Firestore client for UI-layer Idempotency
-firestore_client = AsyncClient(database="sandbox")
-
-# --- Idempotency Helper ---
-async def should_process_message(message_id: str) -> bool:
-    try:
-        await firestore_client.collection("processed_messages").document(str(message_id)).create({
-            "created_at": datetime.datetime.now(datetime.timezone.utc),
-            "status": "processing"
-        })
-        return True
-    except AlreadyExists:
-        logging.warning(f"Prevented double-move: Message {message_id} was already processed.")
-        return False
-    except Exception as e:
-        logging.error(f"Idempotency check failed: {e}")
-        return False 
 
 # --- Events ---
 @client.event
@@ -43,8 +23,9 @@ async def on_message(message):
     if message.author == client.user:
         return
 
+    # IDEMPOTENCY CHECK (via Persistence Layer)
     if message.content.startswith('!'):
-        if not await should_process_message(message.id):
+        if not await persistence.lock_event(message.id):
             return
 
     # Basic Ping
@@ -54,7 +35,7 @@ async def on_message(message):
     # --- COMMAND: INFO ---
     if message.content == '!info':
         try:
-            game_data = await game_engine.find_game_by_channel(message.channel.id)
+            game_data = await game_engine.find__by_channel(message.channel.id)
 
             if game_data:
                 embed = discord.Embed(title=f"Game: {game_data.get('id')}", color=0x00ff00)
@@ -95,37 +76,27 @@ async def on_message(message):
     # --- COMMAND: END GAME ---
     if message.content == '!end':
         try:
-            # 1. Lookup Game
             game_data = await game_engine.find_game_by_channel(message.channel.id)
             if not game_data:
                 await message.channel.send("⚠️ This channel is not part of an active game.")
                 return
 
-            # 2. UI: Confirm & Teardown
             await message.channel.send("🛑 **Ending Game...** Teardown sequence initiated.")
             
-            # Retrieve IDs from the interface data
-            # Note: Stored as strings, need to cast to int for Discord lookup
+            # Teardown Discord UI
             interface = game_data.get('interface', {})
             category_id = int(interface.get('category_id'))
-            
-            # Fetch the category object
             category = message.guild.get_channel(category_id)
             
             if category:
-                # Delete all channels inside the category first
                 for channel in category.channels:
                     await channel.delete()
-                # Delete the category itself
                 await category.delete()
             
-            # 3. Domain: Mark as ended (Do this last so we don't orphan the channel if lookup fails)
             await game_engine.end_game(game_data['id'])
 
         except Exception as e:
             logging.error(f"Error in !end command: {e}")
-            # If the channel is already deleted, we can't reply. 
-            # We log it and move on.
 
     # Command: Nuke (Cleanup Tool)
     if message.content.startswith('!nuke '):

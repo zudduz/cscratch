@@ -20,9 +20,6 @@ firestore_client = AsyncClient(database="sandbox")
 
 # --- Idempotency Helper ---
 async def should_process_message(message_id: str) -> bool:
-    """
-    UI Logic: Checks if this specific Discord message event has been handled.
-    """
     try:
         await firestore_client.collection("processed_messages").document(str(message_id)).create({
             "created_at": datetime.datetime.now(datetime.timezone.utc),
@@ -46,7 +43,6 @@ async def on_message(message):
     if message.author == client.user:
         return
 
-    # IDEMPOTENCY CHECK
     if message.content.startswith('!'):
         if not await should_process_message(message.id):
             return
@@ -58,11 +54,9 @@ async def on_message(message):
     # --- COMMAND: INFO ---
     if message.content == '!info':
         try:
-            # Domain: Ask engine "Who owns this channel?"
             game_data = await game_engine.find_game_by_channel(message.channel.id)
 
             if game_data:
-                # Format the display
                 embed = discord.Embed(title=f"Game: {game_data.get('id')}", color=0x00ff00)
                 embed.add_field(name="Status", value=game_data.get('status', 'Unknown'))
                 embed.add_field(name="Story Engine", value=game_data.get('story_id', 'N/A'))
@@ -78,15 +72,12 @@ async def on_message(message):
     # --- COMMAND: START GAME ---
     if message.content == '!start':
         try:
-            # 1. Domain: Ask Game Engine to initialize a session
             game_id = await game_engine.start_new_game(story_id="sleeping-agent")
             
-            # 2. UI: Build the visual representation (Channels)
             guild = message.guild
             category = await guild.create_category(f"Game {game_id}")
             channel = await guild.create_text_channel("adventure", category=category)
             
-            # 3. Domain: Report back the interface location
             await game_engine.register_interface(game_id, {
                 "type": "discord",
                 "guild_id": str(guild.id),
@@ -94,13 +85,47 @@ async def on_message(message):
                 "category_id": str(category.id)
             })
 
-            # 4. UI: Feedback
             await message.channel.send(f"🚀 **Game Started!**\nID: `{game_id}`\nLocation: {channel.mention}")
             await channel.send(f"Welcome to Game `{game_id}`! The adventure begins here...")
 
         except Exception as e:
             logging.error(f"Error in !start command: {e}")
             await message.channel.send(f"❌ Error starting game: {str(e)}")
+
+    # --- COMMAND: END GAME ---
+    if message.content == '!end':
+        try:
+            # 1. Lookup Game
+            game_data = await game_engine.find_game_by_channel(message.channel.id)
+            if not game_data:
+                await message.channel.send("⚠️ This channel is not part of an active game.")
+                return
+
+            # 2. UI: Confirm & Teardown
+            await message.channel.send("🛑 **Ending Game...** Teardown sequence initiated.")
+            
+            # Retrieve IDs from the interface data
+            # Note: Stored as strings, need to cast to int for Discord lookup
+            interface = game_data.get('interface', {})
+            category_id = int(interface.get('category_id'))
+            
+            # Fetch the category object
+            category = message.guild.get_channel(category_id)
+            
+            if category:
+                # Delete all channels inside the category first
+                for channel in category.channels:
+                    await channel.delete()
+                # Delete the category itself
+                await category.delete()
+            
+            # 3. Domain: Mark as ended (Do this last so we don't orphan the channel if lookup fails)
+            await game_engine.end_game(game_data['id'])
+
+        except Exception as e:
+            logging.error(f"Error in !end command: {e}")
+            # If the channel is already deleted, we can't reply. 
+            # We log it and move on.
 
     # Command: Nuke (Cleanup Tool)
     if message.content.startswith('!nuke '):

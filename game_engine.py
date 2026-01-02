@@ -42,19 +42,31 @@ async def register_interface(game_id: str, interface_data: dict):
 async def find_game_by_channel(channel_id: str) -> dict | None:
     """
     Domain Logic: Looks up the game associated with a specific channel ID.
-    Returns the game data dict (including ID) or None if not found.
     """
     try:
-        # Query for the game where interface.channel_id matches
         games_ref = firestore_client.collection("games")
         query = games_ref.where("interface.channel_id", "==", str(channel_id)).limit(1)
         
         async for doc in query.stream():
             data = doc.to_dict()
-            data['id'] = doc.id  # Attach the ID for convenience
+            data['id'] = doc.id
             return data
             
         return None
     except Exception as e:
         logging.error(f"Game Engine Lookup Error: {e}")
         return None
+
+async def end_game(game_id: str):
+    """
+    Domain Logic: Marks a game as ended.
+    """
+    try:
+        await firestore_client.collection("games").document(game_id).update({
+            "status": "ended",
+            "ended_at": datetime.datetime.now(datetime.timezone.utc)
+        })
+        logging.info(f"Game Engine: Ended game {game_id}")
+    except Exception as e:
+        logging.error(f"Game Engine Error ending game: {e}")
+        raise e

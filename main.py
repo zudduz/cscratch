@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 
 import discord
 import nest_asyncio
-from fastapi import FastAPI
+from fastapi import FastAPI, Response, status
 from google.api_core.exceptions import AlreadyExists
 from google.cloud import secretmanager
 from google.cloud.firestore import AsyncClient
@@ -154,6 +154,18 @@ async def lifespan(app: FastAPI):
 # --- FastAPI Setup ---
 app = FastAPI(lifespan=lifespan)
 
+# --- Endpoints ---
+
 @app.get("/ping")
-async def ping():
-    return {"status": "ok"}
+async def ping(response: Response):
+    """
+    Health Check:
+    Returns 200 OK if the container is running AND Discord is connected.
+    Returns 500 Error if the container is running but Discord is dead (Zombie state).
+    """
+    if discord_client.is_ready():
+        return {"status": "ok", "discord": "connected"}
+    
+    # If we get here, the bot is not connected to Discord
+    response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+    return {"status": "unhealthy", "discord": "disconnected"}

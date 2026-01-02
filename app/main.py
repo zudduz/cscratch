@@ -7,7 +7,7 @@ from fastapi import FastAPI, Response, status
 from google.cloud import secretmanager
 
 # Import the isolated components
-from app.discord_client import client as discord_client
+from discord_client import client as discord_client
 # (We will import ai_engine later when we wire it up)
 
 # --- Configuration & Logging ---
@@ -16,7 +16,7 @@ nest_asyncio.apply()
 
 # --- Secret Manager Helper ---
 def get_discord_token():
-    """Retrierives the Discord API token from Google Secret Manager."""
+    """Retrieves the Discord API token from Google Secret Manager."""
     try:
         client = secretmanager.SecretManagerServiceClient()
         name = "projects/171510694317/secrets/c-scratch-discord-api/versions/latest"

@@ -44,8 +44,6 @@ def get_discord_token():
 # --- Discord Client Setup ---
 intents = discord.Intents.default()
 intents.message_content = True
-intents.presence = True
-intents.members = True
 discord_client = discord.Client(intents=intents)
 
 # --- Idempotency Helper ---

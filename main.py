@@ -99,6 +99,7 @@ async def on_message(message):
             
             await message.channel.send(f"✅ Deployed Zone: **{category.name}** with channel <#{channel.id}>")
         except Exception as e:
+            logging.error(f"Error in !deploy command: {e}")
             await message.channel.send(f"❌ Error deploying: {str(e)}")
 
     # Command: Delete Category + Channel
@@ -119,6 +120,7 @@ async def on_message(message):
                 await message.channel.send(f"⚠️ No channels found matching '{target_name}'")
 
         except Exception as e:
+            logging.error(f"Error in !nuke command: {e}")
             await message.channel.send(f"❌ Error nuking: {str(e)}")
 
 # --- FastAPI Lifespan (Startup/Shutdown) ---

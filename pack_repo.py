@@ -57,7 +57,7 @@ def pack_repo():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_filename = f"repo_context_{timestamp}.txt"
+    output_filename = f"repo_context_{timestamp}.xml"
     OUTPUT_FILE = os.path.join(OUTPUT_DIR, output_filename)
 
     root_dir = os.getcwd()
@@ -96,6 +96,12 @@ def pack_repo():
         out.write("</repository_dump>")
 
     print(f"\nDONE. Context packed into: {OUTPUT_FILE}")
+    
+    # Open the file in the editor
+    try:
+        os.system(f"code {OUTPUT_FILE}")
+    except Exception as e:
+        print(f"Could not open file in editor: {e}")
 
 if __name__ == "__main__":
     pack_repo()

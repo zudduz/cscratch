@@ -137,6 +137,9 @@ async def get_chat_session(story_id: str, game_id: str, message: str) -> Tuple[R
     return config, messages_for_graph
 
 # --- Endpoints ---
+@app.get("/ping")
+async def ping():
+    return {"status": "ok"}
 
 @app.get("/stories/")
 def get_stories():
@@ -210,5 +213,3 @@ async def stream_chat(story_id: str, game_id: str, input_data: UserInput):
             yield f'data: {json.dumps({"error": str(e)})}\n\n'
 
     return StreamingResponse(stream_generator(), media_type="text/event-stream")
-
-# Force redeploy

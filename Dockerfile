@@ -13,4 +13,4 @@ COPY . .
 
 # Cloud Run injects the PORT environment variable (default 8080)
 # We use CMD to start the server
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]

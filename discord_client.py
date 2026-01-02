@@ -1,9 +1,11 @@
 import datetime
 import logging
-import uuid  # <--- NEW IMPORT
 import discord
 from google.api_core.exceptions import AlreadyExists
 from google.cloud.firestore import AsyncClient
+
+# Import the Domain Logic
+import game_engine
 
 # --- Discord Client Setup ---
 intents = discord.Intents.default()
@@ -13,14 +15,13 @@ intents.presences = True
 
 client = discord.Client(intents=intents)
 
-# Independent Firestore client for Idempotency locks
+# Independent Firestore client for UI-layer Idempotency (preventing double-clicks)
 firestore_client = AsyncClient(database="sandbox")
 
 # --- Idempotency Helper ---
 async def should_process_message(message_id: str) -> bool:
     """
-    Atomically checks if a message has been processed using a Firestore 'create' operation.
-    Returns True if we secured the lock (first time seeing message), False if it was already processed.
+    UI Logic: Checks if this specific Discord message event has been handled.
     """
     try:
         await firestore_client.collection("processed_messages").document(str(message_id)).create({
@@ -54,45 +55,35 @@ async def on_message(message):
     if message.content.startswith('!ping'):
         await message.channel.send('Pong! (Hello from Cloud Run)')
 
-    # --- NEW: Start Game Command ---
+    # --- COMMAND: START GAME ---
     if message.content == '!start':
         try:
-            # Generate a unique 8-character Game ID
-            game_id = str(uuid.uuid4())[:8]
-            guild = message.guild
-
-            # Create the Game Zone
-            category = await guild.create_category(f"Game {game_id}")
+            # 1. Domain: Ask Game Engine to initialize a session
+            game_id = await game_engine.start_new_game(story_id="sleeping-agent")
             
-            # Create the Game Channel inside the category
+            # 2. UI: Build the visual representation (Channels)
+            guild = message.guild
+            category = await guild.create_category(f"Game {game_id}")
             channel = await guild.create_text_channel("adventure", category=category)
             
-            # Announce in the origin channel
-            await message.channel.send(f"🚀 **Game Started!**\nID: `{game_id}`\nLocation: {channel.mention}")
+            # 3. Domain: Report back the interface location
+            # We tell the engine: "This game lives in Discord Channel X"
+            await game_engine.register_interface(game_id, {
+                "type": "discord",
+                "guild_id": str(guild.id),
+                "channel_id": str(channel.id),
+                "category_id": str(category.id)
+            })
 
-            # Post a welcome message in the new game channel
+            # 4. UI: Feedback
+            await message.channel.send(f"🚀 **Game Started!**\nID: `{game_id}`\nLocation: {channel.mention}")
             await channel.send(f"Welcome to Game `{game_id}`! The adventure begins here...")
 
         except Exception as e:
             logging.error(f"Error in !start command: {e}")
             await message.channel.send(f"❌ Error starting game: {str(e)}")
 
-    # Command: Create Category + Channel (Legacy Manual Test)
-    if message.content.startswith('!deploy '):
-        try:
-            base_name = message.content.split(' ')[1]
-            guild = message.guild
-            
-            category = await guild.create_category(f"{base_name}-zone")
-            channel = await guild.create_text_channel(f"{base_name}-chat", category=category)
-            
-            await message.channel.send(f"✅ Deployed Zone: **{category.name}** with channel <#{channel.id}>")
-        except Exception as e:
-            logging.error(f"Error in !deploy command: {e}")
-            await message.channel.send(f"❌ Error deploying: {str(e)}")
-
-    # Command: Delete Category + Channel
-    # Tip: You can now type "!nuke Game" to delete ALL game channels at once!
+    # Command: Nuke (Cleanup Tool)
     if message.content.startswith('!nuke '):
         try:
             target_name = message.content.split(' ')[1]

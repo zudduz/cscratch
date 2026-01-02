@@ -9,15 +9,10 @@ firestore_client = AsyncClient(database="sandbox")
 async def start_new_game(story_id: str = "sleeping-agent") -> str:
     """
     Domain Logic: Starts a new game session.
-    1. Generates a unique Game ID.
-    2. Creates the initial game record in persistence.
-    Returns: The new Game ID.
     """
     game_id = str(uuid.uuid4())[:8]
     
     try:
-        # Create the logical game record
-        # Note: We don't store channel IDs here yet, because the UI hasn't built them.
         await firestore_client.collection("games").document(game_id).set({
             "created_at": datetime.datetime.now(datetime.timezone.utc),
             "status": "initializing",
@@ -32,7 +27,7 @@ async def start_new_game(story_id: str = "sleeping-agent") -> str:
 
 async def register_interface(game_id: str, interface_data: dict):
     """
-    Domain Logic: Binds a UI interface (Discord Channel, Web Socket, etc) to a Game.
+    Domain Logic: Binds a UI interface (Discord Channel) to a Game.
     """
     try:
         await firestore_client.collection("games").document(game_id).update({
@@ -43,3 +38,23 @@ async def register_interface(game_id: str, interface_data: dict):
     except Exception as e:
         logging.error(f"Game Engine Error binding interface: {e}")
         raise e
+
+async def find_game_by_channel(channel_id: str) -> dict | None:
+    """
+    Domain Logic: Looks up the game associated with a specific channel ID.
+    Returns the game data dict (including ID) or None if not found.
+    """
+    try:
+        # Query for the game where interface.channel_id matches
+        games_ref = firestore_client.collection("games")
+        query = games_ref.where("interface.channel_id", "==", str(channel_id)).limit(1)
+        
+        async for doc in query.stream():
+            data = doc.to_dict()
+            data['id'] = doc.id  # Attach the ID for convenience
+            return data
+            
+        return None
+    except Exception as e:
+        logging.error(f"Game Engine Lookup Error: {e}")
+        return None

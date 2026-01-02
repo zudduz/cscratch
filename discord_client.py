@@ -15,7 +15,7 @@ intents.presences = True
 
 client = discord.Client(intents=intents)
 
-# Independent Firestore client for UI-layer Idempotency (preventing double-clicks)
+# Independent Firestore client for UI-layer Idempotency
 firestore_client = AsyncClient(database="sandbox")
 
 # --- Idempotency Helper ---
@@ -55,6 +55,26 @@ async def on_message(message):
     if message.content.startswith('!ping'):
         await message.channel.send('Pong! (Hello from Cloud Run)')
 
+    # --- COMMAND: INFO ---
+    if message.content == '!info':
+        try:
+            # Domain: Ask engine "Who owns this channel?"
+            game_data = await game_engine.find_game_by_channel(message.channel.id)
+
+            if game_data:
+                # Format the display
+                embed = discord.Embed(title=f"Game: {game_data.get('id')}", color=0x00ff00)
+                embed.add_field(name="Status", value=game_data.get('status', 'Unknown'))
+                embed.add_field(name="Story Engine", value=game_data.get('story_id', 'N/A'))
+                embed.add_field(name="Created", value=str(game_data.get('created_at', 'Unknown')))
+                await message.channel.send(embed=embed)
+            else:
+                await message.channel.send("ℹ️ This channel is not attached to any active game.")
+
+        except Exception as e:
+            logging.error(f"Error in !info command: {e}")
+            await message.channel.send(f"❌ Error fetching info: {str(e)}")
+
     # --- COMMAND: START GAME ---
     if message.content == '!start':
         try:
@@ -67,7 +87,6 @@ async def on_message(message):
             channel = await guild.create_text_channel("adventure", category=category)
             
             # 3. Domain: Report back the interface location
-            # We tell the engine: "This game lives in Discord Channel X"
             await game_engine.register_interface(game_id, {
                 "type": "discord",
                 "guild_id": str(guild.id),

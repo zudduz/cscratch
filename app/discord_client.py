@@ -1,7 +1,6 @@
 import logging
 import discord
 
-# Import Domain & Data Layers (Relative Imports Fixed)
 from . import game_engine
 from . import persistence
 
@@ -21,36 +20,23 @@ async def on_message(message):
     if message.author == client.user:
         return
 
+    # 1. IDEMPOTENCY
     if message.content.startswith('!'):
         if not await persistence.lock_event(message.id):
             return
 
+    # 2. COMMANDS
     if message.content.startswith('!ping'):
         await message.channel.send('Pong! (Hello from Cloud Run)')
-
-    if message.content == '!info':
-        try:
-            # FIX: Typo corrected here
-            game_data = await game_engine.find_game_by_channel(message.channel.id)
-
-            if game_data:
-                embed = discord.Embed(title=f"Game: {game_data.get('id')}", color=0x00ff00)
-                embed.add_field(name="Status", value=game_data.get('status', 'Unknown'))
-                embed.add_field(name="Story Engine", value=game_data.get('story_id', 'N/A'))
-                embed.add_field(name="Created", value=str(game_data.get('created_at', 'Unknown')))
-                await message.channel.send(embed=embed)
-            else:
-                await message.channel.send("ℹ️ This channel is not attached to any active game.")
-        except Exception as e:
-            logging.error(f"Error in !info command: {e}")
-            await message.channel.send(f"❌ Error fetching info: {str(e)}")
+        return
 
     if message.content == '!start':
         try:
-            game_id = await game_engine.start_new_game(story_id="sleeping-agent")
+            # START HMS BUCKET
+            game_id = await game_engine.start_new_game(story_id="hms-bucket")
             guild = message.guild
             category = await guild.create_category(f"Game {game_id}")
-            channel = await guild.create_text_channel("adventure", category=category)
+            channel = await guild.create_text_channel("bucket-deck", category=category)
             
             await game_engine.register_interface(game_id, {
                 "type": "discord",
@@ -59,46 +45,51 @@ async def on_message(message):
                 "category_id": str(category.id)
             })
 
-            await message.channel.send(f"🚀 **Game Started!**\nID: `{game_id}`\nLocation: {channel.mention}")
-            await channel.send(f"Welcome to Game `{game_id}`! The adventure begins here...")
+            await message.channel.send(f"🌊 **HMS Bucket Launched!**\nID: `{game_id}`\nLocation: {channel.mention}")
+            await channel.send("**HMS Bucket**\n*You wake up to the sound of splashing water...*")
+            return
         except Exception as e:
-            logging.error(f"Error in !start command: {e}")
-            await message.channel.send(f"❌ Error starting game: {str(e)}")
+            logging.error(f"Error in !start: {e}")
+            await message.channel.send(f"❌ Error: {str(e)}")
+            return
 
     if message.content == '!end':
         try:
             game_data = await game_engine.find_game_by_channel(message.channel.id)
-            if not game_data:
-                await message.channel.send("⚠️ This channel is not part of an active game.")
-                return
-
-            await message.channel.send("🛑 **Ending Game...** Teardown sequence initiated.")
+            if not game_data: return
+            
             interface = game_data.get('interface', {})
-            category_id = int(interface.get('category_id'))
-            category = message.guild.get_channel(category_id)
-            
+            cat_id = int(interface.get('category_id'))
+            category = message.guild.get_channel(cat_id)
             if category:
-                for channel in category.channels:
-                    await channel.delete()
+                for c in category.channels: await c.delete()
                 await category.delete()
-            
             await game_engine.end_game(game_data['id'])
+            return
         except Exception as e:
-            logging.error(f"Error in !end command: {e}")
+            logging.error(f"Error in !end: {e}")
+            return
+            
+    if message.content == '!info':
+        # ... (Legacy info command)
+        pass
 
-    if message.content.startswith('!nuke '):
+    # 3. GAMEPLAY (The Brain Transplant)
+    # If it's not a command, we check if it's a move in a game channel
+    if not message.content.startswith('!'):
         try:
-            target_name = message.content.split(' ')[1]
-            guild = message.guild
-            deleted_count = 0
-            for channel in guild.channels:
-                if target_name in channel.name:
-                    await channel.delete()
-                    deleted_count += 1
-            if deleted_count > 0:
-                await message.channel.send(f"☢️ Nuked {deleted_count} channels/categories matching '{target_name}'")
-            else:
-                await message.channel.send(f"⚠️ No channels found matching '{target_name}'")
+            # Check if this channel belongs to a game
+            game_data = await game_engine.find_game_by_channel(message.channel.id)
+            if game_data and game_data.get('status') == 'active':
+                
+                # Show typing indicator while thinking
+                async with message.channel.typing():
+                    response_text = await game_engine.process_player_input(
+                        channel_id=message.channel.id,
+                        user_input=message.content
+                    )
+                
+                # Reply
+                await message.channel.send(response_text)
         except Exception as e:
-            logging.error(f"Error in !nuke command: {e}")
-            await message.channel.send(f"❌ Error nuking: {str(e)}")
+            logging.error(f"Gameplay Error: {e}")

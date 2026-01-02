@@ -35,7 +35,7 @@ async def on_message(message):
     # --- COMMAND: INFO ---
     if message.content == '!info':
         try:
-            game_data = await game_engine.find__by_channel(message.channel.id)
+            game_data = await game_engine.find_game_by_channel(message.channel.id)
 
             if game_data:
                 embed = discord.Embed(title=f"Game: {game_data.get('id')}", color=0x00ff00)

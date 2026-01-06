@@ -48,10 +48,10 @@ async def register_interface(game_id: str, interface_data: dict):
 async def find_game_by_channel(channel_id: str) -> dict | None:
     return await persistence.get_game_by_channel_id(channel_id)
 
-async def end_game(game_id: str):
+async def kill_game(game_id: str):
     await persistence.mark_game_ended(game_id)
 
-# --- NEW: The Input Handler ---
+# TODO Add user_id/handle
 async def process_player_input(channel_id: str, user_input: str) -> str:
     """
     Main Entry Point for gameplay.

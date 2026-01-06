@@ -17,6 +17,8 @@ async def on_ready():
 
 @client.event
 async def on_message(message):
+    # TODO this needs to be sensitive to the channel sending the message. If it's coming from a non game channel/group then we stick to general commands
+    # If it's coming from a game channel then it needs to be sent to the appropriate cartridge.
     if message.author == client.user:
         return
 
@@ -27,16 +29,21 @@ async def on_message(message):
 
     # 2. COMMANDS
     if message.content.startswith('!ping'):
+        await message.channel.send('Pong!')
+        return
+
+    if message.content.startswith('!list'):
+        # enumerate the cartridges available in the cartridge directory
         await message.channel.send('Pong! (Hello from Cloud Run)')
         return
 
     if message.content == '!start':
         try:
-            # START HMS BUCKET
+            # TODO add a parameter for story-id
             game_id = await game_engine.start_new_game(story_id="hms-bucket")
             guild = message.guild
             category = await guild.create_category(f"Game {game_id}")
-            channel = await guild.create_text_channel("bucket-deck", category=category)
+            channel = await guild.create_text_channel("initialization", category=category)
             
             await game_engine.register_interface(game_id, {
                 "type": "discord",
@@ -45,7 +52,9 @@ async def on_message(message):
                 "category_id": str(category.id)
             })
 
+            # TODO Genericize
             await message.channel.send(f"🌊 **HMS Bucket Launched!**\nID: `{game_id}`\nLocation: {channel.mention}")
+            # todo make it so the Cartridge is the one to send the initial message
             await channel.send("**HMS Bucket**\n*You wake up to the sound of splashing water...*")
             return
         except Exception as e:
@@ -53,7 +62,11 @@ async def on_message(message):
             await message.channel.send(f"❌ Error: {str(e)}")
             return
 
-    if message.content == '!end':
+    if message.content == '!debug':
+       # TODO add this command that gets passed to the game engine to dump debug info regarding the current game.
+       a=1 # noop
+
+    if message.content == '!kill':
         try:
             game_data = await game_engine.find_game_by_channel(message.channel.id)
             if not game_data: return
@@ -64,10 +77,10 @@ async def on_message(message):
             if category:
                 for c in category.channels: await c.delete()
                 await category.delete()
-            await game_engine.end_game(game_data['id'])
+            await game_engine.kill_game(game_data['id'])
             return
         except Exception as e:
-            logging.error(f"Error in !end: {e}")
+            logging.error(f"Error in !kill: {e}")
             return
             
     if message.content == '!info':

@@ -1,30 +1,34 @@
 from pydantic import BaseModel, Field
 from typing import List, Dict, Literal, Optional
 
+# --- SUB-SYSTEMS ---
+class ChargingStation(BaseModel):
+    # The "Death Row"
+    # If a Bot ID is in this list, they are killed immediately upon docking.
+    pending_deactivation: List[str] = Field(default_factory=list)
+    
+    # We could track charging efficiency here later
+    charge_rate: int = 10 
+
 # --- THE CREW (PLAYERS) ---
 class PlayerState(BaseModel):
-    # Default is loyal. Saboteur is assigned at game start.
     role: Literal["loyal", "saboteur"] = "loyal"
-    
-    # Life State
     is_alive: bool = True
-    location_id: str = "cryo_bay" # Players are stuck in pods, but good to track
+    location_id: str = "cryo_bay"
 
 # --- THE TOOLS (BOTS) ---
 class BotState(BaseModel):
-    id: str                 # "unit_734"
+    id: str                 
     location_id: str = "cryo_bay"
     
     # Resources
-    battery: int = 100      # 0 = Unconscious
-    action_points: int = 10 # Refreshes daily
+    battery: int = 100      
+    action_points: int = 10 
     
     # Status
-    # 'active' = Normal
-    # 'destroyed' = Permanently dead (e.g. crushed)
     status: Literal["active", "destroyed"] = "active"
     
-    # Personality / AI Context
+    # Personality
     system_prompt: str = "You are a helpful drone."
     goal_summary: str = "Maintain the ship."
     
@@ -32,12 +36,11 @@ class BotState(BaseModel):
     inventory: List[str] = Field(default_factory=list)
     
     # Mechanics
-    # If set, this bot is dragging another bot (costing extra AP)
     towing_id: Optional[str] = None
 
 # --- THE WORLD (ROOT) ---
 class CaissonState(BaseModel):
-    version: str = "1.1" # Schema Version
+    version: str = "1.2"
     
     # Global Resources
     oxygen: int = 100
@@ -50,6 +53,9 @@ class CaissonState(BaseModel):
     # Entities
     bots: Dict[str, BotState] = Field(default_factory=dict)
     players: Dict[str, PlayerState] = Field(default_factory=dict)
+    
+    # Facilities
+    station: ChargingStation = Field(default_factory=ChargingStation)
     
     # Public Event Log
     daily_logs: List[str] = Field(default_factory=list)

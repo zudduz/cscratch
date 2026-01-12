@@ -17,38 +17,62 @@ class FosterProtocol:
         SETTING: A spaceship running on emergency power.
         """
 
-    async def on_game_start(self, generic_state: dict):
+    async def on_game_start(self, generic_state: dict) -> Dict[str, Any]:
         """
-        Called once when the game transitions from Lobby -> Active.
-        Responsibility: Generate Bots, Assign Roles.
+        Called on Game Start.
+        Returns: { "metadata": updated_state, "channel_ops": [instructions] }
         """
         game_data = CaissonState(**generic_state.get('metadata', {}))
-        
-        # 1. Get Players from the Generic State (The Discord Users)
-        # generic_state['players'] is a list of dicts: {'id': '123', 'name': 'Skippy'}
         discord_players = generic_state.get('players', [])
         
         if not discord_players:
-            return generic_state # Should not happen
+            return { "metadata": game_data.model_dump() }
 
-        # 2. Assign Roles (1 Saboteur)
+        # 1. Assign Roles
         saboteur_index = random.randint(0, len(discord_players) - 1)
-        
-        # 3. Generate Entities
+        channel_ops = []
+
+        # 2. Request Public Channel (The Picnic)
+        # The key 'picnic' allows us to look it up in game.interface.channels['picnic']
+        channel_ops.append({
+            "op": "create",
+            "key": "picnic",
+            "name": "picnic",
+            "audience": "public",
+            "init_msg": "**MAINFRAME ONLINE.**\n*System Clock: Cycle 1*\n*Status: Emergency Power Only.*"
+        })
+
+        # 3. Generate Entities & Channels
         for i, p_data in enumerate(discord_players):
             u_id = p_data['id']
             u_name = p_data['name']
             
-            # Determine Role
             is_saboteur = (i == saboteur_index)
             role = "saboteur" if is_saboteur else "loyal"
             
+            # Request Private Nanny Port
+            # logical key: 'nanny_<uid>'
+            channel_key = f"nanny_{u_id}"
+            
+            channel_ops.append({
+                "op": "create",
+                "key": channel_key,
+                "name": f"nanny-port-{u_name}",
+                "audience": "private",
+                "user_id": u_id,
+                "init_msg": f"**CONNECTION ESTABLISHED**\nUser: {u_name}\nSubject: Unit-{str(u_id)[-3:]}"
+            })
+
             # Create PlayerState
+            # We store the 'key' here so we can find the channel ID later via the interface map
+            # Note: We don't have the actual ID yet (Discord hasn't made it), but we have the key.
+            # In Models, we have 'nanny_channel_id', but maybe we should store the key or wait?
+            # Actually, the Discord Client updates 'interface.channels' map.
+            # We can just look it up via game.interface.channels[f'nanny_{u_id}'] in the future.
             game_data.players[u_id] = PlayerState(role=role)
             
             # Create BotState
-            bot_id = f"unit_{str(u_id)[-3:]}" # Unit-734 (Last 3 digits of User ID)
-            
+            bot_id = f"unit_{str(u_id)[-3:]}" 
             prompt = f"You are {bot_id}. You serve {u_name}."
             if is_saboteur:
                 prompt += " You are the Saboteur. Fake your loyalty."
@@ -61,29 +85,73 @@ class FosterProtocol:
                 goal_summary="Survive."
             )
             
-            # Log it
-            game_data.daily_logs.append(f"SYSTEM: {bot_id} came online. Bonded to Foster {u_name}.")
+            game_data.daily_logs.append(f"SYSTEM: {bot_id} came online.")
 
-        # 4. Save
-        generic_state['metadata'] = game_data.model_dump()
-        return generic_state
+        # 4. Save & Return
+        return {
+            "metadata": game_data.model_dump(),
+            "channel_ops": channel_ops
+        }
 
     async def handle_input(self, generic_state: dict, user_input: str, context: dict, tools) -> Dict[str, Any]:
         game_data = CaissonState(**generic_state.get('metadata', {}))
         
-        if "report" in user_input.lower():
-            status = f"**CYCLE {game_data.cycle}**\n"
-            for b_id, bot in game_data.bots.items():
-                owner = bot.foster_id
-                status += f"- **{b_id}** (Linked to <@{owner}>): {bot.battery}% Bat\n"
-            return { "response": status, "state_update": generic_state }
-
-        dynamic_prompt = f"{self.system_prompt}\nSTATUS: Oxygen {game_data.oxygen}%"
-        ai_response = await tools.ai.generate_response(
-            system_prompt=dynamic_prompt,
-            conversation_id=generic_state.get('id'), 
-            user_input=user_input
-        )
+        # Determine Context
+        channel_id = context.get('channel_id')
+        user_id = context.get('user_id')
+        interface_channels = context.get('interface', {}).get('channels', {})
         
+        # Is this the Picnic?
+        picnic_id = interface_channels.get('picnic')
+        is_picnic = (channel_id == picnic_id)
+        
+        # Is this a Nanny Port?
+        # We check if the channel matches the specific user's assigned port key
+        user_nanny_key = f"nanny_{user_id}"
+        user_nanny_id = interface_channels.get(user_nanny_key)
+        is_nanny = (channel_id == user_nanny_id)
+
+        # --- LOGIC BRANCHING ---
+        response_text = None
+
+        if is_picnic:
+            # Mainframe Logic
+            if "status" in user_input.lower():
+                response_text = f"**MAINFRAME v9.0**\nOXYGEN: {game_data.oxygen}% | FUEL: {game_data.fuel}%"
+            else:
+                # Default Mainframe Chat
+                response_text = await tools.ai.generate_response(
+                    system_prompt="You are the Ship Computer. You are cold and cynical.",
+                    conversation_id=f"{generic_state['id']}_mainframe",
+                    user_input=user_input
+                )
+
+        elif is_nanny:
+            # Bot Logic
+            # Find the user's bot
+            my_bot = None
+            for b in game_data.bots.values():
+                if b.foster_id == user_id:
+                    my_bot = b
+                    break
+            
+            if my_bot:
+                # Use the Bot's Persona
+                response_text = await tools.ai.generate_response(
+                    system_prompt=my_bot.system_prompt,
+                    conversation_id=f"{generic_state['id']}_bot_{my_bot.id}",
+                    user_input=user_input
+                )
+            else:
+                response_text = "ERROR: No Unit bonded to this terminal."
+
+        else:
+            # Fallback (Lobby or unknown)
+            response_text = "Transmission unclear."
+
+        # Save State
         generic_state['metadata'] = game_data.model_dump()
-        return { "response": ai_response, "state_update": generic_state }
+        return { 
+            "response": response_text, 
+            "state_update": generic_state 
+        }

@@ -1,12 +1,19 @@
 from typing import Dict, Any
-# Relative import of the model
-from .models import FosterState
+import random
+
+# Relative imports
+from .models import FosterState, BotState
+from .board import SHIP_MAP, ActionCosts
 
 class FosterProtocol:
     def __init__(self):
-        # We initialize the default state here so the Engine can save it on creation
+        # Initialize Default State
+        # In a real game, we might randomize this or set it up based on player count
         default_state = FosterState()
         
+        # Example: Pre-spawn a bot for testing
+        default_state.bots["unit_01"] = BotState(id="unit_01", role="loyal")
+
         self.meta = {
             "name": "The Foster Protocol",
             "description": "A social deduction game aboard a dying starship.",
@@ -25,25 +32,25 @@ class FosterProtocol:
     async def play_turn(self, generic_state: dict, user_input: str, tools) -> Dict[str, Any]:
         """
         The Core Loop.
-        Args:
-            generic_state: The dict representation of the GameState (from game.model_dump())
-            user_input: The player's message.
-            tools: The AI toolbox.
         """
         
         # 1. INFLATE: Convert generic metadata dict -> Typed FosterState Object
-        # generic_state['metadata'] contains our specific fields (oxygen, fuel, etc)
         game_data = FosterState(**generic_state.get('metadata', {}))
 
         # --- GAME LOGIC START ---
         
-        # Example: Simple state manipulation based on input
-        # (In a real game, the AI would decide this via tool calls)
-        if "wait" in user_input.lower():
-            game_data.consume_oxygen(1)
-            game_data.daily_logs.append(f"Crew waited. Oxygen dropped to {game_data.oxygen}%")
+        # Example: Simple debug command to test the map
+        if "scan" in user_input.lower():
+            status = f"LOCATION: {SHIP_MAP['cryo_bay'].description}\n"
+            status += f"OXYGEN: {game_data.oxygen}% | FUEL: {game_data.fuel}%"
+            
+            return {
+                "response": status,
+                "state_update": generic_state 
+            }
 
         # Inject dynamic state into the prompt
+        # We give the AI the current context of the ship
         dynamic_prompt = f"{self.system_prompt}\nSTATUS: Oxygen {game_data.oxygen}% | Fuel {game_data.fuel}%"
 
         # Call AI
@@ -56,10 +63,9 @@ class FosterProtocol:
         # --- GAME LOGIC END ---
 
         # 2. DEFLATE: Save the modified object back to the generic state
-        # We update the 'metadata' field in the returned dictionary
         generic_state['metadata'] = game_data.model_dump()
         
         return {
             "response": ai_response,
-            "state_update": generic_state # The Engine saves this back to DB
+            "state_update": generic_state 
         }

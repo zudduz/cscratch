@@ -6,14 +6,12 @@ import nest_asyncio
 from fastapi import FastAPI, Response, status
 from google.cloud import secretmanager
 
-# Import the isolated components (Relative Import Fixed)
+# Import the isolated components
 from .discord_client import client as discord_client
 
-# --- Configuration & Logging ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 nest_asyncio.apply()
 
-# --- Secret Manager Helper ---
 def get_discord_token():
     try:
         client = secretmanager.SecretManagerServiceClient()
@@ -24,7 +22,6 @@ def get_discord_token():
         logging.error(f"Failed to retrieve Discord token: {e}")
         return None
 
-# --- FastAPI Lifespan ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     token = get_discord_token()
@@ -36,7 +33,6 @@ async def lifespan(app: FastAPI):
     if not discord_client.is_closed():
         await discord_client.close()
 
-# --- FastAPI Setup ---
 app = FastAPI(lifespan=lifespan)
 
 @app.get("/ping")

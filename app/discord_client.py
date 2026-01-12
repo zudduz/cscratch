@@ -1,106 +1,122 @@
 import logging
 import discord
-import os
+from discord import app_commands
+from discord.ext import commands
 
+# Relative Imports
 from . import game_engine
 from . import persistence
 
-intents = discord.Intents.default()
-intents.message_content = True
-intents.members = True
-intents.presences = True
+# --- Bot Setup ---
+class ChickenBot(commands.Bot):
+    def __init__(self):
+        intents = discord.Intents.default()
+        intents.message_content = True # Still needed to read game chat
+        intents.members = True
+        super().__init__(command_prefix="!", intents=intents)
+        
+        # The Cache: A set of channel IDs that we should listen to
+        self.active_game_channels = set()
 
-client = discord.Client(intents=intents)
+    async def setup_hook(self):
+        # 1. Hydrate Cache
+        logging.info("System: Hydrating Game Channel Cache...")
+        self.active_game_channels = await persistence.get_active_game_channels()
+        
+        # 2. Sync Slash Commands
+        # In prod, you might want to sync only when needed to avoid rate limits
+        logging.info("System: Syncing Slash Commands...")
+        await self.tree.sync()
 
-@client.event
-async def on_ready():
-    logging.info(f'Discord Bot Connected: We have logged in as {client.user}')
+# Initialize the Bot
+client = ChickenBot()
+
+# --- SLASH COMMANDS (The Lobby) ---
+
+@client.tree.command(name="start", description="Boot a game cartridge")
+@app_commands.describe(cartridge="The Story ID (default: hms-bucket)")
+async def start(interaction: discord.Interaction, cartridge: str = "hms-bucket"):
+    # Slash commands require an immediate response (or deferral)
+    await interaction.response.defer()
+
+    try:
+        # 1. Start Game
+        game_id = await game_engine.start_new_game(story_id=cartridge)
+        
+        # 2. Build UI (The Blueprint)
+        guild = interaction.guild
+        category = await guild.create_category(f"Game {game_id}")
+        channel = await guild.create_text_channel("bucket-deck", category=category)
+        
+        # 3. Register Interface
+        await game_engine.register_interface(game_id, {
+            "type": "discord",
+            "guild_id": str(guild.id),
+            "channel_id": str(channel.id),
+            "category_id": str(category.id)
+        })
+        
+        # 4. Update Cache
+        client.active_game_channels.add(str(channel.id))
+        
+        # 5. Respond
+        await interaction.followup.send(f"🚀 **Cartridge Loaded:** {cartridge}\nID: `{game_id}`\nLocation: {channel.mention}")
+        await channel.send("**HMS Bucket**\n*System Online. Waiting for input...*")
+        
+    except Exception as e:
+        logging.error(f"Slash Command Error: {e}")
+        await interaction.followup.send(f"❌ Failed to start game: {str(e)}")
+
+@client.tree.command(name="nuke", description="Admin: Delete game channels")
+@app_commands.describe(match="Name pattern to delete")
+async def nuke(interaction: discord.Interaction, match: str):
+    await interaction.response.defer(ephemeral=True)
+    
+    # Check Admin permissions
+    if not interaction.user.guild_permissions.administrator:
+        await interaction.followup.send("❌ You need Admin permissions.")
+        return
+
+    deleted = 0
+    # Iterate through all channels in the server
+    for channel in interaction.guild.channels:
+        if match in channel.name:
+            await channel.delete()
+            # Note: We should technically remove from cache here, 
+            # but it will clean itself up on next restart (or rely on game status check).
+            deleted += 1
+            
+    await interaction.followup.send(f"☢️ Nuked {deleted} channels matching '{match}'")
+
+# --- GAMEPLAY LISTENER (The Game) ---
 
 @client.event
 async def on_message(message):
     if message.author == client.user:
         return
 
-    # 1. IDEMPOTENCY
-    if message.content.startswith('!'):
-        if not await persistence.lock_event(message.id):
-            return
-
-    # 2. COMMANDS
-    if message.content.startswith('!ping'):
-        await message.channel.send('Pong!')
+    # --- THE FIREHOSE FILTER ---
+    # Instant check: Is this channel in our active game list?
+    # If not, we return immediately. This saves 99% of processing.
+    if str(message.channel.id) not in client.active_game_channels:
         return
 
-    if message.content.startswith('!list'):
-        cartridges = [d for d in os.listdir('cartridges') if os.path.isdir(os.path.join('cartridges', d))]
-        await message.channel.send(f"Available stories: {', '.join(cartridges)}")
+    # --- IDEMPOTENCY CHECK ---
+    # Only lock events that pass the filter
+    if not await persistence.lock_event(message.id):
         return
 
-    if message.content.startswith('!start'):
-        try:
-            args = message.content.split()
-            if len(args) < 2:
-                await message.channel.send("❌ Please provide a story ID. Usage: `!start <story_id>`")
-                return
-            story_id = args[1]
-
-            game_id = await game_engine.start_new_game(story_id=story_id)
-            guild = message.guild
-            category = await guild.create_category(f"Game {game_id}")
-            channel = await guild.create_text_channel("initialization", category=category)
-            
-            await game_engine.register_interface(game_id, {
-                "type": "discord",
-                "guild_id": str(guild.id),
-                "channel_id": str(channel.id),
-                "category_id": str(category.id)
-            })
-
-            await message.channel.send(f"✅ **Game Started!**\nID: `{game_id}`\nLocation: {channel.mention}")
-            return
-        except Exception as e:
-            logging.error(f"Error in !start: {e}")
-            await message.channel.send(f"❌ Error: {str(e)}")
-            return
-
-    if message.content == '!debug':
-        game_data = await game_engine.find_game_by_channel(message.channel.id)
-        if not game_data:
-            await message.channel.send("This is not a game channel.")
-            return
-        debug_info = await game_engine.get_debug_info(game_data['id'])
-        await message.channel.send(f"```json\n{debug_info}\n```")
-        return
-
-    if message.content == '!kill':
-        try:
-            game_data = await game_engine.find_game_by_channel(message.channel.id)
-            if not game_data: return
-            
-            interface = game_data.get('interface', {})
-            cat_id = int(interface.get('category_id'))
-            category = message.guild.get_channel(cat_id)
-            if category:
-                for c in category.channels: await c.delete()
-                await category.delete()
-            await game_engine.kill_game(game_data['id'])
-            return
-        except Exception as e:
-            logging.error(f"Error in !kill: {e}")
-            return
-            
-    # 3. GAMEPLAY (The Brain Transplant)
-    game_data = await game_engine.find_game_by_channel(message.channel.id)
-    if game_data and game_data.get('status') == 'active' and not message.content.startswith('!'):
-        try:
-            # Show typing indicator while thinking
-            async with message.channel.typing():
-                response_text = await game_engine.process_player_input(
-                    channel_id=message.channel.id,
-                    user_input=message.content
-                )
-            
-            # Reply
+    # --- GAME ENGINE ---
+    try:
+        # Show typing indicator while thinking
+        async with message.channel.typing():
+            response_text = await game_engine.process_player_input(
+                channel_id=message.channel.id,
+                user_input=message.content
+            )
+        
+        if response_text:
             await message.channel.send(response_text)
-        except Exception as e:
-            logging.error(f"Gameplay Error: {e}")
+            
+    except Exception as e:
+        logging.error(f"Gameplay Error: {e}")

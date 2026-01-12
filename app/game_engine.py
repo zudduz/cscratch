@@ -33,7 +33,6 @@ async def start_new_game(story_id: str = "hms-bucket") -> str:
     cartridge = await load_cartridge(story_id)
     logging.info(f"Game Engine: Creating Lobby for {game_id}")
     
-    # Create the Object
     new_game = GameState(
         id=game_id,
         story_id=story_id,
@@ -46,7 +45,6 @@ async def start_new_game(story_id: str = "hms-bucket") -> str:
     return game_id
 
 async def register_interface(game_id: str, interface_data: dict):
-    # Convert dict to Model
     interface = GameInterface(**interface_data)
     await persistence.db.update_game_interface(game_id, interface)
 
@@ -78,14 +76,27 @@ async def process_player_input(channel_id: str, user_input: str) -> str:
 
     if game.status != 'active': return "Error: Game is not active."
 
-    # Access fields using dot notation now!
     story_id = game.story_id
     cartridge = await load_cartridge(story_id)
     tools = Toolbox()
     
-    # Note: Cartridge play_turn still expects a dict for now, or we update it too.
-    # For compatibility, we can pass model_dump() or update cartridge to accept object.
-    # Let's pass the object and see if it breaks (dynamic typing might save us), 
-    # but strictly we should pass game.model_dump() until we update cartridges.
-    result = await cartridge.play_turn(game.model_dump(), user_input, tools)
+    # NEW: Context Object
+    # We pass the channel_id so the cartridge knows WHERE this was said
+    context = {
+        "channel_id": str(channel_id),
+        "interface": game.interface.model_dump()
+    }
+    
+    # CHANGED: play_turn -> handle_input
+    # We pass the generic dict to the cartridge, it handles the Typed Model inflation internally
+    result = await cartridge.handle_input(game.model_dump(), user_input, context, tools)
+    
+    # Save any state changes returned by the cartridge
+    if result.get("state_update"):
+        # This is a bit of a hack: we need a proper update method in persistence
+        # For now, we rely on the fact that persistence doesn't have a generic update_state yet.
+        # We will assume the cartridge modifies the object in place or returns a dict to merge.
+        # TODO: Implement persistence.db.update_game_state(game_id, result['state_update'])
+        pass
+
     return result['response']

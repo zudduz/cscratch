@@ -1,14 +1,10 @@
 from typing import Dict, Any
-# Relative import
 from .models import CaissonState, BotState, PlayerState
 from .board import SHIP_MAP
 
 class FosterProtocol:
     def __init__(self):
-        # Default State initialization
         default_state = CaissonState()
-        
-        # Spawn a test bot
         default_state.bots["unit_01"] = BotState(
             id="unit_01", 
             system_prompt="You are Unit-01. You are nervous.",
@@ -22,37 +18,34 @@ class FosterProtocol:
             **default_state.model_dump()
         }
         
-        # The Mainframe Prompt (The Narrator)
         self.system_prompt = """
         ROLE: You are the Game Master for 'The Foster Protocol'.
         SETTING: A spaceship running on emergency power.
-        TONE: Tense, mechanical, suspicious.
         """
 
-    async def play_turn(self, generic_state: dict, user_input: str, tools) -> Dict[str, Any]:
+    async def handle_input(self, generic_state: dict, user_input: str, context: dict, tools) -> Dict[str, Any]:
         """
-        The Core Loop.
+        Handles a raw message from a user.
+        Args:
+            generic_state: The current GameState dict.
+            user_input: The text content.
+            context: Metadata about the message (channel_id, etc).
+            tools: AI toolbox.
         """
         
-        # 1. INFLATE: Dict -> CaissonState
+        # 1. INFLATE
         game_data = CaissonState(**generic_state.get('metadata', {}))
+        channel_id = context.get('channel_id')
 
         # --- LOGIC START ---
         
-        # Example: Check Status
+        # Example: Check if message is in the correct channel
+        # For now, we just log it to the context
+        print(f"DEBUG: Message received in channel {channel_id}")
+
         if "report" in user_input.lower():
             status = f"**CYCLE {game_data.cycle}**\n"
             status += f"O2: {game_data.oxygen}% | FUEL: {game_data.fuel}%\n"
-            
-            # List Bots
-            for b_id, bot in game_data.bots.items():
-                state_str = "ACTIVE"
-                if bot.status == "destroyed": state_str = "DESTROYED"
-                elif bot.battery <= 0: state_str = "UNCONSCIOUS"
-                
-                tow_str = f" (Towing: {bot.towing_id})" if bot.towing_id else ""
-                status += f"- **{b_id}**: {state_str} | Bat: {bot.battery}% | AP: {bot.action_points}{tow_str}\n"
-
             return {
                 "response": status,
                 "state_update": generic_state 
@@ -69,7 +62,7 @@ class FosterProtocol:
         
         # --- LOGIC END ---
 
-        # 2. DEFLATE: CaissonState -> Dict
+        # 2. DEFLATE
         generic_state['metadata'] = game_data.model_dump()
         
         return {

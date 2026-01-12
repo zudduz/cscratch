@@ -15,7 +15,7 @@ The game operates on a **24-Hour Orbital Cycle**. The engine processes the "Day"
     * *Constraint:* **Lose Condition at 0%.**
 * **Fuel:** Increments via delivery to the Engine Room.
     * *Constraint:* **Win Condition at 100%.**
-* **Battery:** Each bot has its own batter and meter. Decrements per Action Point (AP) and based on how strenuous the bot's action was.
+* **Battery:** Each bot has its own battery meter. Decrements per Action Point (AP) and based on how strenuous the bot's action was.
     * *Constraint:* Bots go **Offline** at 0%. An offline bot must be **Towed** to be reactivated.
 
 ## 3. The Map (Graph Nodes)

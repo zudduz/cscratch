@@ -11,11 +11,14 @@ class PlayerState(BaseModel):
     role: Literal["loyal", "saboteur"] = "loyal"
     is_alive: bool = True
     location_id: str = "cryo_bay"
+    
+    # NEW: The specific Discord Channel ID for this player's Nanny Port
+    nanny_channel_id: Optional[str] = None
 
 # --- THE TOOLS (BOTS) ---
 class BotState(BaseModel):
     id: str                 
-    foster_id: Optional[str] = None # <-- THE LINK (Discord User ID)
+    foster_id: Optional[str] = None # Discord User ID of the owner
     
     location_id: str = "cryo_bay"
     battery: int = 100      
@@ -31,12 +34,15 @@ class BotState(BaseModel):
 
 # --- THE WORLD (ROOT) ---
 class CaissonState(BaseModel):
-    version: str = "1.3"
+    version: str = "1.4"
     
     oxygen: int = 100
     fuel: int = 0
     cycle: int = 1
     phase: Literal["day", "night"] = "night"
+    
+    # NEW: The shared public channel ID for the Mainframe logs
+    picnic_channel_id: Optional[str] = None
     
     bots: Dict[str, BotState] = Field(default_factory=dict)
     players: Dict[str, PlayerState] = Field(default_factory=dict)

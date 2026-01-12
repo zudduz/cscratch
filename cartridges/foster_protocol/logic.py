@@ -1,32 +1,32 @@
 from typing import Dict, Any
-import random
-
-# Relative imports
-from .models import FosterState, BotState
-from .board import SHIP_MAP, ActionCosts
+# Relative import
+from .models import CaissonState, BotState, PlayerState
+from .board import SHIP_MAP
 
 class FosterProtocol:
     def __init__(self):
-        # Initialize Default State
-        # In a real game, we might randomize this or set it up based on player count
-        default_state = FosterState()
+        # Default State initialization
+        default_state = CaissonState()
         
-        # Example: Pre-spawn a bot for testing
-        default_state.bots["unit_01"] = BotState(id="unit_01", role="loyal")
+        # Spawn a test bot
+        default_state.bots["unit_01"] = BotState(
+            id="unit_01", 
+            system_prompt="You are Unit-01. You are nervous.",
+            goal_summary="Keep the Cryo Bay safe."
+        )
 
         self.meta = {
             "name": "The Foster Protocol",
             "description": "A social deduction game aboard a dying starship.",
             "version": "1.0",
-            # The Engine saves this dict as the initial 'metadata'
             **default_state.model_dump()
         }
         
+        # The Mainframe Prompt (The Narrator)
         self.system_prompt = """
         ROLE: You are the Game Master for 'The Foster Protocol'.
         SETTING: A spaceship running on emergency power.
         TONE: Tense, mechanical, suspicious.
-        OBJECTIVE: The players (Fosters) must survive the night.
         """
 
     async def play_turn(self, generic_state: dict, user_input: str, tools) -> Dict[str, Any]:
@@ -34,35 +34,42 @@ class FosterProtocol:
         The Core Loop.
         """
         
-        # 1. INFLATE: Convert generic metadata dict -> Typed FosterState Object
-        game_data = FosterState(**generic_state.get('metadata', {}))
+        # 1. INFLATE: Dict -> CaissonState
+        game_data = CaissonState(**generic_state.get('metadata', {}))
 
-        # --- GAME LOGIC START ---
+        # --- LOGIC START ---
         
-        # Example: Simple debug command to test the map
-        if "scan" in user_input.lower():
-            status = f"LOCATION: {SHIP_MAP['cryo_bay'].description}\n"
-            status += f"OXYGEN: {game_data.oxygen}% | FUEL: {game_data.fuel}%"
+        # Example: Check Status
+        if "report" in user_input.lower():
+            status = f"**CYCLE {game_data.cycle}**\n"
+            status += f"O2: {game_data.oxygen}% | FUEL: {game_data.fuel}%\n"
             
+            # List Bots
+            for b_id, bot in game_data.bots.items():
+                state_str = "ACTIVE"
+                if bot.status == "destroyed": state_str = "DESTROYED"
+                elif bot.battery <= 0: state_str = "UNCONSCIOUS"
+                
+                tow_str = f" (Towing: {bot.towing_id})" if bot.towing_id else ""
+                status += f"- **{b_id}**: {state_str} | Bat: {bot.battery}% | AP: {bot.action_points}{tow_str}\n"
+
             return {
                 "response": status,
                 "state_update": generic_state 
             }
 
-        # Inject dynamic state into the prompt
-        # We give the AI the current context of the ship
-        dynamic_prompt = f"{self.system_prompt}\nSTATUS: Oxygen {game_data.oxygen}% | Fuel {game_data.fuel}%"
+        # AI Turn
+        dynamic_prompt = f"{self.system_prompt}\nSTATUS: Oxygen {game_data.oxygen}%"
 
-        # Call AI
         ai_response = await tools.ai.generate_response(
             system_prompt=dynamic_prompt,
             conversation_id=generic_state.get('id'), 
             user_input=user_input
         )
         
-        # --- GAME LOGIC END ---
+        # --- LOGIC END ---
 
-        # 2. DEFLATE: Save the modified object back to the generic state
+        # 2. DEFLATE: CaissonState -> Dict
         generic_state['metadata'] = game_data.model_dump()
         
         return {

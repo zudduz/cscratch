@@ -2,15 +2,12 @@ import datetime
 import logging
 from google.cloud.firestore import AsyncClient, ArrayUnion
 from google.api_core.exceptions import AlreadyExists
-
-# Import the Model
 from .models import GameState, Player, GameInterface
 
 class GameDatabase:
     def __init__(self):
         self.client = AsyncClient(database="sandbox")
 
-    # --- IDEMPOTENCY ---
     async def lock_event(self, event_id: str) -> bool:
         try:
             await self.client.collection("processed_messages").document(str(event_id)).create({
@@ -24,10 +21,8 @@ class GameDatabase:
             logging.error(f"Persistence Error locking event: {e}")
             return False
 
-    # --- GAME CRUD ---
     async def create_game_record(self, game_state: GameState):
         try:
-            # Pydantic -> Dict for Firestore
             data = game_state.model_dump(exclude={"id"}) 
             await self.client.collection("games").document(game_state.id).set(data)
         except Exception as e:
@@ -36,7 +31,6 @@ class GameDatabase:
 
     async def add_player_to_game(self, game_id: str, player: Player):
         try:
-            # We dump the player object to a dict for the ArrayUnion
             await self.client.collection("games").document(game_id).update({
                 "players": ArrayUnion([player.model_dump()])
             })
@@ -52,6 +46,16 @@ class GameDatabase:
             })
         except Exception as e:
             logging.error(f"Persistence Error starting game: {e}")
+            raise e
+
+    # NEW: Generic Metadata Update
+    async def update_game_metadata(self, game_id: str, metadata: dict):
+        try:
+            await self.client.collection("games").document(game_id).update({
+                "metadata": metadata
+            })
+        except Exception as e:
+            logging.error(f"Persistence Error updating metadata: {e}")
             raise e
 
     async def update_game_interface(self, game_id: str, interface: GameInterface):
@@ -70,11 +74,23 @@ class GameDatabase:
             async for doc in query.stream():
                 data = doc.to_dict()
                 data['id'] = doc.id
-                # Convert Dict -> Pydantic Model
                 return GameState(**data)
             return None
         except Exception as e:
             logging.error(f"Persistence Error finding game: {e}")
+            return None
+
+    # NEW: Get by ID
+    async def get_game_by_id(self, game_id: str) -> GameState | None:
+        try:
+            doc = await self.client.collection("games").document(game_id).get()
+            if doc.exists:
+                data = doc.to_dict()
+                data['id'] = doc.id
+                return GameState(**data)
+            return None
+        except Exception as e:
+            logging.error(f"Persistence Error finding game by id: {e}")
             return None
 
     async def mark_game_ended(self, game_id: str):
@@ -87,7 +103,6 @@ class GameDatabase:
             logging.error(f"Persistence Error ending game: {e}")
             raise e
 
-    # --- CACHE ---
     async def get_active_game_channels(self) -> set:
         active_ids = set()
         try:
@@ -98,7 +113,6 @@ class GameDatabase:
                 c_id = interface.get('channel_id')
                 if c_id:
                     active_ids.add(str(c_id))
-            logging.info(f"Persistence: Hydrated cache with {len(active_ids)} channels.")
             return active_ids
         except Exception as e:
             logging.error(f"Persistence Error hydrating cache: {e}")

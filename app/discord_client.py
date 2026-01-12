@@ -23,18 +23,24 @@ class ChickenBot(commands.Bot):
         logging.info("System: Hydrating Game Channel Cache...")
         self.active_game_channels = await persistence.get_active_game_channels()
         
-        # 2. Sync Slash Commands
+        # 2. Register the Group
+        # We add the group to the tree before syncing
+        self.tree.add_command(cscratch_group)
+        
+        # 3. Sync Slash Commands
         logging.info("System: Syncing Slash Commands...")
         await self.tree.sync()
 
 # Initialize the Bot
 client = ChickenBot()
 
-# --- SLASH COMMANDS ---
+# --- COMMAND GROUP ---
+# This creates one top-level command: /cscratch
+cscratch_group = app_commands.Group(name="cscratch", description="Chicken Scratch Engine Controls")
 
-@client.tree.command(name="cscratch", description="Boot a game cartridge")
+@cscratch_group.command(name="start", description="Boot a game cartridge")
 @app_commands.describe(cartridge="The Story ID (default: hms-bucket)")
-async def cscratch(interaction: discord.Interaction, cartridge: str = "hms-bucket"):
+async def start(interaction: discord.Interaction, cartridge: str = "hms-bucket"):
     await interaction.response.defer()
 
     try:
@@ -65,7 +71,7 @@ async def cscratch(interaction: discord.Interaction, cartridge: str = "hms-bucke
         logging.error(f"Slash Command Error: {e}")
         await interaction.followup.send(f"❌ Failed to start game: {str(e)}")
 
-@client.tree.command(name="end", description="End the current game session")
+@cscratch_group.command(name="end", description="Eject the cartridge and cleanup")
 async def end(interaction: discord.Interaction):
     await interaction.response.defer()
 
@@ -76,7 +82,7 @@ async def end(interaction: discord.Interaction):
             await interaction.followup.send("⚠️ This channel is not part of an active game.")
             return
 
-        await interaction.followup.send("🛑 **Ending Game...** Teardown sequence initiated.")
+        await interaction.followup.send("🛑 **Ejecting Cartridge...** Teardown sequence initiated.")
         
         # 2. Teardown UI
         interface = game_data.get('interface', {})
@@ -97,7 +103,7 @@ async def end(interaction: discord.Interaction):
             client.active_game_channels.remove(str(channel_id))
 
     except Exception as e:
-        logging.error(f"Error in /end: {e}")
+        logging.error(f"Error in /cscratch end: {e}")
         pass
 
 # --- GAMEPLAY LISTENER ---

@@ -1,10 +1,11 @@
 import uuid
 import logging
-import importlib
+import datetime
 
 # Relative Imports
 from . import persistence
 from .ai_engine import AITool
+from .models import GameState, Player, GameInterface
 
 ai_tool = AITool()
 
@@ -31,45 +32,60 @@ async def start_new_game(story_id: str = "hms-bucket") -> str:
     game_id = str(uuid.uuid4())[:8]
     cartridge = await load_cartridge(story_id)
     logging.info(f"Game Engine: Creating Lobby for {game_id}")
-    # Status is 'setup' by default in persistence
-    await persistence.create_game_record(game_id, story_id, metadata=cartridge.meta)
+    
+    # Create the Object
+    new_game = GameState(
+        id=game_id,
+        story_id=story_id,
+        status="setup",
+        created_at=datetime.datetime.now(datetime.timezone.utc),
+        metadata=cartridge.meta
+    )
+    
+    await persistence.db.create_game_record(new_game)
     return game_id
 
 async def register_interface(game_id: str, interface_data: dict):
-    await persistence.update_game_interface(game_id, interface_data)
+    # Convert dict to Model
+    interface = GameInterface(**interface_data)
+    await persistence.db.update_game_interface(game_id, interface)
 
 async def join_game(game_id: str, user_id: str, user_name: str):
-    # Business Logic: Can add max player check here
-    await persistence.add_player_to_game(game_id, {
-        "id": user_id,
-        "name": user_name,
-        "joined_at": str(uuid.uuid1())
-    })
+    player = Player(
+        id=user_id,
+        name=user_name,
+        joined_at=str(uuid.uuid1())
+    )
+    await persistence.db.add_player_to_game(game_id, player)
     logging.info(f"Player {user_name} joined game {game_id}")
 
 async def launch_match(game_id: str):
-    # Transition from Lobby -> Active
-    await persistence.set_game_active(game_id)
+    await persistence.db.set_game_active(game_id)
     logging.info(f"Game {game_id} is now ACTIVE")
 
-async def find_game_by_channel(channel_id: str) -> dict | None:
-    return await persistence.get_game_by_channel_id(channel_id)
+async def find_game_by_channel(channel_id: str) -> GameState | None:
+    return await persistence.db.get_game_by_channel_id(channel_id)
 
 async def end_game(game_id: str):
-    await persistence.mark_game_ended(game_id)
+    await persistence.db.mark_game_ended(game_id)
 
 async def process_player_input(channel_id: str, user_input: str) -> str:
-    game_data = await persistence.get_game_by_channel_id(channel_id)
-    if not game_data: return "Error: Game not found."
+    game: GameState = await persistence.db.get_game_by_channel_id(channel_id)
+    if not game: return "Error: Game not found."
     
-    # If in Setup mode, ignore chat (or maybe handle chat as lobby chat?)
-    if game_data.get('status') == 'setup':
-        return None # Silent in lobby
+    if game.status == 'setup':
+        return None 
 
-    if game_data.get('status') != 'active': return "Error: Game is not active."
+    if game.status != 'active': return "Error: Game is not active."
 
-    story_id = game_data.get('story_id', 'hms-bucket')
+    # Access fields using dot notation now!
+    story_id = game.story_id
     cartridge = await load_cartridge(story_id)
     tools = Toolbox()
-    result = await cartridge.play_turn(game_data, user_input, tools)
+    
+    # Note: Cartridge play_turn still expects a dict for now, or we update it too.
+    # For compatibility, we can pass model_dump() or update cartridge to accept object.
+    # Let's pass the object and see if it breaks (dynamic typing might save us), 
+    # but strictly we should pass game.model_dump() until we update cartridges.
+    result = await cartridge.play_turn(game.model_dump(), user_input, tools)
     return result['response']

@@ -1,10 +1,10 @@
 import datetime
 import logging
-from google.cloud.firestore import AsyncClient
+from google.cloud.firestore import AsyncClient, ArrayUnion # <--- Added Import
 from google.api_core.exceptions import AlreadyExists
 
 db = AsyncClient(database="sandbox")
-CURRENT_SCHEMA_VERSION = 2 # Bumped for 'players' field
+CURRENT_SCHEMA_VERSION = 2
 
 async def lock_event(event_id: str) -> bool:
     try:
@@ -21,13 +21,12 @@ async def lock_event(event_id: str) -> bool:
 
 async def create_game_record(game_id: str, story_id: str, metadata: dict = None):
     try:
-        # STATUS starts as 'setup', not 'active'
         await db.collection("games").document(game_id).set({
             "created_at": datetime.datetime.now(datetime.timezone.utc),
             "status": "setup", 
             "story_id": story_id,
             "metadata": metadata or {},
-            "players": [], # New Field
+            "players": [],
             "schema_version": CURRENT_SCHEMA_VERSION,
             "interface": {} 
         })
@@ -37,9 +36,9 @@ async def create_game_record(game_id: str, story_id: str, metadata: dict = None)
 
 async def add_player_to_game(game_id: str, player_data: dict):
     try:
-        # Atomic array union
+        # FIX: Correct usage of ArrayUnion
         await db.collection("games").document(game_id).update({
-            "players": db.field_path("players", "array_union", [player_data])
+            "players": ArrayUnion([player_data])
         })
     except Exception as e:
         logging.error(f"Persistence Error adding player: {e}")
@@ -67,7 +66,6 @@ async def update_game_interface(game_id: str, interface_data: dict):
 async def get_game_by_channel_id(channel_id: str) -> dict | None:
     try:
         games_ref = db.collection("games")
-        # Allow finding games in 'setup' OR 'active' state
         query = games_ref.where("interface.channel_id", "==", str(channel_id)).limit(1)
         async for doc in query.stream():
             data = doc.to_dict()
@@ -91,7 +89,6 @@ async def mark_game_ended(game_id: str):
 async def get_active_game_channels() -> set:
     active_ids = set()
     try:
-        # Get both Setup and Active games so buttons/chat work
         query = db.collection("games").where("status", "in", ["active", "setup"])
         async for doc in query.stream():
             data = doc.to_dict()

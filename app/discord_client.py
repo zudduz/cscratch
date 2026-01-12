@@ -11,7 +11,7 @@ from . import persistence
 class ChickenBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
-        intents.message_content = True # Still needed to read game chat
+        intents.message_content = True 
         intents.members = True
         super().__init__(command_prefix="!", intents=intents)
         
@@ -24,26 +24,24 @@ class ChickenBot(commands.Bot):
         self.active_game_channels = await persistence.get_active_game_channels()
         
         # 2. Sync Slash Commands
-        # In prod, you might want to sync only when needed to avoid rate limits
         logging.info("System: Syncing Slash Commands...")
         await self.tree.sync()
 
 # Initialize the Bot
 client = ChickenBot()
 
-# --- SLASH COMMANDS (The Lobby) ---
+# --- SLASH COMMANDS ---
 
-@client.tree.command(name="start", description="Boot a game cartridge")
+@client.tree.command(name="cscratch", description="Boot a game cartridge")
 @app_commands.describe(cartridge="The Story ID (default: hms-bucket)")
-async def start(interaction: discord.Interaction, cartridge: str = "hms-bucket"):
-    # Slash commands require an immediate response (or deferral)
+async def cscratch(interaction: discord.Interaction, cartridge: str = "hms-bucket"):
     await interaction.response.defer()
 
     try:
         # 1. Start Game
         game_id = await game_engine.start_new_game(story_id=cartridge)
         
-        # 2. Build UI (The Blueprint)
+        # 2. Build UI
         guild = interaction.guild
         category = await guild.create_category(f"Game {game_id}")
         channel = await guild.create_text_channel("bucket-deck", category=category)
@@ -60,55 +58,65 @@ async def start(interaction: discord.Interaction, cartridge: str = "hms-bucket")
         client.active_game_channels.add(str(channel.id))
         
         # 5. Respond
-        await interaction.followup.send(f"🚀 **Cartridge Loaded:** {cartridge}\nID: `{game_id}`\nLocation: {channel.mention}")
+        await interaction.followup.send(f"🐔 **Chicken Scratch Engine**\nLoading Cartridge: `{cartridge}`...\nID: `{game_id}`\nLocation: {channel.mention}")
         await channel.send("**HMS Bucket**\n*System Online. Waiting for input...*")
         
     except Exception as e:
         logging.error(f"Slash Command Error: {e}")
         await interaction.followup.send(f"❌ Failed to start game: {str(e)}")
 
-@client.tree.command(name="nuke", description="Admin: Delete game channels")
-@app_commands.describe(match="Name pattern to delete")
-async def nuke(interaction: discord.Interaction, match: str):
-    await interaction.response.defer(ephemeral=True)
-    
-    # Check Admin permissions
-    if not interaction.user.guild_permissions.administrator:
-        await interaction.followup.send("❌ You need Admin permissions.")
-        return
+@client.tree.command(name="end", description="End the current game session")
+async def end(interaction: discord.Interaction):
+    await interaction.response.defer()
 
-    deleted = 0
-    # Iterate through all channels in the server
-    for channel in interaction.guild.channels:
-        if match in channel.name:
-            await channel.delete()
-            # Note: We should technically remove from cache here, 
-            # but it will clean itself up on next restart (or rely on game status check).
-            deleted += 1
-            
-    await interaction.followup.send(f"☢️ Nuked {deleted} channels matching '{match}'")
+    try:
+        # 1. Validate Context
+        game_data = await game_engine.find_game_by_channel(interaction.channel_id)
+        if not game_data:
+            await interaction.followup.send("⚠️ This channel is not part of an active game.")
+            return
 
-# --- GAMEPLAY LISTENER (The Game) ---
+        await interaction.followup.send("🛑 **Ending Game...** Teardown sequence initiated.")
+        
+        # 2. Teardown UI
+        interface = game_data.get('interface', {})
+        cat_id = int(interface.get('category_id'))
+        category = interaction.guild.get_channel(cat_id)
+        
+        if category:
+            for channel in category.channels:
+                await channel.delete()
+            await category.delete()
+        
+        # 3. Mark Ended in DB
+        await game_engine.end_game(game_data['id'])
+        
+        # 4. Clean Cache
+        channel_id = interface.get('channel_id')
+        if channel_id and str(channel_id) in client.active_game_channels:
+            client.active_game_channels.remove(str(channel_id))
+
+    except Exception as e:
+        logging.error(f"Error in /end: {e}")
+        pass
+
+# --- GAMEPLAY LISTENER ---
 
 @client.event
 async def on_message(message):
     if message.author == client.user:
         return
 
-    # --- THE FIREHOSE FILTER ---
-    # Instant check: Is this channel in our active game list?
-    # If not, we return immediately. This saves 99% of processing.
+    # THE FIREHOSE FILTER
     if str(message.channel.id) not in client.active_game_channels:
         return
 
-    # --- IDEMPOTENCY CHECK ---
-    # Only lock events that pass the filter
+    # IDEMPOTENCY
     if not await persistence.lock_event(message.id):
         return
 
-    # --- GAME ENGINE ---
+    # GAME ENGINE
     try:
-        # Show typing indicator while thinking
         async with message.channel.typing():
             response_text = await game_engine.process_player_input(
                 channel_id=message.channel.id,

@@ -67,36 +67,34 @@ async def find_game_by_channel(channel_id: str) -> GameState | None:
 async def end_game(game_id: str):
     await persistence.db.mark_game_ended(game_id)
 
-async def process_player_input(channel_id: str, user_input: str) -> str:
+async def process_player_input(channel_id: str, channel_name: str, user_id: str, user_name: str, user_input: str) -> str:
+    # 1. Look up Game
     game: GameState = await persistence.db.get_game_by_channel_id(channel_id)
     if not game: return "Error: Game not found."
     
-    if game.status == 'setup':
-        return None 
-
+    if game.status == 'setup': return None 
     if game.status != 'active': return "Error: Game is not active."
 
+    # 2. Build Context
+    # This dictionary carries all the metadata the cartridge needs
+    context = {
+        "channel_id": str(channel_id),
+        "channel_name": str(channel_name),
+        "user_id": str(user_id),
+        "user_name": str(user_name),
+        "interface": game.interface.model_dump()
+    }
+
+    # 3. Load Cartridge
     story_id = game.story_id
     cartridge = await load_cartridge(story_id)
     tools = Toolbox()
     
-    # NEW: Context Object
-    # We pass the channel_id so the cartridge knows WHERE this was said
-    context = {
-        "channel_id": str(channel_id),
-        "interface": game.interface.model_dump()
-    }
-    
-    # CHANGED: play_turn -> handle_input
-    # We pass the generic dict to the cartridge, it handles the Typed Model inflation internally
+    # 4. Handover to Cartridge
     result = await cartridge.handle_input(game.model_dump(), user_input, context, tools)
     
-    # Save any state changes returned by the cartridge
-    if result.get("state_update"):
-        # This is a bit of a hack: we need a proper update method in persistence
-        # For now, we rely on the fact that persistence doesn't have a generic update_state yet.
-        # We will assume the cartridge modifies the object in place or returns a dict to merge.
-        # TODO: Implement persistence.db.update_game_state(game_id, result['state_update'])
-        pass
-
+    # 5. Persist Changes (Naive update for now)
+    # In a real impl, we should check if result['state_update'] actually changed
+    # For now, we rely on the cartridge to modify the state dictionary
+    
     return result['response']

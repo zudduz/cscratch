@@ -79,7 +79,6 @@ async def start(interaction: discord.Interaction, cartridge: str = "foster-proto
 async def end(interaction: discord.Interaction):
     await interaction.response.defer()
     try:
-        # returns GameState object now
         game = await game_engine.find_game_by_channel(interaction.channel_id)
         if not game:
             await interaction.followup.send("⚠️ No active game here.")
@@ -87,7 +86,6 @@ async def end(interaction: discord.Interaction):
 
         await interaction.followup.send("🛑 **Teardown sequence initiated.**")
         
-        # Access fields via dot notation
         cat_id = int(game.interface.category_id)
         category = interaction.guild.get_channel(cat_id)
         
@@ -108,13 +106,16 @@ async def end(interaction: discord.Interaction):
 async def on_message(message):
     if message.author == client.user: return
     if str(message.channel.id) not in client.active_game_channels: return
-    
     if not await persistence.db.lock_event(message.id): return
 
     try:
         async with message.channel.typing():
+            # PASS FULL CONTEXT
             response_text = await game_engine.process_player_input(
                 channel_id=message.channel.id,
+                channel_name=message.channel.name,
+                user_id=str(message.author.id),
+                user_name=message.author.name,
                 user_input=message.content
             )
         

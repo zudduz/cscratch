@@ -6,7 +6,6 @@ import nest_asyncio
 from fastapi import FastAPI, Response, status
 from google.cloud import secretmanager
 
-# Import the isolated components
 from .discord_client import client as discord_client
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -29,8 +28,12 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(discord_client.start(token))
     else:
         logging.warning("Discord token not found. Bot will not start.")
+    
     yield
+    
+    # SHUTDOWN LOGIC
     if not discord_client.is_closed():
+        await discord_client.announce_state("🔴 **System Offline**")
         await discord_client.close()
 
 app = FastAPI(lifespan=lifespan)

@@ -71,17 +71,13 @@ class LobbyView(discord.ui.View):
 
     @discord.ui.button(label="Join Game", style=discord.ButtonStyle.green, custom_id="join_btn")
     async def join_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # 1. Defer immediately to prevent Timeout (Unknown Interaction)
+        # 1. DEFER IMMEDIATELY
         await interaction.response.defer(ephemeral=False)
 
         try:
-            # 2. Logic (DB Operations)
             await game_engine.join_game(self.game_id, str(interaction.user.id), interaction.user.name)
-            
-            # 3. Followup (Uses Webhook, no 3s limit)
             await interaction.followup.send(f"✅ **{interaction.user.name}** joined the squad!")
 
-            # 4. Admin Check
             if isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator:
                 warning = (
                     f"⚠️ **FAIR PLAY ALERT:** {interaction.user.mention} has **Administrator Privileges**.\n"
@@ -96,19 +92,24 @@ class LobbyView(discord.ui.View):
 
     @discord.ui.button(label="Start Match", style=discord.ButtonStyle.danger, custom_id="start_btn")
     async def start_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # 1. Fetch Game for Auth Check
+        # 1. DEFER IMMEDIATELY (Crucial Fix)
+        # We perform checks AFTER deferring. 
+        # Note: Since we defer, we must use interaction.followup.send, and messages can't be truly ephemeral if the defer wasn't.
+        # But stability > secrecy.
+        await interaction.response.defer()
+
+        # 2. Fetch Game
         game = await persistence.db.get_game_by_id(self.game_id)
         if not game:
-            await interaction.response.send_message("❌ Game not found.", ephemeral=True)
+            await interaction.followup.send("❌ Game not found.")
             return
 
-        # 2. Host Only Check
+        # 3. Host Check
         if str(interaction.user.id) != game.host_id:
-            await interaction.response.send_message(f"⛔ **Access Denied.** Only the Host (<@{game.host_id}>) can start the simulation.", ephemeral=True)
+            await interaction.followup.send(f"⛔ **Access Denied.** Only the Host (<@{game.host_id}>) can start the simulation.")
             return
-
-        await interaction.response.defer()
         
+        # 4. Launch
         result = await game_engine.launch_match(self.game_id)
         if not result:
              await interaction.followup.send("Error: Launch failed.")
@@ -145,10 +146,10 @@ cscratch_group = app_commands.Group(name="cscratch", description="Chicken Scratc
 @cscratch_group.command(name="start", description="Open a Game Lobby")
 @app_commands.describe(cartridge="The Story ID (default: foster-protocol)")
 async def start(interaction: discord.Interaction, cartridge: str = "foster-protocol"):
+    # 1. DEFER IMMEDIATELY
     await interaction.response.defer()
 
     try:
-        # Pass Host Details
         game_id = await game_engine.start_new_game(
             story_id=cartridge,
             host_id=str(interaction.user.id),
@@ -157,8 +158,6 @@ async def start(interaction: discord.Interaction, cartridge: str = "foster-proto
         
         guild = interaction.guild
         category = await guild.create_category(f"Lobby {game_id}")
-        
-        # Lobby Name
         channel = await guild.create_text_channel("cscratch-lobby", category=category)
         
         await game_engine.register_interface(game_id, {
@@ -184,23 +183,25 @@ async def start(interaction: discord.Interaction, cartridge: str = "foster-proto
 
 @cscratch_group.command(name="end", description="Eject the cartridge and cleanup")
 async def end(interaction: discord.Interaction):
-    # 1. Basic Check
+    # 1. DEFER IMMEDIATELY
+    await interaction.response.defer()
+
+    # 2. Basic Check
     game = await game_engine.find_game_by_channel(interaction.channel_id)
     if not game:
-        await interaction.response.send_message("⚠️ No active game here.", ephemeral=True)
+        await interaction.followup.send("⚠️ No active game here.")
         return
 
-    # 2. Location Check (Must be in Main Channel / Lobby)
+    # 3. Location Check
     if str(interaction.channel_id) != game.interface.main_channel_id:
-        await interaction.response.send_message(f"⛔ System commands must be run from the Main Console (<#{game.interface.main_channel_id}>).", ephemeral=True)
+        await interaction.followup.send(f"⛔ System commands must be run from the Main Console (<#{game.interface.main_channel_id}>).")
         return
 
-    # 3. Host Check
+    # 4. Host Check
     if str(interaction.user.id) != game.host_id:
-        await interaction.response.send_message("⛔ **Access Denied.** Only the Host can terminate the simulation.", ephemeral=True)
+        await interaction.followup.send("⛔ **Access Denied.** Only the Host can terminate the simulation.")
         return
 
-    await interaction.response.defer()
     try:
         await interaction.followup.send("🛑 **Teardown sequence initiated.**")
         

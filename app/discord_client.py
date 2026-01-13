@@ -7,6 +7,25 @@ from discord.ext import commands
 from . import game_engine
 from . import persistence
 
+# --- HELPER: SAFE DEFER ---
+async def safe_defer(interaction: discord.Interaction, ephemeral: bool = False) -> bool:
+    """
+    Tries to defer the interaction. 
+    Returns True if successful (we are the 'winner' instance).
+    Returns False if already acknowledged (we are the 'loser' instance).
+    """
+    try:
+        await interaction.response.defer(ephemeral=ephemeral)
+        return True
+    except discord.HTTPException as e:
+        if e.code == 40060: # Interaction already acknowledged
+            logging.warning(f"Race Condition: Interaction {interaction.id} handled by another bot instance. Aborting.")
+            return False
+        raise e
+    except discord.InteractionResponded:
+        logging.warning(f"Race Condition: Interaction {interaction.id} already responded locally.")
+        return False
+
 # --- THE DUMB TERMINAL ---
 
 class ChickenBot(commands.Bot):
@@ -21,21 +40,14 @@ class ChickenBot(commands.Bot):
         logging.info("System: Hydrating Game Channel Cache...")
         self.active_game_channels = await persistence.db.get_active_game_channels()
         
-        # Register commands
         self.tree.add_command(cscratch_group)
         logging.info("System: Syncing Slash Commands...")
         await self.tree.sync()
         
-        # Register as an Interface with the Engine
         await game_engine.engine.register_interface(self)
-        
-        # Start the Engine's heartbeat
         await game_engine.engine.start()
 
-    # --- INTERFACE METHODS (Called by Engine) ---
-    
     async def send_message(self, channel_id: str, text: str):
-        """Callback: Engine wants to speak."""
         try:
             channel = self.get_channel(int(channel_id))
             if channel:
@@ -46,11 +58,8 @@ class ChickenBot(commands.Bot):
             logging.error(f"Discord Interface Error sending to {channel_id}: {e}")
 
     async def execute_channel_ops(self, game_id: str, ops: list):
-        """Callback: Engine wants to modify infrastructure."""
         if not ops: return
         
-        # We need to find the guild/category context. 
-        # Usually we can get this from the first op or the game record.
         game = await persistence.db.get_game_by_id(game_id)
         if not game or not game.interface.guild_id: 
             return
@@ -75,7 +84,6 @@ class ChickenBot(commands.Bot):
                     
                     if op.get('audience') == 'public':
                          overwrites[guild.default_role] = discord.PermissionOverwrite(read_messages=True)
-                    
                     elif op.get('audience') == 'private':
                         user_id = op.get('user_id')
                         if user_id:
@@ -106,7 +114,7 @@ class ChickenBot(commands.Bot):
                     changes_made = True
                     
                 elif op['op'] == 'delete':
-                    pass # TODO: Implement delete logic
+                    pass 
 
             except Exception as e:
                 logging.error(f"Channel Op Failed: {e}")
@@ -125,9 +133,9 @@ class LobbyView(discord.ui.View):
 
     @discord.ui.button(label="Join Game", style=discord.ButtonStyle.green, custom_id="join_btn")
     async def join_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.defer(ephemeral=False)
+        if not await safe_defer(interaction): return
+
         try:
-            # We call the engine directly for management actions
             await game_engine.join_game(self.game_id, str(interaction.user.id), interaction.user.name)
             await interaction.followup.send(f"✅ **{interaction.user.name}** joined the squad!")
 
@@ -144,7 +152,7 @@ class LobbyView(discord.ui.View):
 
     @discord.ui.button(label="Start Match", style=discord.ButtonStyle.danger, custom_id="start_btn")
     async def start_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.defer()
+        if not await safe_defer(interaction): return
 
         game = await persistence.db.get_game_by_id(self.game_id)
         if not game:
@@ -155,38 +163,17 @@ class LobbyView(discord.ui.View):
             await interaction.followup.send(f"⛔ **Access Denied.** Only the Host (<@{game.host_id}>) can start the simulation.")
             return
         
-        # Engine Launch
         result = await game_engine.launch_match(self.game_id)
         if not result:
              await interaction.followup.send("Error: Launch failed.")
              return
 
-        # Execute Ops immediately to setup the game
         ops = result.get('channel_ops', [])
         if ops:
             await interaction.followup.send("🏗️ **Configuring Ship Systems...**")
             await client.execute_channel_ops(self.game_id, ops)
         
-        # Send Initial Messages
-        msgs = result.get('messages', [])
-        if msgs:
-            # We manually dispatch here because the engine loop might not pick up immediate start msgs cleanly
-            # Or we can let the engine handle it if launch_match returns them?
-            # Actually, launch_match returns the result packet. 
-            # The Engine's _dispatch_message_to_interfaces requires resolved IDs.
-            # Since we JUST created the channels, the DB might be stale if we don't await the ops update.
-            # safe bet: call client.send_message directly or via helper.
-            
-            # For simplicity in this view, let's just let the Engine handle it? 
-            # The issue is resolving logical keys to IDs we just made.
-            # execute_channel_ops updates the DB. So fetching game again works.
-            
-            # Let's ask the engine to dispatch the initial messages
-            # We need a helper in engine for this or just rely on 'result' processing manually here.
-            
-            # Manual dispatch for now to ensure timing:
-            await game_engine.engine.dispatch_immediate_result(self.game_id, result)
-
+        await game_engine.engine.dispatch_immediate_result(self.game_id, result)
         self.stop()
         await interaction.followup.send(f"🚨 **SIMULATION ACTIVE**")
 
@@ -198,7 +185,7 @@ cscratch_group = app_commands.Group(name="cscratch", description="Chicken Scratc
 @cscratch_group.command(name="start", description="Open a Game Lobby")
 @app_commands.describe(cartridge="The Story ID (default: foster-protocol)")
 async def start(interaction: discord.Interaction, cartridge: str = "foster-protocol"):
-    await interaction.response.defer()
+    if not await safe_defer(interaction): return
 
     try:
         game_id = await game_engine.start_new_game(
@@ -211,7 +198,6 @@ async def start(interaction: discord.Interaction, cartridge: str = "foster-proto
         category = await guild.create_category(f"Lobby {game_id}")
         channel = await guild.create_text_channel("cscratch-lobby", category=category)
         
-        # Register basic interface info
         await game_engine.register_interface(game_id, {
             "type": "discord",
             "guild_id": str(guild.id),
@@ -235,12 +221,15 @@ async def start(interaction: discord.Interaction, cartridge: str = "foster-proto
 
 @cscratch_group.command(name="end", description="Eject the cartridge and cleanup")
 async def end(interaction: discord.Interaction):
-    await interaction.response.defer()
+    if not await safe_defer(interaction): return
 
-    # We can still use the helper find method
     game = await game_engine.find_game_by_channel(interaction.channel_id)
     if not game:
         await interaction.followup.send("⚠️ No active game here.")
+        return
+
+    if str(interaction.channel_id) != game.interface.main_channel_id:
+        await interaction.followup.send(f"⛔ System commands must be run from the Main Console (<#{game.interface.main_channel_id}>).")
         return
 
     if str(interaction.user.id) != game.host_id:
@@ -250,7 +239,6 @@ async def end(interaction: discord.Interaction):
     try:
         await interaction.followup.send("🛑 **Teardown sequence initiated.**")
         
-        # Cleanup Discord Channels
         if game.interface.category_id:
             try:
                 category = interaction.guild.get_channel(int(game.interface.category_id))
@@ -268,18 +256,13 @@ async def end(interaction: discord.Interaction):
     except Exception as e:
         logging.error(f"Error in /cscratch end: {e}")
 
-# --- INPUT LISTENER ---
-
 @client.event
 async def on_message(message):
     if message.author == client.user: return
     if str(message.channel.id) not in client.active_game_channels: return
-    
-    # Lock event to prevent double-processing (optional, but good practice)
     if not await persistence.db.lock_event(message.id): return
 
     try:
-        # PURE DISPATCH: No logic here.
         async with message.channel.typing():
             await game_engine.engine.dispatch_input(
                 channel_id=str(message.channel.id),

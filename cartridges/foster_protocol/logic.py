@@ -17,7 +17,7 @@ class FosterProtocol:
         ROLE: You are the Game Master for 'The Foster Protocol'.
         """
 
-    # --- STARTUP (Returns Packet, not Patch - handled by Launch Match) ---
+    # --- STARTUP ---
     async def on_game_start(self, generic_state: dict) -> Dict[str, Any]:
         game_data = CaissonState(**generic_state.get('metadata', {}))
         discord_players = generic_state.get('players', [])
@@ -71,20 +71,26 @@ class FosterProtocol:
         """Background task that waits and then reports back."""
         await asyncio.sleep(3) # Simulating work
         await ctx.send(channel_key, "📡 **SCAN COMPLETE:**\n*No anomalies detected.*")
-        return None # No state change needed
+        return None 
 
-    # --- LOGIC: DAY CYCLE (Returns Patch) ---
+    # --- LOGIC: DAY CYCLE ---
     async def run_day_cycle(self, game_data: CaissonState, ctx) -> Dict[str, Any]:
         new_cycle = game_data.cycle + 1
-        new_oxygen = int(game_data.oxygen * 0.75)
+        
+        # LOGIC CHANGE: Flat -25
+        # We ensure it doesn't drop below 0
+        new_oxygen = max(0, game_data.oxygen - 25)
         loss = game_data.oxygen - new_oxygen
         
         # 1. Broadcast Report
         report = (
             f"🌞 **CYCLE {new_cycle} REPORT**\n"
-            f"📉 Oxygen: {new_oxygen}% (-{loss}%)\n"
+            f"📉 Oxygen: {new_oxygen}% (-{loss})\n"
             f"*Crew awake.*"
         )
+        if new_oxygen <= 0:
+            report += "\n💀 **CRITICAL FAILURE:** Life Support Offline."
+
         await ctx.send("picnic", report)
         
         # 2. Build Patch
@@ -103,7 +109,6 @@ class FosterProtocol:
     async def handle_input(self, generic_state: dict, user_input: str, ctx, tools) -> Dict[str, Any]:
         game_data = CaissonState(**generic_state.get('metadata', {}))
         
-        # Resolve User Context from ctx.trigger_data
         channel_id = ctx.trigger_data.get('channel_id')
         user_id = ctx.trigger_data.get('user_id')
         interface_channels = ctx.trigger_data.get('interface', {}).get('channels', {})
@@ -121,7 +126,6 @@ class FosterProtocol:
                 await ctx.reply(f"**MAINFRAME:** O2: {game_data.oxygen}% | FUEL: {game_data.fuel}%")
                 return None
             else:
-                # Use AI for Mainframe chatter
                 response = await tools.ai.generate_response(
                     system_prompt="You are the Ship Computer. Cold, cynical.",
                     conversation_id=f"{ctx.game_id}_mainframe",
@@ -143,7 +147,6 @@ class FosterProtocol:
             # CMD: !SLEEP
             elif cmd == "!sleep":
                 if user_id in game_data.players:
-                    # Update local state for logic check (Patch will handle DB)
                     game_data.players[user_id].is_sleeping = True
                     
                     living = [p for p in game_data.players.values() if p.is_alive]
@@ -156,7 +159,7 @@ class FosterProtocol:
                     
                     if sleeping_count >= total:
                         await ctx.send("picnic", "🚨 **ALL CREW ASLEEP.**")
-                        # Run Day Cycle (which sends messages and returns its own patch)
+                        # Run Day Cycle
                         day_patch = await self.run_day_cycle(game_data, ctx)
                         patch.update(day_patch)
                         

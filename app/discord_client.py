@@ -3,51 +3,36 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-# Relative Imports
 from . import game_engine
 from . import persistence
 from .models import GameInterface
 
-# --- HELPER: CHANNEL OPERATIONS ---
 async def process_channel_ops(guild: discord.Guild, category: discord.CategoryChannel, ops: list, game_id: str):
-    """
-    Executes structural changes requested by the cartridge.
-    ops = [{'op': 'create', 'key': 'picnic', 'name': 'picnic', 'audience': 'public'}, ...]
-    """
     if not ops: return
-
-    # Fetch current game interface to update it
     game = await persistence.db.get_game_by_id(game_id)
     if not game: return
-    
     interface = game.interface
     changes_made = False
 
     for op in ops:
         try:
             if op['op'] == 'create':
-                # Determine Permissions
                 overwrites = {
                     guild.default_role: discord.PermissionOverwrite(read_messages=False),
                     guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
                 }
                 
                 if op.get('audience') == 'public':
-                     # Visible to everyone in the server? Or just players? 
-                     # For now, let's say Public = Visible to @everyone
                      overwrites[guild.default_role] = discord.PermissionOverwrite(read_messages=True)
                 
                 elif op.get('audience') == 'private':
-                    # Add specific user
                     user_id = op.get('user_id')
                     if user_id:
                         member = guild.get_member(int(user_id))
                         if member:
                             overwrites[member] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
 
-                # Create Channel
                 channel_name = op.get('name', 'unknown-channel')
-                # Sanitize name (basic)
                 channel_name = "".join(c for c in channel_name if c.isalnum() or c == "-").lower()
 
                 new_channel = await guild.create_text_channel(
@@ -56,36 +41,28 @@ async def process_channel_ops(guild: discord.Guild, category: discord.CategoryCh
                     overwrites=overwrites
                 )
 
-                # Send Init Message if provided
                 if op.get('init_msg'):
                     await new_channel.send(op['init_msg'])
 
-                # REGISTER IN DB
-                key = op.get('key') # Logical name (e.g., 'picnic', 'nanny_123')
+                key = op.get('key') 
                 if key:
                     interface.channels[key] = str(new_channel.id)
                 
-                # Add to listener list so bot sees messages
                 if str(new_channel.id) not in interface.listener_ids:
                     interface.listener_ids.append(str(new_channel.id))
                 
-                # Add to local cache
                 client.active_game_channels.add(str(new_channel.id))
                 changes_made = True
                 
             elif op['op'] == 'delete':
-                # TODO: Implement deletion lookup by key
                 pass
 
         except Exception as e:
             logging.error(f"Channel Op Failed: {e}")
 
-    # Save Interface Updates
     if changes_made:
         await persistence.db.update_game_interface(game_id, interface)
 
-
-# --- UI VIEW ---
 class LobbyView(discord.ui.View):
     def __init__(self, game_id: str, cartridge_name: str):
         super().__init__(timeout=None)
@@ -101,27 +78,17 @@ class LobbyView(discord.ui.View):
     async def start_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
         
-        # 1. Launch (Generate Bots & Get Ops)
-        # We need launch_match to return the cartridge response now!
         result = await game_engine.launch_match(self.game_id)
-        
         if not result:
              await interaction.followup.send("Error: Launch failed.")
              return
 
-        # 2. Execute Channel Ops
-        # The cartridge should have returned a list of channels to create
         ops = result.get('channel_ops', [])
-        
         if ops:
             await interaction.followup.send("🏗️ **Configuring Ship Systems...**")
             category = interaction.channel.category
             await process_channel_ops(interaction.guild, category, ops, self.game_id)
         
-        # 3. Cleanup Lobby (Optional: Rename it or delete it if 'picnic' was created separately)
-        # For this design, let's assume the lobby BECOMES the picnic if not specified, 
-        # but if the cartridge requests a 'picnic', we might have duplicates. 
-        # Let's clean up the lobby buttons.
         self.stop()
         await interaction.followup.send(f"🚨 **SIMULATION ACTIVE**")
 
@@ -150,7 +117,13 @@ async def start(interaction: discord.Interaction, cartridge: str = "foster-proto
     await interaction.response.defer()
 
     try:
-        game_id = await game_engine.start_new_game(story_id=cartridge)
+        # Pass Host Details
+        game_id = await game_engine.start_new_game(
+            story_id=cartridge,
+            host_id=str(interaction.user.id),
+            host_name=interaction.user.name
+        )
+        
         guild = interaction.guild
         category = await guild.create_category(f"Lobby {game_id}")
         channel = await guild.create_text_channel("pre-game-lobby", category=category)
@@ -211,7 +184,6 @@ async def on_message(message):
 
     try:
         async with message.channel.typing():
-            # 1. Process Input
             response_payload = await game_engine.process_player_input_full(
                 channel_id=message.channel.id,
                 channel_name=message.channel.name,
@@ -220,19 +192,12 @@ async def on_message(message):
                 user_input=message.content
             )
         
-        # 2. Check for Channel Ops (Dynamic Channel Creation mid-game!)
-        # process_player_input_full now returns the full dict, not just a string
         if isinstance(response_payload, dict):
             text = response_payload.get('response')
             ops = response_payload.get('channel_ops')
             
             if ops:
-                # We need the category
                 category = message.channel.category
-                # Extract game_id from payload or re-fetch? 
-                # Ideally process_player_input returns the context.
-                # For now, we assume we can get it or pass it.
-                # Let's fix process_player_input to return game_id in payload.
                 game_id = response_payload.get('game_id') 
                 if game_id:
                     await process_channel_ops(message.guild, category, ops, game_id)

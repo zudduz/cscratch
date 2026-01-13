@@ -38,8 +38,6 @@ class GameEngine:
     async def register_interface(self, interface):
         self.interfaces.append(interface)
 
-    # --- LIFECYCLE METHODS ---
-
     async def start_new_game(self, story_id: str, host_id: str, host_name: str) -> str:
         game_id = str(uuid.uuid4())[:8]
         cartridge = await self._load_cartridge(story_id)
@@ -90,9 +88,16 @@ class GameEngine:
         return await persistence.db.get_game_by_channel_id(channel_id)
 
     async def end_game(self, game_id: str):
+        """Ends the game state and locks all interfaces."""
         await persistence.db.mark_game_ended(game_id)
-
-    # --- CORE INPUT LOOP ---
+        
+        game = await persistence.db.get_game_by_id(game_id)
+        if not game: return
+        
+        # Trigger Interface Lockdowns
+        for interface in self.interfaces:
+            if hasattr(interface, 'lock_channels'):
+                await interface.lock_channels(game_id, game.interface.model_dump())
 
     async def dispatch_input(self, channel_id: str, user_id: str, user_name: str, user_input: str):
         game = await persistence.db.get_game_by_channel_id(channel_id)
@@ -112,7 +117,7 @@ class GameEngine:
                 game_id=game.id,
                 _dispatcher=self._dispatch_message_to_interfaces,
                 _scheduler=self._schedule_background_task,
-                _ender=self.end_game, # Pass end_game method
+                _ender=self.end_game,
                 trigger_data=trigger_data
             )
 
@@ -133,8 +138,6 @@ class GameEngine:
         if msgs:
             for msg in msgs:
                 await self._dispatch_message_to_interfaces(game_id, msg.get('channel'), msg.get('content'))
-
-    # --- INTERNAL HELPERS ---
 
     def _schedule_background_task(self, game_id: str, coro: Any):
         asyncio.create_task(self._run_task_safely(game_id, coro))

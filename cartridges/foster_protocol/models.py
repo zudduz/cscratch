@@ -12,8 +12,11 @@ class PlayerState(BaseModel):
     is_alive: bool = True
     location_id: str = "cryo_bay"
     
-    # NEW: The specific Discord Channel ID for this player's Nanny Port
-    # The Cartridge uses this to route private messages to the player.
+    # NEW: The "Ready" button. 
+    # If True, the player is done for the night and waiting for the next cycle.
+    is_sleeping: bool = False
+    
+    # The specific Discord Channel ID for this player's Nanny Port
     nanny_channel_id: Optional[str] = None
 
 # --- THE TOOLS (BOTS) ---
@@ -35,14 +38,14 @@ class BotState(BaseModel):
 
 # --- THE WORLD (ROOT) ---
 class CaissonState(BaseModel):
-    version: str = "1.4"
+    version: str = "1.5"
     
     oxygen: int = 100
     fuel: int = 0
     cycle: int = 1
     phase: Literal["day", "night"] = "night"
     
-    # NEW: The shared public channel ID for the Mainframe logs
+    # The shared public channel ID for the Mainframe logs
     picnic_channel_id: Optional[str] = None
     
     bots: Dict[str, BotState] = Field(default_factory=dict)

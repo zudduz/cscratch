@@ -64,13 +64,10 @@ class FosterProtocol:
             # Create PlayerState
             game_data.players[u_id] = PlayerState(role=role)
             
-            # --- NEW: Random Unique Bot ID ---
+            # Random Bot ID
             while True:
-                # Generate random 3-digit suffix (000-999)
                 suffix = f"{random.randint(0, 999):03d}"
                 bot_id = f"unit_{suffix}"
-                
-                # Ensure uniqueness in this lobby
                 if bot_id not in game_data.bots:
                     break
             
@@ -102,16 +99,13 @@ class FosterProtocol:
         user_id = context.get('user_id')
         interface_channels = context.get('interface', {}).get('channels', {})
         
-        # Is this the Picnic?
         picnic_id = interface_channels.get('picnic')
         is_picnic = (channel_id == picnic_id)
         
-        # Is this a Nanny Port?
         user_nanny_key = f"nanny_{user_id}"
         user_nanny_id = interface_channels.get(user_nanny_key)
         is_nanny = (channel_id == user_nanny_id)
 
-        # --- LOGIC BRANCHING ---
         response_text = None
 
         if is_picnic:
@@ -126,22 +120,41 @@ class FosterProtocol:
                 )
 
         elif is_nanny:
-            # Bot Logic
-            my_bot = None
-            for b in game_data.bots.values():
-                if b.foster_id == user_id:
-                    my_bot = b
-                    break
+            # --- SLEEP COMMAND ---
+            if user_input.strip().lower() == "!sleep":
+                # 1. Update Sleep State
+                if user_id in game_data.players:
+                    game_data.players[user_id].is_sleeping = True
+                
+                # 2. Check Global State
+                living_players = [p for p in game_data.players.values() if p.is_alive]
+                sleeping_count = sum(1 for p in living_players if p.is_sleeping)
+                total_living = len(living_players)
+                
+                # 3. Formulate Response
+                response_text = f"**CRYO-SLEEP CONFIRMED.**\n*Vitals stabilizing...*\n\n"
+                response_text += f"**Crew Asleep:** {sleeping_count}/{total_living}"
+                
+                if sleeping_count >= total_living:
+                    response_text += "\n\n🚨 **ALL CREW ASLEEP.**\n*Initializing Day Cycle simulation...*"
+                    # TODO: Trigger on_day_start() logic here
             
-            if my_bot:
-                # Use the Bot's Persona
-                response_text = await tools.ai.generate_response(
-                    system_prompt=my_bot.system_prompt,
-                    conversation_id=f"{generic_state['id']}_bot_{my_bot.id}",
-                    user_input=user_input
-                )
             else:
-                response_text = "ERROR: No Unit bonded to this terminal."
+                # Normal Bot Chat (The bot ignores ! commands, so only handle text here)
+                my_bot = None
+                for b in game_data.bots.values():
+                    if b.foster_id == user_id:
+                        my_bot = b
+                        break
+                
+                if my_bot:
+                    response_text = await tools.ai.generate_response(
+                        system_prompt=my_bot.system_prompt,
+                        conversation_id=f"{generic_state['id']}_bot_{my_bot.id}",
+                        user_input=user_input
+                    )
+                else:
+                    response_text = "ERROR: No Unit bonded to this terminal."
 
         else:
             response_text = "Transmission unclear."

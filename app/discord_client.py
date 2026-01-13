@@ -72,7 +72,21 @@ class LobbyView(discord.ui.View):
     @discord.ui.button(label="Join Game", style=discord.ButtonStyle.green, custom_id="join_btn")
     async def join_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await game_engine.join_game(self.game_id, str(interaction.user.id), interaction.user.name)
+        
+        # Standard Confirmation
         await interaction.response.send_message(f"✅ **{interaction.user.name}** joined the squad!", ephemeral=False)
+
+        # ADMIN CHECK
+        # If the user has 'Administrator' permission, they can bypass channel privacy.
+        # We warn the lobby so the players can decide if they trust them.
+        if isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator:
+            warning = (
+                f"⚠️ **FAIR PLAY ALERT:** {interaction.user.mention} has **Administrator Privileges**.\n"
+                "This allows them to see **ALL** private channels (Nanny Ports).\n"
+                "*The Protocol relies on trust. Please ensure this user agrees to ignore channels not assigned to them.*"
+            )
+            # Send to the channel so everyone sees it
+            await interaction.channel.send(warning)
 
     @discord.ui.button(label="Start Match", style=discord.ButtonStyle.danger, custom_id="start_btn")
     async def start_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -138,7 +152,7 @@ async def start(interaction: discord.Interaction, cartridge: str = "foster-proto
         guild = interaction.guild
         category = await guild.create_category(f"Lobby {game_id}")
         
-        # CHANGED NAME HERE
+        # Lobby Name
         channel = await guild.create_text_channel("cscratch-lobby", category=category)
         
         await game_engine.register_interface(game_id, {

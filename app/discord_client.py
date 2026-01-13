@@ -76,6 +76,17 @@ class LobbyView(discord.ui.View):
 
     @discord.ui.button(label="Start Match", style=discord.ButtonStyle.danger, custom_id="start_btn")
     async def start_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # 1. Fetch Game for Auth Check
+        game = await persistence.db.get_game_by_id(self.game_id)
+        if not game:
+            await interaction.response.send_message("❌ Game not found.", ephemeral=True)
+            return
+
+        # 2. Host Only Check
+        if str(interaction.user.id) != game.host_id:
+            await interaction.response.send_message(f"⛔ **Access Denied.** Only the Host (<@{game.host_id}>) can start the simulation.", ephemeral=True)
+            return
+
         await interaction.response.defer()
         
         result = await game_engine.launch_match(self.game_id)
@@ -126,7 +137,9 @@ async def start(interaction: discord.Interaction, cartridge: str = "foster-proto
         
         guild = interaction.guild
         category = await guild.create_category(f"Lobby {game_id}")
-        channel = await guild.create_text_channel("pre-game-lobby", category=category)
+        
+        # CHANGED NAME HERE
+        channel = await guild.create_text_channel("cscratch-lobby", category=category)
         
         await game_engine.register_interface(game_id, {
             "type": "discord",
@@ -151,13 +164,24 @@ async def start(interaction: discord.Interaction, cartridge: str = "foster-proto
 
 @cscratch_group.command(name="end", description="Eject the cartridge and cleanup")
 async def end(interaction: discord.Interaction):
+    # 1. Basic Check
+    game = await game_engine.find_game_by_channel(interaction.channel_id)
+    if not game:
+        await interaction.response.send_message("⚠️ No active game here.", ephemeral=True)
+        return
+
+    # 2. Location Check (Must be in Main Channel / Lobby)
+    if str(interaction.channel_id) != game.interface.main_channel_id:
+        await interaction.response.send_message(f"⛔ System commands must be run from the Main Console (<#{game.interface.main_channel_id}>).", ephemeral=True)
+        return
+
+    # 3. Host Check
+    if str(interaction.user.id) != game.host_id:
+        await interaction.response.send_message("⛔ **Access Denied.** Only the Host can terminate the simulation.", ephemeral=True)
+        return
+
     await interaction.response.defer()
     try:
-        game = await game_engine.find_game_by_channel(interaction.channel_id)
-        if not game:
-            await interaction.followup.send("⚠️ No active game here.")
-            return
-
         await interaction.followup.send("🛑 **Teardown sequence initiated.**")
         
         cat_id = int(game.interface.category_id)

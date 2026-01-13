@@ -33,7 +33,6 @@ class FosterProtocol:
         channel_ops = []
 
         # 2. Request Public Channel (The Picnic)
-        # The key 'picnic' allows us to look it up in game.interface.channels['picnic']
         channel_ops.append({
             "op": "create",
             "key": "picnic",
@@ -51,7 +50,6 @@ class FosterProtocol:
             role = "saboteur" if is_saboteur else "loyal"
             
             # Request Private Nanny Port
-            # logical key: 'nanny_<uid>'
             channel_key = f"nanny_{u_id}"
             
             channel_ops.append({
@@ -60,19 +58,22 @@ class FosterProtocol:
                 "name": f"nanny-port-{u_name}",
                 "audience": "private",
                 "user_id": u_id,
-                "init_msg": f"**CONNECTION ESTABLISHED**\nUser: {u_name}\nSubject: Unit-{str(u_id)[-3:]}"
+                "init_msg": f"**CONNECTION ESTABLISHED**\nUser: {u_name}\nSubject: [Scanning...]"
             })
 
             # Create PlayerState
-            # We store the 'key' here so we can find the channel ID later via the interface map
-            # Note: We don't have the actual ID yet (Discord hasn't made it), but we have the key.
-            # In Models, we have 'nanny_channel_id', but maybe we should store the key or wait?
-            # Actually, the Discord Client updates 'interface.channels' map.
-            # We can just look it up via game.interface.channels[f'nanny_{u_id}'] in the future.
             game_data.players[u_id] = PlayerState(role=role)
             
-            # Create BotState
-            bot_id = f"unit_{str(u_id)[-3:]}" 
+            # --- NEW: Random Unique Bot ID ---
+            while True:
+                # Generate random 3-digit suffix (000-999)
+                suffix = f"{random.randint(0, 999):03d}"
+                bot_id = f"unit_{suffix}"
+                
+                # Ensure uniqueness in this lobby
+                if bot_id not in game_data.bots:
+                    break
+            
             prompt = f"You are {bot_id}. You serve {u_name}."
             if is_saboteur:
                 prompt += " You are the Saboteur. Fake your loyalty."
@@ -106,7 +107,6 @@ class FosterProtocol:
         is_picnic = (channel_id == picnic_id)
         
         # Is this a Nanny Port?
-        # We check if the channel matches the specific user's assigned port key
         user_nanny_key = f"nanny_{user_id}"
         user_nanny_id = interface_channels.get(user_nanny_key)
         is_nanny = (channel_id == user_nanny_id)
@@ -119,7 +119,6 @@ class FosterProtocol:
             if "status" in user_input.lower():
                 response_text = f"**MAINFRAME v9.0**\nOXYGEN: {game_data.oxygen}% | FUEL: {game_data.fuel}%"
             else:
-                # Default Mainframe Chat
                 response_text = await tools.ai.generate_response(
                     system_prompt="You are the Ship Computer. You are cold and cynical.",
                     conversation_id=f"{generic_state['id']}_mainframe",
@@ -128,7 +127,6 @@ class FosterProtocol:
 
         elif is_nanny:
             # Bot Logic
-            # Find the user's bot
             my_bot = None
             for b in game_data.bots.values():
                 if b.foster_id == user_id:
@@ -146,7 +144,6 @@ class FosterProtocol:
                 response_text = "ERROR: No Unit bonded to this terminal."
 
         else:
-            # Fallback (Lobby or unknown)
             response_text = "Transmission unclear."
 
         # Save State

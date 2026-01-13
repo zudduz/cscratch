@@ -81,7 +81,7 @@ class LobbyView(discord.ui.View):
             if isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator:
                 warning = (
                     f"⚠️ **FAIR PLAY ALERT:** {interaction.user.mention} has **Administrator Privileges**.\n"
-                    "This allows them to see **ALL** private channels (Nanny Ports).\n"
+                    "This allows them to see **ALL** private channels.\n"
                     "*The Protocol relies on trust. Please ensure this user agrees to ignore channels not assigned to them.*"
                 )
                 await interaction.channel.send(warning)

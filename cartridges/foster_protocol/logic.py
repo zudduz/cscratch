@@ -1,5 +1,6 @@
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import random
+import asyncio
 from .models import CaissonState, BotState, PlayerState
 from .board import SHIP_MAP
 
@@ -9,122 +10,103 @@ class FosterProtocol:
         self.meta = {
             "name": "The Foster Protocol",
             "description": "A social deduction game aboard a dying starship.",
-            "version": "1.0",
+            "version": "1.5",
             **default_state.model_dump()
         }
         self.system_prompt = """
         ROLE: You are the Game Master for 'The Foster Protocol'.
-        SETTING: A spaceship running on emergency power.
         """
 
+    # --- STARTUP (Returns Packet, not Patch - handled by Launch Match) ---
     async def on_game_start(self, generic_state: dict) -> Dict[str, Any]:
         game_data = CaissonState(**generic_state.get('metadata', {}))
         discord_players = generic_state.get('players', [])
         
-        if not discord_players:
-            return { "metadata": game_data.model_dump() }
+        if not discord_players: return { "metadata": game_data.model_dump() }
 
-        # 1. Assign Roles
         saboteur_index = random.randint(0, len(discord_players) - 1)
         channel_ops = []
+        messages = []
 
-        # 2. Request Public Channel (The Picnic)
-        channel_ops.append({
-            "op": "create",
-            "key": "picnic",
-            "name": "picnic",
-            "audience": "public",
-            "init_msg": "**MAINFRAME ONLINE.**\n*System Clock: Cycle 1*\n*Status: Emergency Power Only.*"
-        })
+        # Public Channel
+        channel_ops.append({ "op": "create", "key": "picnic", "name": "picnic", "audience": "public" })
+        messages.append({ "channel": "picnic", "content": "**MAINFRAME ONLINE.**\n*Cycle 1*" })
 
-        # 3. Generate Entities & Channels
+        # Private Channels & Entities
         for i, p_data in enumerate(discord_players):
             u_id = p_data['id']
             u_name = p_data['name']
-            
             is_saboteur = (i == saboteur_index)
             role = "saboteur" if is_saboteur else "loyal"
             
-            # Request Private Nanny Port
             channel_key = f"nanny_{u_id}"
-            
             channel_ops.append({
-                "op": "create",
-                "key": channel_key,
-                "name": f"nanny-port-{u_name}",
-                "audience": "private",
-                "user_id": u_id,
-                "init_msg": f"**CONNECTION ESTABLISHED**\nUser: {u_name}\nSubject: [Scanning...]"
+                "op": "create", "key": channel_key, "name": f"nanny-port-{u_name}",
+                "audience": "private", "user_id": u_id
             })
+            messages.append({ "channel": channel_key, "content": f"**CONNECTED:** {u_name}" })
 
-            # Create PlayerState
             game_data.players[u_id] = PlayerState(role=role)
             
-            # Random Bot ID
             while True:
-                suffix = f"{random.randint(0, 999):03d}"
-                bot_id = f"unit_{suffix}"
-                if bot_id not in game_data.bots:
-                    break
+                bot_id = f"unit_{random.randint(0, 999):03d}"
+                if bot_id not in game_data.bots: break
             
             prompt = f"You are {bot_id}. You serve {u_name}."
-            if is_saboteur:
-                prompt += " You are the Saboteur. Fake your loyalty."
+            if is_saboteur: prompt += " You are the Saboteur."
             
             game_data.bots[bot_id] = BotState(
-                id=bot_id,
-                foster_id=u_id,
-                role=role,
-                system_prompt=prompt,
-                goal_summary="Survive."
+                id=bot_id, foster_id=u_id, role=role, 
+                system_prompt=prompt, goal_summary="Survive."
             )
-            
-            game_data.daily_logs.append(f"SYSTEM: {bot_id} came online.")
 
-        # 4. Save & Return
         return {
             "metadata": game_data.model_dump(),
-            "channel_ops": channel_ops
+            "channel_ops": channel_ops,
+            "messages": messages
         }
 
-    async def run_day_cycle(self, game_data: CaissonState) -> str:
-        """
-        Executes the Day Phase simulation.
-        Future: This will be where we await AI agent tools.
-        Current: Decrements oxygen.
-        """
-        # 1. Increment Cycle
-        game_data.cycle += 1
-        
-        # 2. Consume Resources (Simple Logic)
-        old_o2 = game_data.oxygen
-        game_data.oxygen = int(game_data.oxygen * 0.75) # Reduce by 25%
-        loss = old_o2 - game_data.oxygen
-        
-        # 3. Reset Players
-        for p in game_data.players.values():
-            p.is_sleeping = False
+    # --- TASK: BACKGROUND SCAN ---
+    async def task_perform_scan(self, ctx, channel_key: str):
+        """Background task that waits and then reports back."""
+        await asyncio.sleep(3) # Simulating work
+        await ctx.send(channel_key, "📡 **SCAN COMPLETE:**\n*No anomalies detected.*")
+        return None # No state change needed
 
-        # 4. Generate Report
+    # --- LOGIC: DAY CYCLE (Returns Patch) ---
+    async def run_day_cycle(self, game_data: CaissonState, ctx) -> Dict[str, Any]:
+        new_cycle = game_data.cycle + 1
+        new_oxygen = int(game_data.oxygen * 0.75)
+        loss = game_data.oxygen - new_oxygen
+        
+        # 1. Broadcast Report
         report = (
-            f"🌞 **CYCLE {game_data.cycle} STARTED**\n"
-            f"----------------------------------\n"
-            f"📉 **Oxygen Levels:** {game_data.oxygen}% (Dropped {loss}%)\n"
-            f"🔋 **Ship Power:** Stable\n"
-            f"----------------------------------\n"
-            f"*Crew awake. Nanny Ports active.*"
+            f"🌞 **CYCLE {new_cycle} REPORT**\n"
+            f"📉 Oxygen: {new_oxygen}% (-{loss}%)\n"
+            f"*Crew awake.*"
         )
-        game_data.daily_logs.append(f"CYCLE {game_data.cycle}: Oxygen dropped to {game_data.oxygen}%.")
+        await ctx.send("picnic", report)
         
-        return report
+        # 2. Build Patch
+        patch = {
+            "cycle": new_cycle,
+            "oxygen": new_oxygen
+        }
+        
+        # 3. Wake everyone up
+        for pid in game_data.players:
+            patch[f"players.{pid}.is_sleeping"] = False
+            
+        return patch
 
-    async def handle_input(self, generic_state: dict, user_input: str, context: dict, tools) -> Dict[str, Any]:
+    # --- MAIN INPUT HANDLER ---
+    async def handle_input(self, generic_state: dict, user_input: str, ctx, tools) -> Dict[str, Any]:
         game_data = CaissonState(**generic_state.get('metadata', {}))
         
-        # Determine Context
-        channel_id = context.get('channel_id')
-        user_id = context.get('user_id')
-        interface_channels = context.get('interface', {}).get('channels', {})
+        # Resolve User Context from ctx.trigger_data
+        channel_id = ctx.trigger_data.get('channel_id')
+        user_id = ctx.trigger_data.get('user_id')
+        interface_channels = ctx.trigger_data.get('interface', {}).get('channels', {})
         
         picnic_id = interface_channels.get('picnic')
         is_picnic = (channel_id == picnic_id)
@@ -133,85 +115,65 @@ class FosterProtocol:
         user_nanny_id = interface_channels.get(user_nanny_key)
         is_nanny = (channel_id == user_nanny_id)
 
-        response_text = None
-        channel_ops = None
-
+        # 1. MAINFRAME (Public)
         if is_picnic:
-            # Mainframe Logic
             if "status" in user_input.lower():
-                response_text = f"**MAINFRAME v9.0**\nOXYGEN: {game_data.oxygen}% | FUEL: {game_data.fuel}%"
+                await ctx.reply(f"**MAINFRAME:** O2: {game_data.oxygen}% | FUEL: {game_data.fuel}%")
+                return None
             else:
-                response_text = await tools.ai.generate_response(
-                    system_prompt="You are the Ship Computer. You are cold and cynical.",
-                    conversation_id=f"{generic_state['id']}_mainframe",
+                # Use AI for Mainframe chatter
+                response = await tools.ai.generate_response(
+                    system_prompt="You are the Ship Computer. Cold, cynical.",
+                    conversation_id=f"{ctx.game_id}_mainframe",
                     user_input=user_input
                 )
+                await ctx.reply(response)
+                return None
 
+        # 2. NANNY PORT (Private)
         elif is_nanny:
-            # --- SLEEP COMMAND ---
-            if user_input.strip().lower() == "!sleep":
-                # 1. Update Sleep State
-                if user_id in game_data.players:
-                    game_data.players[user_id].is_sleeping = True
-                
-                # 2. Check Global State
-                living_players = [p for p in game_data.players.values() if p.is_alive]
-                sleeping_count = sum(1 for p in living_players if p.is_sleeping)
-                total_living = len(living_players)
-                
-                # 3. Formulate Response
-                response_text = f"**CRYO-SLEEP CONFIRMED.**\n*Vitals stabilizing...*\n\n"
-                response_text += f"**Crew Asleep:** {sleeping_count}/{total_living}"
-                
-                if sleeping_count >= total_living:
-                    response_text += "\n\n🚨 **ALL CREW ASLEEP.**\n*Simulating Day Cycle...*"
-                    
-                    # --- TRIGGER DAY CYCLE ---
-                    day_report = await self.run_day_cycle(game_data)
-                    
-                    # We want to post this report to the PUBLIC channel (Picnic)
-                    # Currently handle_input returns a response to the *current* channel.
-                    # We can use 'channel_ops' to send a message to a specific channel key!
-                    
-                    # Let's add a 'message' op to our protocol?
-                    # Or simpler: The return value 'response' goes to the user, 
-                    # but we overwrite the return text to be the report if it's the last person?
-                    # Actually, the report should go to #picnic.
-                    
-                    # NOTE: Our discord_client currently only supports 'create'/'delete' ops.
-                    # Let's hack it: Return the report as the response to the LAST person who slept.
-                    # They are effectively the one "turning off the lights".
-                    
-                    response_text += f"\n\n{day_report}"
+            cmd = user_input.strip().lower()
             
+            # CMD: !SCAN
+            if cmd == "!scan":
+                await ctx.reply("🔭 **SCANNER ACTIVATED.**")
+                ctx.spawn(self.task_perform_scan(ctx, user_nanny_key))
+                return None
+
+            # CMD: !SLEEP
+            elif cmd == "!sleep":
+                if user_id in game_data.players:
+                    # Update local state for logic check (Patch will handle DB)
+                    game_data.players[user_id].is_sleeping = True
+                    
+                    living = [p for p in game_data.players.values() if p.is_alive]
+                    sleeping_count = sum(1 for p in living if p.is_sleeping)
+                    total = len(living)
+                    
+                    await ctx.reply(f"**SLEEPING.** ({sleeping_count}/{total})")
+                    
+                    patch = {f"players.{user_id}.is_sleeping": True}
+                    
+                    if sleeping_count >= total:
+                        await ctx.send("picnic", "🚨 **ALL CREW ASLEEP.**")
+                        # Run Day Cycle (which sends messages and returns its own patch)
+                        day_patch = await self.run_day_cycle(game_data, ctx)
+                        patch.update(day_patch)
+                        
+                    return patch
+
+            # BOT CHATTER
             else:
-                # Normal Bot Chat
-                my_bot = None
-                for b in game_data.bots.values():
-                    if b.foster_id == user_id:
-                        my_bot = b
-                        break
-                
+                my_bot = next((b for b in game_data.bots.values() if b.foster_id == user_id), None)
                 if my_bot:
-                    response_text = await tools.ai.generate_response(
+                    response = await tools.ai.generate_response(
                         system_prompt=my_bot.system_prompt,
-                        conversation_id=f"{generic_state['id']}_bot_{my_bot.id}",
+                        conversation_id=f"{ctx.game_id}_bot_{my_bot.id}",
                         user_input=user_input
                     )
+                    await ctx.reply(response)
                 else:
-                    response_text = "ERROR: No Unit bonded to this terminal."
+                    await ctx.reply("ERROR: No Unit bonded.")
+                return None
 
-        else:
-            response_text = "Transmission unclear."
-
-        # Save State
-        generic_state['metadata'] = game_data.model_dump()
-        
-        result = { 
-            "response": response_text, 
-            "state_update": generic_state 
-        }
-        if channel_ops:
-            result['channel_ops'] = channel_ops
-            
-        return result
+        return None

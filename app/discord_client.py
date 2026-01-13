@@ -71,22 +71,28 @@ class LobbyView(discord.ui.View):
 
     @discord.ui.button(label="Join Game", style=discord.ButtonStyle.green, custom_id="join_btn")
     async def join_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await game_engine.join_game(self.game_id, str(interaction.user.id), interaction.user.name)
-        
-        # Standard Confirmation
-        await interaction.response.send_message(f"✅ **{interaction.user.name}** joined the squad!", ephemeral=False)
+        # 1. Defer immediately to prevent Timeout (Unknown Interaction)
+        await interaction.response.defer(ephemeral=False)
 
-        # ADMIN CHECK
-        # If the user has 'Administrator' permission, they can bypass channel privacy.
-        # We warn the lobby so the players can decide if they trust them.
-        if isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator:
-            warning = (
-                f"⚠️ **FAIR PLAY ALERT:** {interaction.user.mention} has **Administrator Privileges**.\n"
-                "This allows them to see **ALL** private channels (Nanny Ports).\n"
-                "*The Protocol relies on trust. Please ensure this user agrees to ignore channels not assigned to them.*"
-            )
-            # Send to the channel so everyone sees it
-            await interaction.channel.send(warning)
+        try:
+            # 2. Logic (DB Operations)
+            await game_engine.join_game(self.game_id, str(interaction.user.id), interaction.user.name)
+            
+            # 3. Followup (Uses Webhook, no 3s limit)
+            await interaction.followup.send(f"✅ **{interaction.user.name}** joined the squad!")
+
+            # 4. Admin Check
+            if isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator:
+                warning = (
+                    f"⚠️ **FAIR PLAY ALERT:** {interaction.user.mention} has **Administrator Privileges**.\n"
+                    "This allows them to see **ALL** private channels (Nanny Ports).\n"
+                    "*The Protocol relies on trust. Please ensure this user agrees to ignore channels not assigned to them.*"
+                )
+                await interaction.channel.send(warning)
+        
+        except Exception as e:
+            logging.error(f"Join Error: {e}")
+            await interaction.followup.send(f"❌ Failed to join: {str(e)}", ephemeral=True)
 
     @discord.ui.button(label="Start Match", style=discord.ButtonStyle.danger, custom_id="start_btn")
     async def start_button(self, interaction: discord.Interaction, button: discord.ui.Button):

@@ -21,7 +21,7 @@ class GameEngine:
         self.locks = defaultdict(asyncio.Lock)
         self.interfaces = []
         self.running = False
-        self.cron_task = None # Track the loop task
+        self.cron_task = None
 
     async def start(self):
         if self.running: return
@@ -30,7 +30,6 @@ class GameEngine:
         self.cron_task = asyncio.create_task(self._cron_loop())
 
     def stop(self):
-        """Signal the engine to shut down immediately."""
         self.running = False
         if self.cron_task:
             logging.info("System: Cancelling Cron Loop...")
@@ -113,6 +112,7 @@ class GameEngine:
                 game_id=game.id,
                 _dispatcher=self._dispatch_message_to_interfaces,
                 _scheduler=self._schedule_background_task,
+                _ender=self.end_game, # Pass end_game method
                 trigger_data=trigger_data
             )
 
@@ -178,10 +178,8 @@ class GameEngine:
         try:
             while self.running:
                 await asyncio.sleep(60)
-                # Heartbeat logic here
         except asyncio.CancelledError:
-            logging.info("System: Cron Loop Cancelled.")
-            raise
+            pass
 
 class Toolbox:
     def __init__(self, ai_tool):

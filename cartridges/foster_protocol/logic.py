@@ -17,7 +17,6 @@ class FosterProtocol:
         ROLE: You are the Game Master for 'The Foster Protocol'.
         """
 
-    # --- STARTUP ---
     async def on_game_start(self, generic_state: dict) -> Dict[str, Any]:
         game_data = CaissonState(**generic_state.get('metadata', {}))
         discord_players = generic_state.get('players', [])
@@ -28,11 +27,9 @@ class FosterProtocol:
         channel_ops = []
         messages = []
 
-        # Public Channel
         channel_ops.append({ "op": "create", "key": "picnic", "name": "picnic", "audience": "public" })
         messages.append({ "channel": "picnic", "content": "**MAINFRAME ONLINE.**\n*Cycle 1*" })
 
-        # Private Channels & Entities
         for i, p_data in enumerate(discord_players):
             u_id = p_data['id']
             u_name = p_data['name']
@@ -66,46 +63,40 @@ class FosterProtocol:
             "messages": messages
         }
 
-    # --- TASK: BACKGROUND SCAN ---
     async def task_perform_scan(self, ctx, channel_key: str):
-        """Background task that waits and then reports back."""
-        await asyncio.sleep(3) # Simulating work
+        await asyncio.sleep(3)
         await ctx.send(channel_key, "📡 **SCAN COMPLETE:**\n*No anomalies detected.*")
         return None 
 
-    # --- LOGIC: DAY CYCLE ---
     async def run_day_cycle(self, game_data: CaissonState, ctx) -> Dict[str, Any]:
         new_cycle = game_data.cycle + 1
-        
-        # LOGIC CHANGE: Flat -25
-        # We ensure it doesn't drop below 0
         new_oxygen = max(0, game_data.oxygen - 25)
         loss = game_data.oxygen - new_oxygen
         
-        # 1. Broadcast Report
         report = (
             f"🌞 **CYCLE {new_cycle} REPORT**\n"
             f"📉 Oxygen: {new_oxygen}% (-{loss})\n"
             f"*Crew awake.*"
         )
-        if new_oxygen <= 0:
-            report += "\n💀 **CRITICAL FAILURE:** Life Support Offline."
-
-        await ctx.send("picnic", report)
         
-        # 2. Build Patch
         patch = {
             "cycle": new_cycle,
             "oxygen": new_oxygen
         }
         
-        # 3. Wake everyone up
         for pid in game_data.players:
             patch[f"players.{pid}.is_sleeping"] = False
             
+        # GAME OVER CHECK
+        if new_oxygen <= 0:
+            report += "\n\n💀 **CRITICAL FAILURE: LIFE SUPPORT OFFLINE.**\n*The simulation has ended.*"
+            await ctx.send("picnic", report)
+            await ctx.end() # Freezes the game
+        else:
+            await ctx.send("picnic", report)
+
         return patch
 
-    # --- MAIN INPUT HANDLER ---
     async def handle_input(self, generic_state: dict, user_input: str, ctx, tools) -> Dict[str, Any]:
         game_data = CaissonState(**generic_state.get('metadata', {}))
         
@@ -120,7 +111,6 @@ class FosterProtocol:
         user_nanny_id = interface_channels.get(user_nanny_key)
         is_nanny = (channel_id == user_nanny_id)
 
-        # 1. MAINFRAME (Public)
         if is_picnic:
             if "status" in user_input.lower():
                 await ctx.reply(f"**MAINFRAME:** O2: {game_data.oxygen}% | FUEL: {game_data.fuel}%")
@@ -134,38 +124,30 @@ class FosterProtocol:
                 await ctx.reply(response)
                 return None
 
-        # 2. NANNY PORT (Private)
         elif is_nanny:
             cmd = user_input.strip().lower()
             
-            # CMD: !SCAN
             if cmd == "!scan":
                 await ctx.reply("🔭 **SCANNER ACTIVATED.**")
                 ctx.spawn(self.task_perform_scan(ctx, user_nanny_key))
                 return None
 
-            # CMD: !SLEEP
             elif cmd == "!sleep":
                 if user_id in game_data.players:
                     game_data.players[user_id].is_sleeping = True
-                    
                     living = [p for p in game_data.players.values() if p.is_alive]
                     sleeping_count = sum(1 for p in living if p.is_sleeping)
                     total = len(living)
                     
                     await ctx.reply(f"**SLEEPING.** ({sleeping_count}/{total})")
-                    
                     patch = {f"players.{user_id}.is_sleeping": True}
                     
                     if sleeping_count >= total:
                         await ctx.send("picnic", "🚨 **ALL CREW ASLEEP.**")
-                        # Run Day Cycle
                         day_patch = await self.run_day_cycle(game_data, ctx)
                         patch.update(day_patch)
-                        
                     return patch
 
-            # BOT CHATTER
             else:
                 my_bot = next((b for b in game_data.bots.values() if b.foster_id == user_id), None)
                 if my_bot:

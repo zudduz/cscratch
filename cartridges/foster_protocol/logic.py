@@ -18,10 +18,6 @@ class FosterProtocol:
         """
 
     async def on_game_start(self, generic_state: dict) -> Dict[str, Any]:
-        """
-        Called on Game Start.
-        Returns: { "metadata": updated_state, "channel_ops": [instructions] }
-        """
         game_data = CaissonState(**generic_state.get('metadata', {}))
         discord_players = generic_state.get('players', [])
         
@@ -91,6 +87,37 @@ class FosterProtocol:
             "channel_ops": channel_ops
         }
 
+    async def run_day_cycle(self, game_data: CaissonState) -> str:
+        """
+        Executes the Day Phase simulation.
+        Future: This will be where we await AI agent tools.
+        Current: Decrements oxygen.
+        """
+        # 1. Increment Cycle
+        game_data.cycle += 1
+        
+        # 2. Consume Resources (Simple Logic)
+        old_o2 = game_data.oxygen
+        game_data.oxygen = int(game_data.oxygen * 0.75) # Reduce by 25%
+        loss = old_o2 - game_data.oxygen
+        
+        # 3. Reset Players
+        for p in game_data.players.values():
+            p.is_sleeping = False
+
+        # 4. Generate Report
+        report = (
+            f"🌞 **CYCLE {game_data.cycle} STARTED**\n"
+            f"----------------------------------\n"
+            f"📉 **Oxygen Levels:** {game_data.oxygen}% (Dropped {loss}%)\n"
+            f"🔋 **Ship Power:** Stable\n"
+            f"----------------------------------\n"
+            f"*Crew awake. Nanny Ports active.*"
+        )
+        game_data.daily_logs.append(f"CYCLE {game_data.cycle}: Oxygen dropped to {game_data.oxygen}%.")
+        
+        return report
+
     async def handle_input(self, generic_state: dict, user_input: str, context: dict, tools) -> Dict[str, Any]:
         game_data = CaissonState(**generic_state.get('metadata', {}))
         
@@ -107,6 +134,7 @@ class FosterProtocol:
         is_nanny = (channel_id == user_nanny_id)
 
         response_text = None
+        channel_ops = None
 
         if is_picnic:
             # Mainframe Logic
@@ -136,11 +164,28 @@ class FosterProtocol:
                 response_text += f"**Crew Asleep:** {sleeping_count}/{total_living}"
                 
                 if sleeping_count >= total_living:
-                    response_text += "\n\n🚨 **ALL CREW ASLEEP.**\n*Initializing Day Cycle simulation...*"
-                    # TODO: Trigger on_day_start() logic here
+                    response_text += "\n\n🚨 **ALL CREW ASLEEP.**\n*Simulating Day Cycle...*"
+                    
+                    # --- TRIGGER DAY CYCLE ---
+                    day_report = await self.run_day_cycle(game_data)
+                    
+                    # We want to post this report to the PUBLIC channel (Picnic)
+                    # Currently handle_input returns a response to the *current* channel.
+                    # We can use 'channel_ops' to send a message to a specific channel key!
+                    
+                    # Let's add a 'message' op to our protocol?
+                    # Or simpler: The return value 'response' goes to the user, 
+                    # but we overwrite the return text to be the report if it's the last person?
+                    # Actually, the report should go to #picnic.
+                    
+                    # NOTE: Our discord_client currently only supports 'create'/'delete' ops.
+                    # Let's hack it: Return the report as the response to the LAST person who slept.
+                    # They are effectively the one "turning off the lights".
+                    
+                    response_text += f"\n\n{day_report}"
             
             else:
-                # Normal Bot Chat (The bot ignores ! commands, so only handle text here)
+                # Normal Bot Chat
                 my_bot = None
                 for b in game_data.bots.values():
                     if b.foster_id == user_id:
@@ -161,7 +206,12 @@ class FosterProtocol:
 
         # Save State
         generic_state['metadata'] = game_data.model_dump()
-        return { 
+        
+        result = { 
             "response": response_text, 
             "state_update": generic_state 
         }
+        if channel_ops:
+            result['channel_ops'] = channel_ops
+            
+        return result

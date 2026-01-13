@@ -2,7 +2,7 @@ import uuid
 import logging
 import asyncio
 import datetime
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from collections import defaultdict
 
 from . import persistence
@@ -30,19 +30,67 @@ class GameEngine:
     async def register_interface(self, interface):
         self.interfaces.append(interface)
 
-    async def dispatch_immediate_result(self, game_id: str, result: dict):
-        msgs = result.get('messages', [])
-        if msgs:
-            for msg in msgs:
-                await self._dispatch_message_to_interfaces(game_id, msg.get('channel'), msg.get('content'))
+    # --- LIFECYCLE METHODS ---
 
-    # --- 1. CORE INPUT LOOP ---
+    async def start_new_game(self, story_id: str, host_id: str, host_name: str) -> str:
+        game_id = str(uuid.uuid4())[:8]
+        cartridge = await self._load_cartridge(story_id)
+        
+        logging.info(f"Game Engine: Creating Lobby for {game_id} (Host: {host_name})")
+        
+        new_game = GameState(
+            id=game_id,
+            story_id=story_id,
+            host_id=host_id,
+            status="setup",
+            created_at=datetime.datetime.now(datetime.timezone.utc),
+            metadata=cartridge.meta
+        )
+        
+        await persistence.db.create_game_record(new_game)
+        await self.join_game(game_id, host_id, host_name)
+        return game_id
+
+    async def join_game(self, game_id: str, user_id: str, user_name: str):
+        game = await persistence.db.get_game_by_id(game_id)
+        if game:
+            for p in game.players:
+                if p.id == user_id: return
+        player = Player(id=user_id, name=user_name, joined_at=str(uuid.uuid1()))
+        await persistence.db.add_player_to_game(game_id, player)
+
+    async def register_interface_data(self, game_id: str, interface_data: dict):
+        interface = GameInterface(**interface_data)
+        await persistence.db.update_game_interface(game_id, interface)
+
+    async def launch_match(self, game_id: str) -> dict:
+        game = await persistence.db.get_game_by_id(game_id)
+        if not game: return None
+
+        cartridge = await self._load_cartridge(game.story_id)
+        result = {}
+        
+        if hasattr(cartridge, 'on_game_start'):
+            result = await cartridge.on_game_start(game.model_dump())
+            if 'metadata' in result:
+                 await persistence.db.update_game_metadata(game_id, result['metadata'])
+
+        await persistence.db.set_game_active(game_id)
+        return result
+
+    async def find_game_by_channel(self, channel_id: str) -> GameState | None:
+        return await persistence.db.get_game_by_channel_id(channel_id)
+
+    async def end_game(self, game_id: str):
+        await persistence.db.mark_game_ended(game_id)
+
+    # --- CORE INPUT LOOP ---
+
     async def dispatch_input(self, channel_id: str, user_id: str, user_name: str, user_input: str):
         game = await persistence.db.get_game_by_channel_id(channel_id)
         if not game or game.status != 'active': return
 
         async with self.locks[game.id]:
-            # Refresh state inside lock
             game = await persistence.db.get_game_by_id(game.id)
             
             trigger_data = {
@@ -61,7 +109,6 @@ class GameEngine:
 
             cartridge = await self._load_cartridge(game.story_id)
             
-            # PASS THE CTX TO THE CARTRIDGE
             patch = await cartridge.handle_input(
                 game.model_dump(), 
                 user_input, 
@@ -72,7 +119,14 @@ class GameEngine:
             if patch:
                 await self._apply_state_patch(game.id, patch)
 
-    # --- 2. BACKGROUND TASKS ---
+    async def dispatch_immediate_result(self, game_id: str, result: dict):
+        msgs = result.get('messages', [])
+        if msgs:
+            for msg in msgs:
+                await self._dispatch_message_to_interfaces(game_id, msg.get('channel'), msg.get('content'))
+
+    # --- INTERNAL HELPERS ---
+
     def _schedule_background_task(self, game_id: str, coro: Any):
         asyncio.create_task(self._run_task_safely(game_id, coro))
 
@@ -85,14 +139,12 @@ class GameEngine:
         except Exception as e:
             logging.error(f"Background Task Error (Game {game_id}): {e}")
 
-    # --- 3. STATE ---
     async def _apply_state_patch(self, game_id: str, patch: Dict[str, Any]):
         try:
             await persistence.db.update_game_metadata_fields(game_id, patch)
         except Exception as e:
             logging.error(f"State Patch Failed: {e}")
 
-    # --- 4. OUTPUT ---
     async def _dispatch_message_to_interfaces(self, game_id: str, channel_key: str, text: str):
         game = await persistence.db.get_game_by_id(game_id)
         if not game: return

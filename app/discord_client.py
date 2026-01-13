@@ -9,21 +9,15 @@ from . import persistence
 
 # --- HELPER: SAFE DEFER ---
 async def safe_defer(interaction: discord.Interaction, ephemeral: bool = False) -> bool:
-    """
-    Tries to defer the interaction. 
-    Returns True if successful (we are the 'winner' instance).
-    Returns False if already acknowledged (we are the 'loser' instance).
-    """
     try:
         await interaction.response.defer(ephemeral=ephemeral)
         return True
     except discord.HTTPException as e:
         if e.code == 40060: # Interaction already acknowledged
-            logging.warning(f"Race Condition: Interaction {interaction.id} handled by another bot instance. Aborting.")
+            logging.warning(f"Race Condition: Interaction {interaction.id} handled by another bot instance.")
             return False
         raise e
     except discord.InteractionResponded:
-        logging.warning(f"Race Condition: Interaction {interaction.id} already responded locally.")
         return False
 
 # --- THE DUMB TERMINAL ---
@@ -136,7 +130,8 @@ class LobbyView(discord.ui.View):
         if not await safe_defer(interaction): return
 
         try:
-            await game_engine.join_game(self.game_id, str(interaction.user.id), interaction.user.name)
+            # CALL THE ENGINE INSTANCE
+            await game_engine.engine.join_game(self.game_id, str(interaction.user.id), interaction.user.name)
             await interaction.followup.send(f"✅ **{interaction.user.name}** joined the squad!")
 
             if isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator:
@@ -154,6 +149,7 @@ class LobbyView(discord.ui.View):
     async def start_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await safe_defer(interaction): return
 
+        # CALL THE ENGINE INSTANCE
         game = await persistence.db.get_game_by_id(self.game_id)
         if not game:
             await interaction.followup.send("❌ Game not found.")
@@ -163,7 +159,8 @@ class LobbyView(discord.ui.View):
             await interaction.followup.send(f"⛔ **Access Denied.** Only the Host (<@{game.host_id}>) can start the simulation.")
             return
         
-        result = await game_engine.launch_match(self.game_id)
+        # CALL THE ENGINE INSTANCE
+        result = await game_engine.engine.launch_match(self.game_id)
         if not result:
              await interaction.followup.send("Error: Launch failed.")
              return
@@ -188,7 +185,8 @@ async def start(interaction: discord.Interaction, cartridge: str = "foster-proto
     if not await safe_defer(interaction): return
 
     try:
-        game_id = await game_engine.start_new_game(
+        # CALL THE ENGINE INSTANCE
+        game_id = await game_engine.engine.start_new_game(
             story_id=cartridge,
             host_id=str(interaction.user.id),
             host_name=interaction.user.name
@@ -198,7 +196,8 @@ async def start(interaction: discord.Interaction, cartridge: str = "foster-proto
         category = await guild.create_category(f"Lobby {game_id}")
         channel = await guild.create_text_channel("cscratch-lobby", category=category)
         
-        await game_engine.register_interface(game_id, {
+        # Register basic interface info - Engine call
+        await game_engine.engine.register_interface_data(game_id, {
             "type": "discord",
             "guild_id": str(guild.id),
             "category_id": str(category.id),
@@ -223,7 +222,8 @@ async def start(interaction: discord.Interaction, cartridge: str = "foster-proto
 async def end(interaction: discord.Interaction):
     if not await safe_defer(interaction): return
 
-    game = await game_engine.find_game_by_channel(interaction.channel_id)
+    # CALL THE ENGINE INSTANCE
+    game = await game_engine.engine.find_game_by_channel(interaction.channel_id)
     if not game:
         await interaction.followup.send("⚠️ No active game here.")
         return
@@ -251,7 +251,8 @@ async def end(interaction: discord.Interaction):
             except Exception:
                 pass
         
-        await game_engine.end_game(game.id)
+        # CALL THE ENGINE INSTANCE
+        await game_engine.engine.end_game(game.id)
         
     except Exception as e:
         logging.error(f"Error in /cscratch end: {e}")
@@ -264,6 +265,7 @@ async def on_message(message):
 
     try:
         async with message.channel.typing():
+            # CALL THE ENGINE INSTANCE
             await game_engine.engine.dispatch_input(
                 channel_id=str(message.channel.id),
                 user_id=str(message.author.id),

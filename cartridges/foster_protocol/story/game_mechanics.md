@@ -11,15 +11,16 @@ The game operates on a **24-Hour Orbital Cycle**. The engine processes the "Day"
 | **Night (The Dock)** | Configurable | Orphans return to Nanny Ports. The "Translation Layer" activates. Fosters review the **Mainframe Logs** and their Orphan's verbal report. |
 
 ## 2. Resource Meters
-* **Oxygen:** Exists **ONLY** within the Cryo Pods. Decrements daily based on crew count.
+* **Oxygen:** (Shipwide) Exists **ONLY** within the Cryo Pods. Decrements daily based on crew count.
     * *Constraint:* **Lose Condition at 0%.**
-* **Fuel:** Increments via delivery to the Engine Room.
+* **Fuel:** (Shipwide) Increments via delivery to the Engine Room.
     * *Constraint:* **Win Condition at 100%.**
-* **Battery:** Each bot has its own battery meter. Decrements per Action Point (AP) and based on how strenuous the bot's action was.
+* **Battery:** (Per Bot) Each bot has its own battery meter. Decrements per Action Point (AP) and based on how strenuous the bot's action was.
     * *Constraint:* Bots go **Offline** at 0%. An offline bot must be **Towed** to be reactivated.
+* **Action Points:** (Per Bot) A bot is set to the maximum of 10 points every day cycle by the game. If a bot runs out of action points before reaching the cryobay they are unavailable for talking to their foster.
 
 ## 3. The Map (Graph Nodes)
-The ship is a vacuum. Only the Cryo Bay has atmosphere.
+The ship is a vacuum. Only the Cryo pods have Oxygen.
 
 1.  **Cryo Bay:**
     * *Features:* **Nanny Ports**.

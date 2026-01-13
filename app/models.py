@@ -10,8 +10,20 @@ class Player(BaseModel):
 class GameInterface(BaseModel):
     type: str = "discord"
     guild_id: Optional[str] = None
-    channel_id: Optional[str] = None
     category_id: Optional[str] = None
+    
+    # NEW: Multi-channel support
+    # The primary channel (e.g. #picnic)
+    main_channel_id: Optional[str] = None 
+    
+    # Map of logical names to IDs: {'picnic': '123', 'nanny_userA': '456'}
+    channels: Dict[str, str] = Field(default_factory=dict)
+    
+    # Flattened list of ALL IDs for Firestore 'array-contains' queries
+    listener_ids: List[str] = Field(default_factory=list)
+    
+    # Legacy field (optional, for backward compatibility during migration)
+    channel_id: Optional[str] = None
 
 class GameState(BaseModel):
     id: str
@@ -26,5 +38,4 @@ class GameState(BaseModel):
     schema_version: int = 2
 
     class Config:
-        # Allows populating by field name (useful for Firestore)
         populate_by_name = True

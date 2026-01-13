@@ -13,6 +13,7 @@ class PlayerState(BaseModel):
     location_id: str = "cryo_bay"
     
     # NEW: The specific Discord Channel ID for this player's Nanny Port
+    # The Cartridge uses this to route private messages to the player.
     nanny_channel_id: Optional[str] = None
 
 # --- THE TOOLS (BOTS) ---

@@ -48,7 +48,6 @@ class GameDatabase:
             logging.error(f"Persistence Error starting game: {e}")
             raise e
 
-    # NEW: Generic Metadata Update
     async def update_game_metadata(self, game_id: str, metadata: dict):
         try:
             await self.client.collection("games").document(game_id).update({
@@ -67,20 +66,30 @@ class GameDatabase:
             logging.error(f"Persistence Error updating interface: {e}")
             raise e
 
+    # --- UPDATED LOOKUP ---
     async def get_game_by_channel_id(self, channel_id: str) -> GameState | None:
         try:
             games_ref = self.client.collection("games")
-            query = games_ref.where("interface.channel_id", "==", str(channel_id)).limit(1)
+            
+            # 1. Try new multi-channel lookup
+            query = games_ref.where("interface.listener_ids", "array_contains", str(channel_id)).limit(1)
             async for doc in query.stream():
                 data = doc.to_dict()
                 data['id'] = doc.id
                 return GameState(**data)
+            
+            # 2. Fallback to legacy single-channel lookup (for old games/lobbies)
+            query_legacy = games_ref.where("interface.channel_id", "==", str(channel_id)).limit(1)
+            async for doc in query_legacy.stream():
+                data = doc.to_dict()
+                data['id'] = doc.id
+                return GameState(**data)
+                
             return None
         except Exception as e:
             logging.error(f"Persistence Error finding game: {e}")
             return None
 
-    # NEW: Get by ID
     async def get_game_by_id(self, game_id: str) -> GameState | None:
         try:
             doc = await self.client.collection("games").document(game_id).get()
@@ -110,9 +119,18 @@ class GameDatabase:
             async for doc in query.stream():
                 data = doc.to_dict()
                 interface = data.get('interface', {})
-                c_id = interface.get('channel_id')
-                if c_id:
-                    active_ids.add(str(c_id))
+                
+                # Collect ALL known channel IDs
+                
+                # 1. Legacy
+                legacy_id = interface.get('channel_id')
+                if legacy_id: active_ids.add(str(legacy_id))
+                
+                # 2. Multi-channel
+                listeners = interface.get('listener_ids', [])
+                for cid in listeners:
+                    active_ids.add(str(cid))
+                    
             return active_ids
         except Exception as e:
             logging.error(f"Persistence Error hydrating cache: {e}")

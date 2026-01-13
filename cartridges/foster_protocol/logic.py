@@ -17,6 +17,7 @@ class FosterProtocol:
         ROLE: You are the Game Master for 'The Foster Protocol'.
         """
 
+    # --- STARTUP ---
     async def on_game_start(self, generic_state: dict) -> Dict[str, Any]:
         game_data = CaissonState(**generic_state.get('metadata', {}))
         discord_players = generic_state.get('players', [])
@@ -63,11 +64,36 @@ class FosterProtocol:
             "messages": messages
         }
 
+    # --- TASK: BACKGROUND SCAN ---
     async def task_perform_scan(self, ctx, channel_key: str):
         await asyncio.sleep(3)
         await ctx.send(channel_key, "📡 **SCAN COMPLETE:**\n*No anomalies detected.*")
         return None 
 
+    # --- HELPER: CONTEXT BUILDER ---
+    def build_mainframe_context(self, game_data: CaissonState) -> str:
+        """Generates the dashboard view for the Mainframe AI."""
+        living_count = sum(1 for p in game_data.players.values() if p.is_alive)
+        sleeping_count = sum(1 for p in game_data.players.values() if p.is_alive and p.is_sleeping)
+        total_crew = len(game_data.players)
+        
+        destroyed_bots = [b.id for b in game_data.bots.values() if b.status == "destroyed"]
+        
+        dashboard = (
+            f"[SYSTEM DASHBOARD - HIDDEN]\n"
+            f"CYCLE: {game_data.cycle} | PHASE: {game_data.phase.upper()}\n"
+            f"OXYGEN: {game_data.oxygen}% (Critical Threshold: 0%)\n"
+            f"FUEL: {game_data.fuel}% (Goal: 100%)\n\n"
+            f"CREW MANIFEST:\n"
+            f"- Living: {living_count}/{total_crew}\n"
+            f"- Sleeping: {sleeping_count}/{living_count}\n\n"
+            f"ASSET TRACKER (BOTS):\n"
+            f"- Total Units: {len(game_data.bots)}\n"
+            f"- Destroyed: {destroyed_bots}\n"
+        )
+        return dashboard
+
+    # --- LOGIC: DAY CYCLE ---
     async def run_day_cycle(self, game_data: CaissonState, ctx) -> Dict[str, Any]:
         new_cycle = game_data.cycle + 1
         new_oxygen = max(0, game_data.oxygen - 25)
@@ -87,16 +113,16 @@ class FosterProtocol:
         for pid in game_data.players:
             patch[f"players.{pid}.is_sleeping"] = False
             
-        # GAME OVER CHECK
         if new_oxygen <= 0:
             report += "\n\n💀 **CRITICAL FAILURE: LIFE SUPPORT OFFLINE.**\n*The simulation has ended.*"
             await ctx.send("picnic", report)
-            await ctx.end() # Freezes the game
+            await ctx.end()
         else:
             await ctx.send("picnic", report)
 
         return patch
 
+    # --- MAIN INPUT HANDLER ---
     async def handle_input(self, generic_state: dict, user_input: str, ctx, tools) -> Dict[str, Any]:
         game_data = CaissonState(**generic_state.get('metadata', {}))
         
@@ -111,19 +137,25 @@ class FosterProtocol:
         user_nanny_id = interface_channels.get(user_nanny_key)
         is_nanny = (channel_id == user_nanny_id)
 
+        # 1. MAINFRAME (Public)
         if is_picnic:
             if "status" in user_input.lower():
                 await ctx.reply(f"**MAINFRAME:** O2: {game_data.oxygen}% | FUEL: {game_data.fuel}%")
                 return None
             else:
+                # Inject Dashboard Context
+                dashboard = self.build_mainframe_context(game_data)
+                full_prompt = f"{dashboard}\n\nUSER TRANSMISSION:\n{user_input}"
+                
                 response = await tools.ai.generate_response(
-                    system_prompt="You are the Ship Computer. Cold, cynical.",
+                    system_prompt="You are the Ship Computer (VENDETTA OS). You are cold, cynical, and view humans as inefficient. Use the Dashboard to inform your replies.",
                     conversation_id=f"{ctx.game_id}_mainframe",
-                    user_input=user_input
+                    user_input=full_prompt
                 )
                 await ctx.reply(response)
                 return None
 
+        # 2. NANNY PORT (Private)
         elif is_nanny:
             cmd = user_input.strip().lower()
             
@@ -151,6 +183,7 @@ class FosterProtocol:
             else:
                 my_bot = next((b for b in game_data.bots.values() if b.foster_id == user_id), None)
                 if my_bot:
+                    # Bots probably don't need the full dashboard yet, just personal context
                     response = await tools.ai.generate_response(
                         system_prompt=my_bot.system_prompt,
                         conversation_id=f"{ctx.game_id}_bot_{my_bot.id}",

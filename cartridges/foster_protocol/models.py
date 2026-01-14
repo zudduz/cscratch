@@ -19,8 +19,11 @@ class BotState(BaseModel):
     id: str                 
     foster_id: Optional[str] = None
     
-    # HARDWARE SPECS (2026 Era)
+    # HARDWARE SPECS
     model_version: str = "gemini-2.5-flash" 
+    
+    # IDENTITY (Fixed: Added field)
+    role: Literal["loyal", "saboteur"] = "loyal"
     
     location_id: str = "cryo_bay"
     battery: int = 100      
@@ -35,7 +38,7 @@ class BotState(BaseModel):
 
 # --- THE WORLD (ROOT) ---
 class CaissonState(BaseModel):
-    version: str = "1.8"
+    version: str = "1.9.1"
     oxygen: int = 100
     last_oxygen_drop: int = 0
     fuel: int = 0

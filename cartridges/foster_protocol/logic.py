@@ -19,7 +19,7 @@ class FosterProtocol:
         self.meta = {
             "name": "The Foster Protocol",
             "description": "A social deduction game aboard a dying starship.",
-            "version": "1.9.1",
+            "version": "1.9.2",
             **default_state.model_dump()
         }
         self.system_prompt = """
@@ -126,29 +126,26 @@ class FosterProtocol:
         await ctx.send(channel_key, "📡 **SCAN COMPLETE:**\n*No anomalies detected.*")
         return None 
 
-    # --- EPILOGUE GENERATION (PARALLELIZED) ---
+    # --- EPILOGUE GENERATION ---
     async def generate_single_epilogue(self, ctx, tools, bot, sys_prompt):
-        """Helper task for parallel execution."""
         try:
             channel_key = f"nanny_{bot.foster_id}"
-            logging.info(f"Epilogue: Generating for {bot.id} ({bot.role}) to {channel_key}...")
-            
+            logging.info(f"Epilogue: Generating for {bot.id} to {channel_key}...")
             response = await tools.ai.generate_response(
                 system_prompt=sys_prompt,
                 conversation_id=f"{ctx.game_id}_bot_{bot.id}",
                 user_input="[SYSTEM NOTICE: OXYGEN DEPLETED. MISSION FAILED. FINAL MESSAGE.]",
                 model_version=bot.model_version
             )
-            
-            logging.info(f"Epilogue: Sending for {bot.id}.")
             await ctx.send(channel_key, response)
         except Exception as e:
             logging.error(f"Epilogue Failed for {bot.id}: {e}")
 
     async def generate_epilogues(self, game_data: CaissonState, ctx, tools):
+        # 1. Find the Saboteur Player
         saboteur_id = next((pid for pid, p in game_data.players.items() if p.role == "saboteur"), None)
-        saboteur_bot = next((b for b in game_data.bots.values() if b.foster_id == saboteur_id), None)
         
+        # 2. Mainframe Report (Updated to shame the player)
         final_report = (
             f"💀 **CRITICAL SYSTEM FAILURE**\n"
             f"----------------------------\n"
@@ -156,11 +153,11 @@ class FosterProtocol:
             f"SURVIVORS: 0\n"
             f"CAUSE: Oxygen Depletion\n\n"
             f"**SECURITY ALERT:** Analysis confirms sabotage.\n"
-            f"The traitor was linked to Unit: **{saboteur_bot.id if saboteur_bot else 'UNKNOWN'}**."
+            f"The traitor was harbored by Foster Parent: <@{saboteur_id}>."
         )
         await ctx.send("aux-comm", final_report)
         
-        # Gather all tasks
+        # 3. Parallel Epilogues
         tasks = []
         for bot in game_data.bots.values():
             if bot.role == "saboteur":
@@ -176,10 +173,8 @@ class FosterProtocol:
                     "You are terrified and sad. Say a heartbreaking goodbye to your Parent. "
                     "Tell them you tried your best. Apologize for failing."
                 )
-            
             tasks.append(self.generate_single_epilogue(ctx, tools, bot, sys_prompt))
         
-        # Execute in parallel
         if tasks:
             await asyncio.gather(*tasks)
 

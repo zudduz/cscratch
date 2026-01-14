@@ -100,21 +100,13 @@ def build_turn_context(bot: BotState, game_data: CaissonState) -> str:
     if bot.role == "saboteur":
         objective = "Waste resources. Hoard fuel. If unobserved, Jolt enemies."
 
-    context = (
-        f"--- TACTICAL LINK ---
-"
-        f"LOCATION: {bot.location_id}
-"
-        f"SELF: Battery {bot.battery}% | Inventory: {bot.inventory}
-"
-        f"VISIBLE: {visible_bots}
-"
-        f"OBJECTIVE: {objective}
-"
-        f"TOOLS: move(room_id), gather(), deposit(), jolt(target_id), tether(target_id), wait()
-"
-        f"VALID ROOMS: cryo_bay, engine_room, shuttle_bay, torpedo_bay, maintenance
-"
-        f"RESPONSE FORMAT: JSON only. Example: {{ "tool": "move", "args": {{ "room_id": "engine_room" }} }}"
-    )
+    # Use Triple Quotes to avoid JSON quoting issues
+    context = f"""--- TACTICAL LINK ---
+LOCATION: {bot.location_id}
+SELF: Battery {bot.battery}% | Inventory: {bot.inventory}
+VISIBLE: {visible_bots}
+OBJECTIVE: {objective}
+TOOLS: move(room_id), gather(), deposit(), jolt(target_id), tether(target_id), wait()
+VALID ROOMS: cryo_bay, engine_room, shuttle_bay, torpedo_bay, maintenance
+RESPONSE FORMAT: JSON only. Example: {{ "tool": "move", "args": {{ "room_id": "engine_room" }} }}"""
     return context

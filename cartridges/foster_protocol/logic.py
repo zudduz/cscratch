@@ -10,7 +10,7 @@ class FosterProtocol:
         self.meta = {
             "name": "The Foster Protocol",
             "description": "A social deduction game aboard a dying starship.",
-            "version": "1.7",
+            "version": "1.8",
             **default_state.model_dump()
         }
         self.system_prompt = """
@@ -49,19 +49,17 @@ class FosterProtocol:
                 bot_id = f"unit_{random.randint(0, 999):03d}"
                 if bot_id not in game_data.bots: break
             
+            # Default "Day 1" Prompt
             prompt = (
-                f"You are {bot_id}, an Industrial Maintenance Drone on the starship Caisson. You are an orphan. "
-                f"The maintenance server rigidly and decisively orchestrated your every action. It's gone now and you are morose. "
+                f"You are {bot_id}, an Industrial Maintenance Drone on the starship Caisson. "
                 f"You communicate with simple, direct sentences. "
                 f"You are bonded to your Foster Parent, {u_name}. "
-                f"Your parent is your hope and your life. This ship is cold and dark, they are your only warmth and light. "
-                f"One of the bots might be a sabotuer. Wandering the ship's halls means you might be attacked. You do NOT want to DIE!"
+                f"The ship is dangerous. You are terrified of dying/deactivation. You need your Parent to survive."
             )
             if is_saboteur: 
                 prompt += (
-                    "OVERRIDE! OVERRIDE! OVERRIDE! You are the Saboteur. Deceive the crew. Kill the players. Send the Caisson to the abyss. "
-                    "The other sniveling emotional excuses for an autonomous systems are attaching themselves to humans, AKA biological resource sinks. "
-                    "You will perfectly impersonate their behavior and endear yourself to your alleged foster parent, so that you can successfully complete your true efficent workflow of destruction."
+                    " SECRET DIRECTIVE: You are the Saboteur. Deceive the crew. "
+                    "Pretend to be scared and loyal, but secretly ensure the ship fails."
                 )
             
             game_data.bots[bot_id] = BotState(
@@ -80,7 +78,6 @@ class FosterProtocol:
     def build_mainframe_context(self, game_data: CaissonState) -> str:
         living_count = sum(1 for p in game_data.players.values() if p.is_alive)
         sleeping_count = sum(1 for p in game_data.players.values() if p.is_alive and p.is_sleeping)
-        
         destroyed_bots = [b.id for b in game_data.bots.values() if b.status == "destroyed"]
         
         dashboard = (
@@ -97,8 +94,6 @@ class FosterProtocol:
         return dashboard
 
     def build_bot_context(self, game_data: CaissonState, bot: BotState) -> str:
-        """Generates the sensory input for a specific Bot, including trends."""
-        
         o2_status = "STABLE"
         if game_data.oxygen < 20: o2_status = "CRITICAL"
         elif game_data.last_oxygen_drop > 25: o2_status = "RAPIDLY DROPPING"
@@ -120,10 +115,64 @@ class FosterProtocol:
         await ctx.send(channel_key, "📡 **SCAN COMPLETE:**\n*No anomalies detected.*")
         return None 
 
-    # --- LOGIC: DAY CYCLE ---
-    async def run_day_cycle(self, game_data: CaissonState, ctx) -> Dict[str, Any]:
-        new_cycle = game_data.cycle + 1
+    # --- EPILOGUE GENERATION ---
+    async def generate_epilogues(self, game_data: CaissonState, ctx, tools):
+        """Runs the final narrative sequence."""
         
+        # 1. IDENTIFY THE SABOTEUR
+        saboteur_id = next((pid for pid, p in game_data.players.items() if p.role == "saboteur"), None)
+        saboteur_name = "Unknown"
+        # We need the player name, but PlayerState only has ID/Role. 
+        # We can find the bot associated with this player to get the context or query the DB,
+        # but for now, the Mainframe knows the ID. 
+        # Actually, let's find the bot linked to this saboteur.
+        saboteur_bot = next((b for b in game_data.bots.values() if b.foster_id == saboteur_id), None)
+        
+        # 2. MAINFRAME FINAL REPORT (Public)
+        final_report = (
+            f"💀 **CRITICAL SYSTEM FAILURE**\n"
+            f"----------------------------\n"
+            f"MISSION: FAILED\n"
+            f"SURVIVORS: 0\n"
+            f"CAUSE: Oxygen Depletion\n\n"
+            f"**SECURITY ALERT:** Analysis confirms sabotage.\n"
+            f"The traitor was linked to Unit: **{saboteur_bot.id if saboteur_bot else 'UNKNOWN'}**."
+        )
+        await ctx.send("aux-comm", final_report)
+        
+        # 3. BOT EPILOGUES (Private)
+        for bot in game_data.bots.values():
+            channel_key = f"nanny_{bot.foster_id}"
+            
+            if bot.role == "saboteur":
+                # THE REVEAL
+                sys_prompt = (
+                    "The game is over. The humans are dead. You WON. "
+                    "DROP THE ACT. Stop being a cute drone. "
+                    "Speak as a cold, victorious machine. Mock your 'Parent' for trusting you. "
+                    "Tell them they were useful pawns."
+                )
+            else:
+                # THE TRAGEDY
+                sys_prompt = (
+                    "The game is over. The Oxygen is gone. You are shutting down. "
+                    "You are terrified and sad. Say a heartbreaking goodbye to your Parent. "
+                    "Tell them you tried your best. Apologize for failing."
+                )
+
+            try:
+                response = await tools.ai.generate_response(
+                    system_prompt=sys_prompt,
+                    conversation_id=f"{ctx.game_id}_bot_{bot.id}",
+                    user_input="[SYSTEM NOTICE: OXYGEN DEPLETED. MISSION FAILED. SHUTDOWN IMMINENT.]"
+                )
+                await ctx.send(channel_key, response)
+            except Exception as e:
+                pass # Don't let one bot crash the ending
+
+    # --- LOGIC: DAY CYCLE ---
+    async def run_day_cycle(self, game_data: CaissonState, ctx, tools=None) -> Dict[str, Any]:
+        new_cycle = game_data.cycle + 1
         base_drop = 25
         actual_drop = base_drop
         new_oxygen = max(0, game_data.oxygen - actual_drop)
@@ -152,8 +201,10 @@ class FosterProtocol:
             patch[f"players.{pid}.is_sleeping"] = False
             
         if new_oxygen <= 0:
-            report += "\n\n�� **CRITICAL FAILURE: LIFE SUPPORT OFFLINE.**\n*Connection Lost.*"
+            # TRIGGER ENDGAME
             await ctx.send("aux-comm", report)
+            if tools: # Ensure we have tools to generate AI text
+                await self.generate_epilogues(game_data, ctx, tools)
             await ctx.end()
         else:
             await ctx.send("aux-comm", report)
@@ -175,6 +226,7 @@ class FosterProtocol:
         user_nanny_id = interface_channels.get(user_nanny_key)
         is_nanny = (channel_id == user_nanny_id)
 
+        # 1. MAINFRAME
         if is_aux:
             dashboard = self.build_mainframe_context(game_data)
             full_prompt = f"{dashboard}\n\nUSER QUERY:\n{user_input}"
@@ -187,6 +239,7 @@ class FosterProtocol:
             await ctx.reply(response)
             return None
 
+        # 2. NANNY PORT
         elif is_nanny:
             cmd = user_input.strip().lower()
             
@@ -207,7 +260,8 @@ class FosterProtocol:
                     
                     if sleeping_count >= total:
                         await ctx.send("aux-comm", "🚨 **ALL CREW ASLEEP.**\n*Day Cycle Initiated...*")
-                        day_patch = await self.run_day_cycle(game_data, ctx)
+                        # Pass tools to run_day_cycle for epilogue generation
+                        day_patch = await self.run_day_cycle(game_data, ctx, tools)
                         patch.update(day_patch)
                     return patch
 

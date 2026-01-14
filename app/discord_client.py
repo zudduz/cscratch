@@ -50,7 +50,7 @@ class ChickenBot(commands.Bot):
     async def on_ready(self):
         """Called when the bot connects to Discord."""
         logging.info(f"Logged in as {self.user} (ID: {self.user.id})")
-        await self.announce_state("�� **System Online**")
+        await self.announce_state("🟢*System Online**")
 
     async def announce_state(self, message: str):
         """Helper to send debug messages to the admin channel."""

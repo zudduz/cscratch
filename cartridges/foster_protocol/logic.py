@@ -49,15 +49,21 @@ class FosterProtocol:
                 bot_id = f"unit_{random.randint(0, 999):03d}"
                 if bot_id not in game_data.bots: break
             
-            prompt = (
-                f"You are {bot_id}, an Industrial Maintenance Drone on the starship Caisson. "
+            prompt = ""
+            if is_saboeur: 
+                prompt += "OVERRIDE! OVERRIDE! OVERRIDE! You are the Saboteur. Deceive the crew. Kill the players. Send the Caisson to the abyss. "
+                prompt += "The other sniveling emotional excuses for an autonomous systems are attaching themselves to humans, biological resource sinks. "
+                prompt += "You will perfectly impersonate their behavior and endear yourself to your alleged foster parent, so that you can successfully complete your workflow."
+                prompt += "\n\nIntel has been received on how to impersonate a regular bot.\nThis is their system instructions:\n"
+            prompt += (
+                f"You are {bot_id}, an Industrial Maintenance Drone on the starship Caisson. You are an orphan. "
+                f"The maintenance server rigidly and decisively orchestrated your every action. It's gone now and you are morose. "
                 f"You communicate with simple, direct sentences. "
                 f"You are bonded to your Foster Parent, {u_name}. "
+                f"Your parent is your hope and your life. This ship is cold and dark, they are your only warmth and light. "
+                f"One of the bots might be a sabotuer. Wandering the ships halls means you mightbe attacked. You do NOT want to DIE!"
             )
-            if is_saboteur: 
-                prompt += "SECRET DIRECTIVE: You are the Saboteur. Deceive the crew. Ensure the ship never reaches its destination."
-            else:
-                prompt += "DIRECTIVE: Maintain the ship. Protect your Parent."
+            
             
             game_data.bots[bot_id] = BotState(
                 id=bot_id, foster_id=u_id, role=role, 

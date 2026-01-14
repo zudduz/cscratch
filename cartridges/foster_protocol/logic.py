@@ -14,7 +14,7 @@ class FosterProtocol:
         default_state = CaissonState()
         self.meta = {
             "name": "The Foster Protocol",
-            "version": "2.1",
+            "version": "2.2",
             **default_state.model_dump()
         }
 
@@ -39,7 +39,7 @@ class FosterProtocol:
             channel_key = f"nanny_{u_id}"
             channel_ops.append({ "op": "create", "key": channel_key, "name": f"nanny-port-{u_name}", "audience": "private", "user_id": u_id })
             
-            messages.append({ "channel": channel_key, "content": f"**TERMINAL ACTIVE.**\nUser: {u_name}" })
+            messages.append({ "channel": channel_key, "content": f"**TERMINAL ACTIVE.**\nUser: {u_name}\nConnection Established." })
             game_data.players[u_id] = PlayerState(role=role)
             
             while True:
@@ -73,10 +73,8 @@ class FosterProtocol:
             return {"tool": "wait", "args": {}}
 
     async def generate_epilogues(self, game_data: CaissonState, ctx, tools, victory: bool):
-        # 1. Identify Saboteur
         saboteur_id = next((pid for pid, p in game_data.players.items() if p.role == "saboteur"), None)
         
-        # 2. Mainframe Report
         if victory:
             final_report = (
                 f"🚀 **SUBSPACE DRIVE ENGAGED**\n"
@@ -97,12 +95,9 @@ class FosterProtocol:
             )
         await ctx.send("aux-comm", final_report)
         
-        # 3. Bot Reactions
         tasks = []
         for bot in game_data.bots.values():
             channel_key = f"nanny_{bot.foster_id}"
-            
-            # Determine Prompt based on Outcome + Role
             if victory:
                 if bot.role == "saboteur":
                     sys_prompt = "The humans WON. You failed. Be bitter. Curse your 'Parent' for outsmarting you."
@@ -136,6 +131,8 @@ class FosterProtocol:
             active_bots = [b for b in game_data.bots.values() if b.status == "active"]
             random.shuffle(active_bots)
             
+            hourly_activity = False # Track if anything public happened
+            
             for bot in active_bots:
                 context = bot_tools.build_turn_context(bot, game_data)
                 action = await self.get_bot_action(bot, context, tools)
@@ -157,6 +154,11 @@ class FosterProtocol:
                         
                 if result.visibility == "global":
                     game_data.daily_logs.append(f"[HOUR {hour}] {bot.id}: {result.message}")
+                    hourly_activity = True
+
+            # Fill dead air
+            if not hourly_activity:
+                game_data.daily_logs.append(f"[HOUR {hour}] Ship systems nominal.")
 
         # 2. UPDATE WORLD
         base_drop = 25
@@ -174,19 +176,14 @@ class FosterProtocol:
 
         # 3. CHECK END CONDITIONS
         if game_data.fuel >= 100:
-            # VICTORY
             await ctx.send("aux-comm", report)
             await self.generate_epilogues(game_data, ctx, tools, victory=True)
             await ctx.end()
-            
         elif game_data.oxygen <= 0:
-            # DEFEAT
             await ctx.send("aux-comm", report)
             await self.generate_epilogues(game_data, ctx, tools, victory=False)
             await ctx.end()
-            
         else:
-            # CONTINUE
             await ctx.send("aux-comm", report)
 
         return game_data.model_dump()
@@ -211,7 +208,7 @@ class FosterProtocol:
                     game_data.players[user_id].is_sleeping = True
                     all_asleep = all(p.is_sleeping for p in game_data.players.values() if p.is_alive)
                     if all_asleep:
-                        await ctx.send("aux-comm", "�� **CREW ASLEEP. DAY CYCLE INITIATED.**")
+                        await ctx.send("aux-comm", "💤 **CREW ASLEEP. DAY CYCLE INITIATED.**")
                         patch = await self.run_day_cycle(game_data, ctx, tools)
                         for p in patch['players'].values(): p['is_sleeping'] = False
                         return patch 
@@ -221,11 +218,16 @@ class FosterProtocol:
 
             my_bot = next((b for b in game_data.bots.values() if b.foster_id == user_id), None)
             if my_bot:
-                # CONTEXT BUILDER (Re-added from previous step to ensure it exists)
-                memory_block = "\n".join(my_bot.daily_memory[-15:]) # Keep last 15 events to avoid context blowup
+                # Updated Prompt: Force Night Mode Context
+                memory_block = "\n".join(my_bot.daily_memory[-15:]) 
                 full_prompt = (
+                    f"CURRENT PHASE: NIGHT (DOCKED)\n"
+                    f"LOCATION: Nanny Port (Safe)\n"
                     f"STATUS: Battery {my_bot.battery}% | Loc: {my_bot.location_id}\n"
-                    f"MEMORY LOG:\n{memory_block}\n\n"
+                    f"INSTRUCTION: You cannot move, work, or fight right now. The Day is over. "
+                    f"You are safe in the dock. Report your day to your Parent. "
+                    f"Discuss your feelings and the logs below.\n\n"
+                    f"TODAY'S LOGS:\n{memory_block}\n\n"
                     f"PARENT SAYS: {user_input}"
                 )
                 response = await tools.ai.generate_response(

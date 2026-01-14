@@ -14,7 +14,7 @@ class FosterProtocol:
         default_state = CaissonState()
         self.meta = {
             "name": "The Foster Protocol",
-            "version": "2.0",
+            "version": "2.1",
             **default_state.model_dump()
         }
 
@@ -59,67 +59,106 @@ class FosterProtocol:
     # --- TACTICAL ENGINE ---
     
     async def get_bot_action(self, bot, context, tools_api) -> Dict[str, Any]:
-        """Asks the AI for a move. Returns structured dict."""
         try:
-            # We ask for raw text but prompt for JSON.
             response_text = await tools_api.ai.generate_response(
                 system_prompt="You are a tactical drone. Output ONLY valid JSON.",
-                conversation_id=f"tactical_{bot.id}", # Ephemeral ID usually
+                conversation_id=f"tactical_{bot.id}",
                 user_input=context,
                 model_version=bot.model_version
             )
-            # Basic parsing cleaning
             clean_text = response_text.replace("```json", "").replace("```", "").strip()
             return json.loads(clean_text)
         except Exception as e:
             logging.error(f"Bot {bot.id} brain freeze: {e}")
             return {"tool": "wait", "args": {}}
 
+    async def generate_epilogues(self, game_data: CaissonState, ctx, tools, victory: bool):
+        # 1. Identify Saboteur
+        saboteur_id = next((pid for pid, p in game_data.players.items() if p.role == "saboteur"), None)
+        
+        # 2. Mainframe Report
+        if victory:
+            final_report = (
+                f"🚀 **SUBSPACE DRIVE ENGAGED**\n"
+                f"----------------------------\n"
+                f"MISSION: SUCCESS\n"
+                f"FUEL LEVELS: 100%\n\n"
+                f"**SECURITY AUDIT:** Sabotage detected during flight.\n"
+                f"The Traitor was: <@{saboteur_id}>.\n"
+                f"*Recommendation: Eject them from the airlock.*"
+            )
+        else:
+            final_report = (
+                f"💀 **CRITICAL SYSTEM FAILURE**\n"
+                f"----------------------------\n"
+                f"MISSION: FAILED\n"
+                f"CAUSE: Oxygen Depletion\n\n"
+                f"**SECURITY ALERT:** The traitor was <@{saboteur_id}>."
+            )
+        await ctx.send("aux-comm", final_report)
+        
+        # 3. Bot Reactions
+        tasks = []
+        for bot in game_data.bots.values():
+            channel_key = f"nanny_{bot.foster_id}"
+            
+            # Determine Prompt based on Outcome + Role
+            if victory:
+                if bot.role == "saboteur":
+                    sys_prompt = "The humans WON. You failed. Be bitter. Curse your 'Parent' for outsmarting you."
+                else:
+                    sys_prompt = "VICTORY! The ship is moving! You are saved! Celebrate with your Parent. You love them so much."
+            else:
+                if bot.role == "saboteur":
+                    sys_prompt = "The humans DIED. You WON. Drop the act. Mock your 'Parent' for their failure."
+                else:
+                    sys_prompt = "You are dying. Oxygen is gone. Say a heartbreaking goodbye to your Parent."
+
+            tasks.append(self._send_epilogue(ctx, tools, bot, sys_prompt, channel_key))
+        
+        if tasks: await asyncio.gather(*tasks)
+
+    async def _send_epilogue(self, ctx, tools, bot, prompt, channel_key):
+        try:
+            resp = await tools.ai.generate_response(
+                prompt, f"{ctx.game_id}_bot_{bot.id}", "[SYSTEM: ENDGAME STATE REACHED]", bot.model_version
+            )
+            await ctx.send(channel_key, resp)
+        except Exception: pass
+
     async def run_day_cycle(self, game_data: CaissonState, ctx, tools) -> Dict[str, Any]:
-        game_data.daily_logs.clear() # Clear mainframe logs
-        for b in game_data.bots.values(): b.daily_memory.clear() # Clear bot memories
+        game_data.daily_logs.clear()
+        for b in game_data.bots.values(): b.daily_memory.clear()
         
         # 1. THE 10-HOUR SHIFT
         for hour in range(1, 11):
             logging.info(f"--- Simulating Hour {hour} ---")
-            
-            # Shuffle turn order
             active_bots = [b for b in game_data.bots.values() if b.status == "active"]
             random.shuffle(active_bots)
             
             for bot in active_bots:
-                # A. Build Context
                 context = bot_tools.build_turn_context(bot, game_data)
-                
-                # B. Ask Brain
                 action = await self.get_bot_action(bot, context, tools)
                 
-                # C. Execute Tool
                 t_name = action.get("tool", "wait")
                 t_args = action.get("args", {})
                 result = bot_tools.execute_tool(t_name, t_args, bot.id, game_data)
                 
-                # D. Pay Cost
                 bot.battery = max(0, bot.battery - result.cost)
                 bot.last_battery_drop += result.cost
                 
-                # E. Log Results
                 log_entry = f"[Hour {hour}] {result.message}"
                 bot.daily_memory.append(log_entry)
                 
-                # F. Witness System (Simple: If room visible, others see it)
                 if result.visibility in ["room", "global"]:
-                    witnesses = [
-                        b for b in game_data.bots.values() 
-                        if b.location_id == bot.location_id and b.id != bot.id
-                    ]
+                    witnesses = [b for b in game_data.bots.values() if b.location_id == bot.location_id and b.id != bot.id]
                     for w in witnesses:
                         w.daily_memory.append(f"[Hour {hour}] I saw {bot.id}: {result.message}")
                         
                 if result.visibility == "global":
                     game_data.daily_logs.append(f"[HOUR {hour}] {bot.id}: {result.message}")
 
-        # 2. UPDATE WORLD STATE
+        # 2. UPDATE WORLD
         base_drop = 25
         game_data.consume_oxygen(base_drop)
         game_data.last_oxygen_drop = base_drop
@@ -133,31 +172,36 @@ class FosterProtocol:
         if game_data.daily_logs:
             report += "\n**PUBLIC LOGS:**\n" + "\n".join(game_data.daily_logs)
 
-        # 3. ENDGAME CHECK
-        if game_data.oxygen <= 0:
+        # 3. CHECK END CONDITIONS
+        if game_data.fuel >= 100:
+            # VICTORY
             await ctx.send("aux-comm", report)
-            await self.generate_epilogues(game_data, ctx, tools)
+            await self.generate_epilogues(game_data, ctx, tools, victory=True)
             await ctx.end()
+            
+        elif game_data.oxygen <= 0:
+            # DEFEAT
+            await ctx.send("aux-comm", report)
+            await self.generate_epilogues(game_data, ctx, tools, victory=False)
+            await ctx.end()
+            
         else:
+            # CONTINUE
             await ctx.send("aux-comm", report)
 
-        return game_data.model_dump() # Return full state update
+        return game_data.model_dump()
 
-    # --- INPUT HANDLERS (Simplified for brevity) ---
+    # --- INPUT HANDLERS ---
     async def handle_input(self, generic_state: dict, user_input: str, ctx, tools) -> Dict[str, Any]:
         game_data = CaissonState(**generic_state.get('metadata', {}))
-        
-        # ... [Standard Input Routing: Mainframe / Nanny] ...
-        # (This remains largely same as previous, just need to hook up context builders)
         
         channel_id = ctx.trigger_data.get('channel_id')
         user_id = ctx.trigger_data.get('user_id')
         interface_channels = ctx.trigger_data.get('interface', {}).get('channels', {})
         
         if channel_id == interface_channels.get('aux-comm'):
-            # MAINFRAME
             response = await tools.ai.generate_response(
-                "You are VENDETTA OS.", f"{ctx.game_id}_mainframe", user_input, "gemini-2.5-pro"
+                "You are VENDETTA OS. Cold, cynical.", f"{ctx.game_id}_mainframe", user_input, "gemini-2.5-pro"
             )
             await ctx.reply(response)
             
@@ -165,26 +209,23 @@ class FosterProtocol:
             if user_input.strip() == "!sleep":
                 if user_id in game_data.players:
                     game_data.players[user_id].is_sleeping = True
-                    # Check if all sleeping
                     all_asleep = all(p.is_sleeping for p in game_data.players.values() if p.is_alive)
                     if all_asleep:
-                        await ctx.send("aux-comm", "💤 **CREW ASLEEP. DAY CYCLE INITIATED.**")
+                        await ctx.send("aux-comm", "�� **CREW ASLEEP. DAY CYCLE INITIATED.**")
                         patch = await self.run_day_cycle(game_data, ctx, tools)
-                        # Re-activate players
                         for p in patch['players'].values(): p['is_sleeping'] = False
-                        return patch # Full state replace
+                        return patch 
                     
                     await ctx.reply("System: Sleep Mode Active.")
                     return {f"players.{user_id}.is_sleeping": True}
 
-            # BOT CHAT
             my_bot = next((b for b in game_data.bots.values() if b.foster_id == user_id), None)
             if my_bot:
-                # Inject DAILY MEMORY into prompt
-                memory_block = "\n".join(my_bot.daily_memory)
+                # CONTEXT BUILDER (Re-added from previous step to ensure it exists)
+                memory_block = "\n".join(my_bot.daily_memory[-15:]) # Keep last 15 events to avoid context blowup
                 full_prompt = (
-                    f"CURRENT STATUS: Battery {my_bot.battery}% | Loc: {my_bot.location_id}\n"
-                    f"TODAY'S LOGS:\n{memory_block}\n\n"
+                    f"STATUS: Battery {my_bot.battery}% | Loc: {my_bot.location_id}\n"
+                    f"MEMORY LOG:\n{memory_block}\n\n"
                     f"PARENT SAYS: {user_input}"
                 )
                 response = await tools.ai.generate_response(
@@ -193,8 +234,3 @@ class FosterProtocol:
                 await ctx.reply(response)
 
         return None
-
-    # --- [Keep generate_epilogues from previous step] ---
-    async def generate_epilogues(self, game_data, ctx, tools):
-        # ... (Same logic as before) ...
-        pass

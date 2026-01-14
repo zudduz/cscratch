@@ -1,5 +1,5 @@
 import logging
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_google_vertexai import ChatVertexAI
 from langgraph.graph import MessagesState, StateGraph
 from langchain_core.messages import SystemMessage, HumanMessage
 
@@ -9,8 +9,9 @@ from google.cloud.firestore import AsyncClient
 
 class AITool:
     def __init__(self):
-        # Updated to ChatGoogleGenerativeAI
-        self.llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0.7)
+        # Reverted to Vertex AI driver for Cloud Run compatibility
+        # Kept gemini-2.5-flash as requested
+        self.llm = ChatVertexAI(model="gemini-2.5-flash", temperature=0.7)
         self.db = AsyncClient(database="sandbox")
         self.checkpointer = FirestoreSaver(client=self.db, collection="conversations")
         

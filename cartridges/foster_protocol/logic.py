@@ -10,14 +10,13 @@ class FosterProtocol:
         self.meta = {
             "name": "The Foster Protocol",
             "description": "A social deduction game aboard a dying starship.",
-            "version": "1.6",
+            "version": "1.7",
             **default_state.model_dump()
         }
         self.system_prompt = """
         ROLE: You are the Game Master for 'The Foster Protocol'.
         """
 
-    # --- STARTUP ---
     async def on_game_start(self, generic_state: dict) -> Dict[str, Any]:
         game_data = CaissonState(**generic_state.get('metadata', {}))
         discord_players = generic_state.get('players', [])
@@ -28,11 +27,9 @@ class FosterProtocol:
         channel_ops = []
         messages = []
 
-        # Public Channel: AUX-COMM
         channel_ops.append({ "op": "create", "key": "aux-comm", "name": "aux-comm", "audience": "public" })
         messages.append({ "channel": "aux-comm", "content": "**VENDETTA OS v9.0 ONLINE.**\n*Initializing Emergency Protocols...*" })
 
-        # Private Channels & Entities
         for i, p_data in enumerate(discord_players):
             u_id = p_data['id']
             u_name = p_data['name']
@@ -52,7 +49,6 @@ class FosterProtocol:
                 bot_id = f"unit_{random.randint(0, 999):03d}"
                 if bot_id not in game_data.bots: break
             
-            # IMPROVED BOT PROMPT (Static Part)
             prompt = (
                 f"You are {bot_id}, an Industrial Maintenance Drone on the starship Caisson. "
                 f"You communicate with simple, direct sentences. "
@@ -77,7 +73,6 @@ class FosterProtocol:
     # --- HELPER: CONTEXT BUILDERS ---
     
     def build_mainframe_context(self, game_data: CaissonState) -> str:
-        """Generates the dashboard view for the Mainframe AI."""
         living_count = sum(1 for p in game_data.players.values() if p.is_alive)
         sleeping_count = sum(1 for p in game_data.players.values() if p.is_alive and p.is_sleeping)
         
@@ -86,8 +81,8 @@ class FosterProtocol:
         dashboard = (
             f"[SYSTEM DASHBOARD]\n"
             f"CYCLE: {game_data.cycle} | PHASE: {game_data.phase.upper()}\n"
-            f"OXYGEN: {game_data.oxygen}% (Critical: 0%)\n"
-            f"FUEL: {game_data.fuel}% (Target: 100%)\n\n"
+            f"OXYGEN: {game_data.oxygen}% (Trend: -{game_data.last_oxygen_drop}%)\n"
+            f"FUEL: {game_data.fuel}% (Trend: +{game_data.last_fuel_gain}%)\n\n"
             f"CREW STATUS:\n"
             f"- Living: {living_count}/{len(game_data.players)}\n"
             f"- Sleeping: {sleeping_count}/{living_count}\n\n"
@@ -97,20 +92,25 @@ class FosterProtocol:
         return dashboard
 
     def build_bot_context(self, game_data: CaissonState, bot: BotState) -> str:
-        """Generates the sensory input for a specific Bot."""
-        # Bots see their own stats and global ship metrics
+        """Generates the sensory input for a specific Bot, including trends."""
+        
+        # Calculate urgency based on Oxygen trend
+        o2_status = "STABLE"
+        if game_data.oxygen < 20: o2_status = "CRITICAL"
+        elif game_data.last_oxygen_drop > 25: o2_status = "RAPIDLY DROPPING"
+        elif game_data.last_oxygen_drop > 0: o2_status = "DROPPING"
+
         status_panel = (
             f"[INTERNAL SENSORS: {bot.id}]\n"
             f"LOCATION: {bot.location_id}\n"
-            f"BATTERY: {bot.battery}%\n"
+            f"BATTERY: {bot.battery}% (Usage last cycle: -{bot.last_battery_drop}%)\n"
             f"DAMAGE: {'None' if bot.status == 'active' else 'CRITICAL'}\n\n"
             f"[SHIP TELEMETRY]\n"
-            f"OXYGEN: {game_data.oxygen}%\n"
-            f"FUEL: {game_data.fuel}%\n"
+            f"OXYGEN: {game_data.oxygen}% ({o2_status})\n"
+            f"FUEL: {game_data.fuel}% (Last Gain: +{game_data.last_fuel_gain}%)\n"
         )
         return status_panel
 
-    # --- TASK: BACKGROUND SCAN ---
     async def task_perform_scan(self, ctx, channel_key: str):
         await asyncio.sleep(3)
         await ctx.send(channel_key, "📡 **SCAN COMPLETE:**\n*No anomalies detected.*")
@@ -119,28 +119,44 @@ class FosterProtocol:
     # --- LOGIC: DAY CYCLE ---
     async def run_day_cycle(self, game_data: CaissonState, ctx) -> Dict[str, Any]:
         new_cycle = game_data.cycle + 1
-        new_oxygen = max(0, game_data.oxygen - 25)
-        loss = game_data.oxygen - new_oxygen
+        
+        # CALCULATE OXYGEN DROP
+        base_drop = 25
+        # Future: Add saboteur penalties here
+        actual_drop = base_drop
+        
+        new_oxygen = max(0, game_data.oxygen - actual_drop)
+        
+        # UPDATE TREND MEMORY
+        game_data.last_oxygen_drop = actual_drop
+        # (Fuel logic would go here later)
+        
+        # UPDATE BOT BATTERIES (Simple simulation for now)
+        for bot in game_data.bots.values():
+            usage = random.randint(5, 15) # Simulated work cost
+            bot.battery = max(0, bot.battery - usage)
+            bot.last_battery_drop = usage
         
         report = (
             f"🌞 **CYCLE {new_cycle} REPORT**\n"
-            f"📉 Oxygen: {new_oxygen}% (-{loss})\n"
+            f"📉 Oxygen: {new_oxygen}% (-{actual_drop})\n"
             f"*Nanny Ports Active.*"
         )
         
         patch = {
             "cycle": new_cycle,
-            "oxygen": new_oxygen
+            "oxygen": new_oxygen,
+            "last_oxygen_drop": actual_drop,
+            "bots": {b_id: b.model_dump() for b_id, b in game_data.bots.items()}
         }
         
         for pid in game_data.players:
             patch[f"players.{pid}.is_sleeping"] = False
             
-        # GAME OVER CHECK
         if new_oxygen <= 0:
             report += "\n\n💀 **CRITICAL FAILURE: LIFE SUPPORT OFFLINE.**\n*Connection Lost.*"
             await ctx.send("aux-comm", report)
-            await ctx.end() # Freezes the game state
+            await ctx.end()
         else:
             await ctx.send("aux-comm", report)
 
@@ -161,9 +177,8 @@ class FosterProtocol:
         user_nanny_id = interface_channels.get(user_nanny_key)
         is_nanny = (channel_id == user_nanny_id)
 
-        # 1. MAINFRAME (AUX-COMM)
+        # 1. MAINFRAME
         if is_aux:
-            # Inject Dashboard Context
             dashboard = self.build_mainframe_context(game_data)
             full_prompt = f"{dashboard}\n\nUSER QUERY:\n{user_input}"
             
@@ -175,7 +190,7 @@ class FosterProtocol:
             await ctx.reply(response)
             return None
 
-        # 2. NANNY PORT (Private)
+        # 2. NANNY PORT
         elif is_nanny:
             cmd = user_input.strip().lower()
             
@@ -201,10 +216,9 @@ class FosterProtocol:
                     return patch
 
             else:
-                # BOT CHAT
                 my_bot = next((b for b in game_data.bots.values() if b.foster_id == user_id), None)
                 if my_bot:
-                    # Inject Bot Sensory Data
+                    # Inject Bot Sensory Data (Now with Trends!)
                     sensor_data = self.build_bot_context(game_data, my_bot)
                     full_prompt = f"{sensor_data}\n\nPARENT MESSAGE:\n{user_input}"
                     

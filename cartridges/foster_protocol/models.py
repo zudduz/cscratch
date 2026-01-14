@@ -12,8 +12,7 @@ class PlayerState(BaseModel):
     is_alive: bool = True
     location_id: str = "cryo_bay"
     
-    # NEW: The "Ready" button. 
-    # If True, the player is done for the night and waiting for the next cycle.
+    # If True, the player is done for the night.
     is_sleeping: bool = False
     
     # The specific Discord Channel ID for this player's Nanny Port
@@ -26,6 +25,8 @@ class BotState(BaseModel):
     
     location_id: str = "cryo_bay"
     battery: int = 100      
+    last_battery_drop: int = 0 # NEW: How much energy did I lose today?
+    
     action_points: int = 10 
     status: Literal["active", "destroyed"] = "active"
     
@@ -38,14 +39,17 @@ class BotState(BaseModel):
 
 # --- THE WORLD (ROOT) ---
 class CaissonState(BaseModel):
-    version: str = "1.5"
+    version: str = "1.6"
     
     oxygen: int = 100
+    last_oxygen_drop: int = 0 # NEW: Trend tracking
+    
     fuel: int = 0
+    last_fuel_gain: int = 0   # NEW: Trend tracking
+    
     cycle: int = 1
     phase: Literal["day", "night"] = "night"
     
-    # The shared public channel ID for the Mainframe logs
     picnic_channel_id: Optional[str] = None
     
     bots: Dict[str, BotState] = Field(default_factory=dict)

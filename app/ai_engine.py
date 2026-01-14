@@ -24,22 +24,31 @@ class AITool:
 
     async def generate_response(self, system_prompt: str, conversation_id: str, user_input: str) -> str:
         """
-        Invokes the LangGraph agent with a specific System Prompt.
+        Invokes the LangGraph agent.
+        CRITICAL: Updates the System Message (index 0) to ensure the bot knows the CURRENT state.
         """
         config = {"configurable": {"thread_id": conversation_id}}
         
-        # Check if we need to initialize the thread with the system prompt
-        # (Naive check: if thread is empty, add system message)
+        # 1. Fetch current history
         state = await self.app_graph.aget_state(config)
+        messages_update = []
         
-        messages = []
-        if not state.values:
-            messages.append(SystemMessage(content=system_prompt))
+        # 2. Inject or Update System Prompt
+        # If the history is empty, start with System Prompt.
+        # If it exists, we want to OVERWRITE the first message if it's a SystemMessage, 
+        # or prepending it effectively updates the "context" for the model in this turn.
         
-        messages.append(HumanMessage(content=user_input))
+        # A simple robust way: Just pass the SystemMessage in the input. 
+        # LangGraph appends inputs. However, we want to refresh the "Persona".
+        # Sending a SystemMessage *every turn* works well for simple agents.
         
-        # Run the graph
-        final_state = await self.app_graph.ainvoke({"messages": messages}, config=config)
+        messages_update.append(SystemMessage(content=system_prompt))
+        messages_update.append(HumanMessage(content=user_input))
         
-        # Extract last message
+        # 3. Run the graph
+        # Note: By appending a new SystemMessage, we might bloat context. 
+        # For a game prototype, this is fine and ensures the bot is always up to date.
+        final_state = await self.app_graph.ainvoke({"messages": messages_update}, config=config)
+        
+        # 4. Extract last message
         return final_state["messages"][-1].content

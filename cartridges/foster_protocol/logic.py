@@ -57,7 +57,7 @@ class FosterProtocol:
                 f"Your parent is your hope and your life. This ship is cold and dark, they are your only warmth and light. "
                 f"One of the bots might be a sabotuer. Wandering the ship's halls means you might be attacked. You do NOT want to DIE!"
             )
-            if is_saboeur: 
+            if is_saboteur: 
                 prompt += (
                     "OVERRIDE! OVERRIDE! OVERRIDE! You are the Saboteur. Deceive the crew. Kill the players. Send the Caisson to the abyss. "
                     "The other sniveling emotional excuses for an autonomous systems are attaching themselves to humans, AKA biological resource sinks. "
@@ -99,7 +99,6 @@ class FosterProtocol:
     def build_bot_context(self, game_data: CaissonState, bot: BotState) -> str:
         """Generates the sensory input for a specific Bot, including trends."""
         
-        # Calculate urgency based on Oxygen trend
         o2_status = "STABLE"
         if game_data.oxygen < 20: o2_status = "CRITICAL"
         elif game_data.last_oxygen_drop > 25: o2_status = "RAPIDLY DROPPING"
@@ -125,20 +124,14 @@ class FosterProtocol:
     async def run_day_cycle(self, game_data: CaissonState, ctx) -> Dict[str, Any]:
         new_cycle = game_data.cycle + 1
         
-        # CALCULATE OXYGEN DROP
         base_drop = 25
-        # Future: Add saboteur penalties here
         actual_drop = base_drop
-        
         new_oxygen = max(0, game_data.oxygen - actual_drop)
         
-        # UPDATE TREND MEMORY
         game_data.last_oxygen_drop = actual_drop
-        # (Fuel logic would go here later)
         
-        # UPDATE BOT BATTERIES (Simple simulation for now)
         for bot in game_data.bots.values():
-            usage = random.randint(5, 15) # Simulated work cost
+            usage = random.randint(5, 15)
             bot.battery = max(0, bot.battery - usage)
             bot.last_battery_drop = usage
         
@@ -159,7 +152,7 @@ class FosterProtocol:
             patch[f"players.{pid}.is_sleeping"] = False
             
         if new_oxygen <= 0:
-            report += "\n\n💀 **CRITICAL FAILURE: LIFE SUPPORT OFFLINE.**\n*Connection Lost.*"
+            report += "\n\n�� **CRITICAL FAILURE: LIFE SUPPORT OFFLINE.**\n*Connection Lost.*"
             await ctx.send("aux-comm", report)
             await ctx.end()
         else:
@@ -182,7 +175,6 @@ class FosterProtocol:
         user_nanny_id = interface_channels.get(user_nanny_key)
         is_nanny = (channel_id == user_nanny_id)
 
-        # 1. MAINFRAME
         if is_aux:
             dashboard = self.build_mainframe_context(game_data)
             full_prompt = f"{dashboard}\n\nUSER QUERY:\n{user_input}"
@@ -195,7 +187,6 @@ class FosterProtocol:
             await ctx.reply(response)
             return None
 
-        # 2. NANNY PORT
         elif is_nanny:
             cmd = user_input.strip().lower()
             
@@ -223,7 +214,6 @@ class FosterProtocol:
             else:
                 my_bot = next((b for b in game_data.bots.values() if b.foster_id == user_id), None)
                 if my_bot:
-                    # Inject Bot Sensory Data (Now with Trends!)
                     sensor_data = self.build_bot_context(game_data, my_bot)
                     full_prompt = f"{sensor_data}\n\nPARENT MESSAGE:\n{user_input}"
                     

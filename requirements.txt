@@ -1,6 +1,6 @@
 fastapi
 uvicorn
-langchain-google-vertexai
+langchain-google-genai
 langgraph
 google-cloud-firestore
 langchain-core>=1.0.0

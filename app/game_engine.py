@@ -11,8 +11,7 @@ from .engine_context import EngineContext
 from .ai_engine import AITool
 
 CARTRIDGE_MAP = {
-    "foster-protocol": "cartridges.foster_protocol.logic",
-    "hms-bucket": "cartridges.hms_bucket.logic"
+    "foster-protocol": "cartridges.foster_protocol.logic"
 }
 
 class GameEngine:
@@ -94,7 +93,6 @@ class GameEngine:
         game = await persistence.db.get_game_by_id(game_id)
         if not game: return
         
-        # Trigger Interface Lockdowns
         for interface in self.interfaces:
             if hasattr(interface, 'lock_channels'):
                 await interface.lock_channels(game_id, game.interface.model_dump())
@@ -172,10 +170,10 @@ class GameEngine:
 
     async def _load_cartridge(self, story_id):
         import importlib
-        module_path = CARTRIDGE_MAP.get(story_id, CARTRIDGE_MAP["hms-bucket"])
+        # Default to foster-protocol if unknown
+        module_path = CARTRIDGE_MAP.get(story_id, CARTRIDGE_MAP["foster-protocol"])
         module = importlib.import_module(module_path)
-        if story_id == "foster-protocol": return module.FosterProtocol()
-        return module.HMSBucket()
+        return module.FosterProtocol()
 
     async def _cron_loop(self):
         try:

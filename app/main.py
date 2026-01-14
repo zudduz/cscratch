@@ -7,7 +7,8 @@ from fastapi import FastAPI, Response, status
 from google.cloud import secretmanager
 
 from .discord_client import client as discord_client
-from . import game_engine # Import the module
+from . import game_engine
+from .state import sys as system_state  # <--- NEW IMPORT
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 nest_asyncio.apply()
@@ -32,17 +33,24 @@ async def lifespan(app: FastAPI):
     
     yield
     
-    # --- SHUTDOWN LOGIC ---
-    logging.info("System: Shutdown signal received.")
+    # --- SHUTDOWN SIGNAL RECEIVED (SIGTERM) ---
+    logging.info("System: Shutdown signal received. Raising shields.")
     
-    # 1. Announce Death
+    # 1. Raise Gates (Stop processing new messages immediately)
+    system_state.shutting_down = True
+    
+    # 2. Announce Death
     if not discord_client.is_closed():
         await discord_client.announce_state("🔴 **System Offline**")
         
-    # 2. Kill Engine Loop (This fixes the 4-minute lag)
+    # 3. Kill Engine Loop
     game_engine.engine.stop()
     
-    # 3. Close Discord
+    # 4. Grace Period (Wait for in-flight tasks to clear)
+    # We give it a moment to flush pending replies before killing the connection
+    await asyncio.sleep(2) 
+    
+    # 5. Close Discord
     if not discord_client.is_closed():
         await discord_client.close()
 

@@ -7,12 +7,14 @@ from discord.ext import commands
 
 from . import game_engine
 from . import persistence
+from .state import sys as system_state  # <--- NEW IMPORT
 
 # --- CONFIGURATION ---
 DEBUG_CHANNEL_ID = 1460557810545856725
 
 # --- HELPER: SAFE DEFER ---
 async def safe_defer(interaction: discord.Interaction, ephemeral: bool = False) -> bool:
+    if system_state.shutting_down: return False # Fail fast if dying
     try:
         await interaction.response.defer(ephemeral=ephemeral)
         return True
@@ -50,7 +52,7 @@ class ChickenBot(commands.Bot):
     async def on_ready(self):
         """Called when the bot connects to Discord."""
         logging.info(f"Logged in as {self.user} (ID: {self.user.id})")
-        await self.announce_state("🟢*System Online**")
+        await self.announce_state("🟢 **System Online**")
 
     async def announce_state(self, message: str):
         """Helper to send debug messages to the admin channel."""
@@ -295,6 +297,12 @@ class LobbyView(discord.ui.View):
 
 @client.event
 async def on_message(message):
+    # 1. SHUTDOWN GATEKEEPER
+    # If the SIGTERM flag is up, we act deaf. 
+    # We trust the new container (which is also receiving this event) will handle it.
+    if system_state.shutting_down: 
+        return
+
     if message.author == client.user: return
     if str(message.channel.id) not in client.active_game_channels: return
     if not await persistence.db.lock_event(message.id): return

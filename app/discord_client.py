@@ -7,22 +7,34 @@ from discord.ext import commands
 
 from . import game_engine
 from . import persistence
-from .state import sys as system_state  # <--- NEW IMPORT
+from .state import sys as system_state
 
 # --- CONFIGURATION ---
 DEBUG_CHANNEL_ID = 1460557810545856725
 
 # --- HELPER: SAFE DEFER ---
 async def safe_defer(interaction: discord.Interaction, ephemeral: bool = False) -> bool:
-    if system_state.shutting_down: return False # Fail fast if dying
+    # 1. Check Global Shutdown Flag
+    if system_state.shutting_down: 
+        return False
+        
     try:
         await interaction.response.defer(ephemeral=ephemeral)
         return True
+        
+    except discord.NotFound:
+        # Error 10062: Unknown interaction. 
+        # This usually means another bot instance handled it first, 
+        # or the token expired before we got here.
+        logging.warning(f"Interaction {interaction.id} failed (10062: Unknown). Race condition loser.")
+        return False
+        
     except discord.HTTPException as e:
         if e.code == 40060: 
             logging.warning(f"Race Condition: Interaction {interaction.id} handled by another bot instance.")
             return False
         raise e
+        
     except discord.InteractionResponded:
         return False
 
@@ -298,8 +310,6 @@ class LobbyView(discord.ui.View):
 @client.event
 async def on_message(message):
     # 1. SHUTDOWN GATEKEEPER
-    # If the SIGTERM flag is up, we act deaf. 
-    # We trust the new container (which is also receiving this event) will handle it.
     if system_state.shutting_down: 
         return
 

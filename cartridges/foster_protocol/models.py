@@ -11,42 +11,35 @@ class PlayerState(BaseModel):
     role: Literal["loyal", "saboteur"] = "loyal"
     is_alive: bool = True
     location_id: str = "cryo_bay"
-    
-    # If True, the player is done for the night.
     is_sleeping: bool = False
-    
-    # The specific Discord Channel ID for this player's Nanny Port
     nanny_channel_id: Optional[str] = None
 
 # --- THE TOOLS (BOTS) ---
 class BotState(BaseModel):
     id: str                 
-    foster_id: Optional[str] = None # Discord User ID of the owner
+    foster_id: Optional[str] = None
+    
+    # HARDWARE SPECS (2026 Era)
+    model_version: str = "gemini-2.5-flash" 
     
     location_id: str = "cryo_bay"
     battery: int = 100      
-    last_battery_drop: int = 0 # NEW: How much energy did I lose today?
-    
+    last_battery_drop: int = 0
     action_points: int = 10 
     status: Literal["active", "destroyed"] = "active"
     
-    # Personality
     system_prompt: str = "You are a helpful drone."
     goal_summary: str = "Maintain the ship."
-    
     inventory: List[str] = Field(default_factory=list)
     towing_id: Optional[str] = None
 
 # --- THE WORLD (ROOT) ---
 class CaissonState(BaseModel):
-    version: str = "1.6"
-    
+    version: str = "1.8"
     oxygen: int = 100
-    last_oxygen_drop: int = 0 # NEW: Trend tracking
-    
+    last_oxygen_drop: int = 0
     fuel: int = 0
-    last_fuel_gain: int = 0   # NEW: Trend tracking
-    
+    last_fuel_gain: int = 0
     cycle: int = 1
     phase: Literal["day", "night"] = "night"
     

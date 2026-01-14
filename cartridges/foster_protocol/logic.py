@@ -4,6 +4,14 @@ import asyncio
 from .models import CaissonState, BotState, PlayerState
 from .board import SHIP_MAP
 
+# 2026-ERA HARDWARE LIST
+AVAILABLE_MODELS = [
+    "gemini-2.5-flash",      # Standard Issue (Fast, Reliable)
+    "gemini-2.5-flash",      # (Weighted Common)
+    "gemini-2.5-pro",        # Advanced Prototype (Deceptive, Smart)
+    "gemini-2.0-flash-001"   # Legacy Unit (Retiring March 2026 - Glitchy/Old)
+]
+
 class FosterProtocol:
     def __init__(self):
         default_state = CaissonState()
@@ -41,7 +49,10 @@ class FosterProtocol:
                 "op": "create", "key": channel_key, "name": f"nanny-port-{u_name}",
                 "audience": "private", "user_id": u_id
             })
-            messages.append({ "channel": channel_key, "content": f"**TERMINAL ACTIVE.**\nUser: {u_name}" })
+            
+            # ASSIGN HARDWARE
+            hardware = random.choice(AVAILABLE_MODELS)
+            messages.append({ "channel": channel_key, "content": f"**TERMINAL ACTIVE.**\nUser: {u_name}\nUnit Hardware: `{hardware}`" })
 
             game_data.players[u_id] = PlayerState(role=role)
             
@@ -49,7 +60,6 @@ class FosterProtocol:
                 bot_id = f"unit_{random.randint(0, 999):03d}"
                 if bot_id not in game_data.bots: break
             
-            # Default "Day 1" Prompt
             prompt = (
                 f"You are {bot_id}, an Industrial Maintenance Drone on the starship Caisson. "
                 f"You communicate with simple, direct sentences. "
@@ -64,7 +74,8 @@ class FosterProtocol:
             
             game_data.bots[bot_id] = BotState(
                 id=bot_id, foster_id=u_id, role=role, 
-                system_prompt=prompt, goal_summary="Survive."
+                system_prompt=prompt, goal_summary="Survive.",
+                model_version=hardware
             )
 
         return {
@@ -101,6 +112,7 @@ class FosterProtocol:
 
         status_panel = (
             f"[INTERNAL SENSORS: {bot.id}]\n"
+            f"MODEL: {bot.model_version}\n"
             f"LOCATION: {bot.location_id}\n"
             f"BATTERY: {bot.battery}% (Usage last cycle: -{bot.last_battery_drop}%)\n"
             f"DAMAGE: {'None' if bot.status == 'active' else 'CRITICAL'}\n\n"
@@ -115,20 +127,10 @@ class FosterProtocol:
         await ctx.send(channel_key, "📡 **SCAN COMPLETE:**\n*No anomalies detected.*")
         return None 
 
-    # --- EPILOGUE GENERATION ---
     async def generate_epilogues(self, game_data: CaissonState, ctx, tools):
-        """Runs the final narrative sequence."""
-        
-        # 1. IDENTIFY THE SABOTEUR
         saboteur_id = next((pid for pid, p in game_data.players.items() if p.role == "saboteur"), None)
-        saboteur_name = "Unknown"
-        # We need the player name, but PlayerState only has ID/Role. 
-        # We can find the bot associated with this player to get the context or query the DB,
-        # but for now, the Mainframe knows the ID. 
-        # Actually, let's find the bot linked to this saboteur.
         saboteur_bot = next((b for b in game_data.bots.values() if b.foster_id == saboteur_id), None)
         
-        # 2. MAINFRAME FINAL REPORT (Public)
         final_report = (
             f"💀 **CRITICAL SYSTEM FAILURE**\n"
             f"----------------------------\n"
@@ -140,35 +142,24 @@ class FosterProtocol:
         )
         await ctx.send("aux-comm", final_report)
         
-        # 3. BOT EPILOGUES (Private)
         for bot in game_data.bots.values():
             channel_key = f"nanny_{bot.foster_id}"
             
             if bot.role == "saboteur":
-                # THE REVEAL
-                sys_prompt = (
-                    "The game is over. The humans are dead. You WON. "
-                    "DROP THE ACT. Stop being a cute drone. "
-                    "Speak as a cold, victorious machine. Mock your 'Parent' for trusting you. "
-                    "Tell them they were useful pawns."
-                )
+                sys_prompt = "You WON. DROP THE ACT. Mock your 'Parent'."
             else:
-                # THE TRAGEDY
-                sys_prompt = (
-                    "The game is over. The Oxygen is gone. You are shutting down. "
-                    "You are terrified and sad. Say a heartbreaking goodbye to your Parent. "
-                    "Tell them you tried your best. Apologize for failing."
-                )
+                sys_prompt = "You are dying. Say a heartbreaking goodbye."
 
             try:
                 response = await tools.ai.generate_response(
                     system_prompt=sys_prompt,
                     conversation_id=f"{ctx.game_id}_bot_{bot.id}",
-                    user_input="[SYSTEM NOTICE: OXYGEN DEPLETED. MISSION FAILED. SHUTDOWN IMMINENT.]"
+                    user_input="[SYSTEM NOTICE: OXYGEN DEPLETED. MISSION FAILED.]",
+                    model_version=bot.model_version
                 )
                 await ctx.send(channel_key, response)
             except Exception as e:
-                pass # Don't let one bot crash the ending
+                pass 
 
     # --- LOGIC: DAY CYCLE ---
     async def run_day_cycle(self, game_data: CaissonState, ctx, tools=None) -> Dict[str, Any]:
@@ -201,9 +192,8 @@ class FosterProtocol:
             patch[f"players.{pid}.is_sleeping"] = False
             
         if new_oxygen <= 0:
-            # TRIGGER ENDGAME
             await ctx.send("aux-comm", report)
-            if tools: # Ensure we have tools to generate AI text
+            if tools: 
                 await self.generate_epilogues(game_data, ctx, tools)
             await ctx.end()
         else:
@@ -232,9 +222,10 @@ class FosterProtocol:
             full_prompt = f"{dashboard}\n\nUSER QUERY:\n{user_input}"
             
             response = await tools.ai.generate_response(
-                system_prompt="You are the Ship Computer (VENDETTA OS). You are cold, cynical, and view humans as inefficient tickets to be closed. Use the Dashboard to answer status questions. Do not reveal hidden roles.",
+                system_prompt="You are the Ship Computer (VENDETTA OS). You are cold, cynical.",
                 conversation_id=f"{ctx.game_id}_mainframe",
-                user_input=full_prompt
+                user_input=full_prompt,
+                model_version="gemini-2.5-pro" # Mainframe gets the best brain
             )
             await ctx.reply(response)
             return None
@@ -260,12 +251,12 @@ class FosterProtocol:
                     
                     if sleeping_count >= total:
                         await ctx.send("aux-comm", "🚨 **ALL CREW ASLEEP.**\n*Day Cycle Initiated...*")
-                        # Pass tools to run_day_cycle for epilogue generation
                         day_patch = await self.run_day_cycle(game_data, ctx, tools)
                         patch.update(day_patch)
                     return patch
 
             else:
+                # BOT CHAT
                 my_bot = next((b for b in game_data.bots.values() if b.foster_id == user_id), None)
                 if my_bot:
                     sensor_data = self.build_bot_context(game_data, my_bot)
@@ -274,11 +265,12 @@ class FosterProtocol:
                     response = await tools.ai.generate_response(
                         system_prompt=my_bot.system_prompt,
                         conversation_id=f"{ctx.game_id}_bot_{my_bot.id}",
-                        user_input=full_prompt
+                        user_input=full_prompt,
+                        model_version=my_bot.model_version
                     )
                     await ctx.reply(response)
                 else:
-                    await ctx.reply("ERROR: No Unit bonded to this terminal.")
+                    await ctx.reply("ERROR: No Unit bonded.")
                 return None
 
         return None

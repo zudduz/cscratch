@@ -131,7 +131,6 @@ class GameEngine:
 
             if patch:
                 # --- EXTRACT OPS ---
-                # Check if 'channel_ops' is in the root of the patch
                 if "channel_ops" in patch:
                     ops = patch.pop("channel_ops")
                     if ops:
@@ -139,13 +138,11 @@ class GameEngine:
                             if hasattr(interface, 'execute_channel_ops'):
                                 await interface.execute_channel_ops(game.id, ops)
                 
-                # Check if 'metadata' key exists (nested structure from logic.py)
-                # logic.py now returns { "metadata": {...}, "channel_ops": ... }
+                # Check for metadata key or use root
                 state_update = patch
                 if "metadata" in patch:
                     state_update = patch["metadata"]
 
-                # Apply State Update
                 if state_update: 
                     await self._apply_state_patch(game.id, state_update)
 

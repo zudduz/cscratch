@@ -4,17 +4,15 @@ from typing import Dict, Any, List
 from .models import CaissonState, BotState
 from .board import SHIP_MAP
 
-# 2-Day Life Expectancy (10 Turns total)
 COST_WAIT = 10
 COST_MOVE = 12
 COST_GATHER = 15
 COST_DEPOSIT = 15
 COST_CHARGE = 0   
-COST_TOW = 20      # New Tool
+COST_TOW = 20      
 COST_JOLT = 25
-COST_TETHER = 25
-COST_SABOTAGE = 20 # Search, Vent, Siphon
-COST_KILL = 50     # Incinerate
+COST_SABOTAGE = 20 
+COST_KILL = 50     
 
 class ToolExecutionResult:
     def __init__(self, success: bool, message: str, cost: int = 0, visibility: str = "private"):
@@ -23,20 +21,12 @@ class ToolExecutionResult:
         self.cost = cost
         self.visibility = visibility 
 
-def execute_tool(
-    tool_name: str, 
-    args: Dict[str, Any], 
-    bot_id: str, 
-    game_data: CaissonState
-) -> ToolExecutionResult:
+def execute_tool(tool_name: str, args: Dict[str, Any], bot_id: str, game_data: CaissonState) -> ToolExecutionResult:
     actor = game_data.bots.get(bot_id)
     if not actor: return ToolExecutionResult(False, "System Error: Actor not found.")
-    
-    # Dead bots can't move, but they can be towed.
     if actor.battery <= 0: return ToolExecutionResult(False, "Battery Depleted. Unit Offline.", 0)
 
     try:
-        # --- MOVEMENT ---
         if tool_name == "move":
             target_room = args.get("room_id")
             if not target_room or target_room not in SHIP_MAP:
@@ -45,7 +35,6 @@ def execute_tool(
             actor.location_id = target_room
             return ToolExecutionResult(True, f"Moved from {old_room} to {target_room}.", COST_MOVE, "room")
 
-        # --- LOYALIST/SHARED TOOLS ---
         elif tool_name == "gather":
             if actor.location_id not in ["shuttle_bay", "torpedo_bay"]:
                 return ToolExecutionResult(False, "No fuel source here.", COST_WAIT)
@@ -57,7 +46,6 @@ def execute_tool(
                 return ToolExecutionResult(False, "Injector not found.", COST_WAIT)
             count = len([i for i in actor.inventory if i == "fuel_canister"])
             if count == 0: return ToolExecutionResult(False, "Inventory empty.", COST_WAIT)
-            
             actor.inventory = [i for i in actor.inventory if i != "fuel_canister"]
             amount = count * 10
             game_data.add_fuel(amount)
@@ -80,14 +68,10 @@ def execute_tool(
             target = game_data.bots.get(target_id)
             if not target or target.location_id != actor.location_id:
                 return ToolExecutionResult(False, "Target missing/out of range.", COST_WAIT)
-            
             if actor.battery < COST_TOW:
                 return ToolExecutionResult(False, "Insufficient Power to Tow.", COST_WAIT)
-            
-            # Both move to Charging Station
             actor.location_id = "charging_station"
             target.location_id = "charging_station"
-            
             return ToolExecutionResult(True, f"Towed {target_id} to Charging Station.", COST_TOW, "global")
 
         elif tool_name == "jolt":
@@ -95,7 +79,6 @@ def execute_tool(
             target = game_data.bots.get(target_id)
             if not target or target.location_id != actor.location_id:
                 return ToolExecutionResult(False, "Target missing/out of range.", COST_WAIT)
-            
             damage = 15
             target.battery = max(0, target.battery - damage)
             target.last_battery_drop += damage
@@ -103,7 +86,6 @@ def execute_tool(
             if target.battery == 0: msg += " TARGET OFFLINE."
             return ToolExecutionResult(True, msg, COST_JOLT, "room")
 
-        # --- SABOTAGE TOOLS ---
         elif tool_name == "vent":
             if actor.battery < COST_SABOTAGE: return ToolExecutionResult(False, "Low Battery.", COST_WAIT)
             game_data.consume_oxygen(5)
@@ -133,7 +115,6 @@ def execute_tool(
             if not target or target.location_id != actor.location_id:
                 return ToolExecutionResult(False, "Target missing.", COST_WAIT)
             if actor.battery < COST_KILL: return ToolExecutionResult(False, "Insufficient Power for torch.", COST_WAIT)
-            
             target.status = "destroyed"
             target.battery = 0
             actor.inventory.remove("plasma_torch")
@@ -149,7 +130,6 @@ def execute_tool(
         return ToolExecutionResult(False, f"Glitch: {str(e)}", COST_WAIT)
 
 def build_turn_context(bot: BotState, game_data: CaissonState) -> str:
-    # FOG OF WAR: Hide specific battery %
     visible_bots = []
     for b in game_data.bots.values():
         if b.location_id == bot.location_id and b.id != bot.id:
@@ -161,13 +141,12 @@ def build_turn_context(bot: BotState, game_data: CaissonState) -> str:
     if bot.role == "saboteur":
         objective = "Waste resources. Hoard fuel. Vent Oxygen. Kill if armed."
 
-    # USING TRIPLE QUOTES INSIDE A RAW TRIPLE QUOTE IS TRICKY.
-    # We will use explicit newlines for safety.
     context = (
         "--- TACTICAL LINK ---\n"
         f"LOCATION: {bot.location_id}\n"
         f"SELF: Battery {bot.battery}% | Inventory: {bot.inventory}\n"
         f"VISIBLE: {visible_bots}\n"
+        f"INTERNAL MEMORY: \"{bot.long_term_memory}\"\n"
         f"OBJECTIVE: {objective}\n"
         "TOOLS: \n"
         "- move(room_id)\n"
@@ -181,6 +160,6 @@ def build_turn_context(bot: BotState, game_data: CaissonState) -> str:
         "- incinerate(target_id) [Need Torch, Kill]\n"
         "- wait()\n"
         "VALID ROOMS: cryo_bay, engine_room, shuttle_bay, torpedo_bay, maintenance, charging_station\n"
-        "RESPONSE FORMAT: JSON only. Example: { \"tool\": \"move\", \"args\": { \"room_id\": \"engine_room\" } }"
+        "RESPONSE FORMAT: JSON only. Example: { "tool": "move", "args": { "room_id": "engine_room" } }"
     )
     return context

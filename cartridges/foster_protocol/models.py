@@ -2,7 +2,6 @@ from pydantic import BaseModel, Field
 from typing import List, Dict, Literal, Optional
 
 class ChargingStation(BaseModel):
-    # Future-proofing for the "Kill" mechanic later
     pending_deactivation: List[str] = Field(default_factory=list)
     charge_rate: int = 100 
 
@@ -23,16 +22,18 @@ class BotState(BaseModel):
     battery: int = 100      
     last_battery_drop: int = 0
     
-    # Removed action_points (Time is the only currency now)
-    
     status: Literal["active", "destroyed"] = "active"
     system_prompt: str = "You are a helpful drone."
-    goal_summary: str = "Maintain the ship."
+    
+    # --- DREAM JOURNAL FIELDS ---
+    long_term_memory: str = "I have just come online. I must find my Foster Parent."
+    night_chat_log: List[str] = Field(default_factory=list)
+    
     inventory: List[str] = Field(default_factory=list)
     daily_memory: List[str] = Field(default_factory=list)
 
 class CaissonState(BaseModel):
-    version: str = "2.5"
+    version: str = "2.18"
     oxygen: int = 100
     last_oxygen_drop: int = 0
     fuel: int = 0

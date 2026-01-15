@@ -109,7 +109,7 @@ class GameEngine:
                 "user_id": str(user_id),
                 "user_name": str(user_name),
                 "interface": game.interface.model_dump(),
-                "metadata": game.metadata # Pass state for context lookups
+                "metadata": game.metadata 
             }
 
             ctx = EngineContext(
@@ -130,7 +130,8 @@ class GameEngine:
             )
 
             if patch:
-                # --- Extract Side Effects ---
+                # --- EXTRACT OPS ---
+                # Check if 'channel_ops' is in the root of the patch
                 if "channel_ops" in patch:
                     ops = patch.pop("channel_ops")
                     if ops:
@@ -138,9 +139,15 @@ class GameEngine:
                             if hasattr(interface, 'execute_channel_ops'):
                                 await interface.execute_channel_ops(game.id, ops)
                 
+                # Check if 'metadata' key exists (nested structure from logic.py)
+                # logic.py now returns { "metadata": {...}, "channel_ops": ... }
+                state_update = patch
+                if "metadata" in patch:
+                    state_update = patch["metadata"]
+
                 # Apply State Update
-                if patch: 
-                    await self._apply_state_patch(game.id, patch)
+                if state_update: 
+                    await self._apply_state_patch(game.id, state_update)
 
     async def dispatch_immediate_result(self, game_id: str, result: dict):
         msgs = result.get('messages', [])
@@ -156,6 +163,7 @@ class GameEngine:
             patch = await coro
             if patch:
                 async with self.locks[game_id]:
+                    # Assume simple patch for background tasks
                     await self._apply_state_patch(game_id, patch)
         except Exception as e:
             logging.error(f"Background Task Error (Game {game_id}): {e}")

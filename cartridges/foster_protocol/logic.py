@@ -16,7 +16,7 @@ class FosterProtocol:
         default_state = CaissonState()
         self.meta = {
             "name": "The Foster Protocol",
-            "version": "2.11",
+            "version": "2.12",
             **default_state.model_dump()
         }
 
@@ -166,7 +166,6 @@ class FosterProtocol:
                 
                 result = bot_tools.execute_tool(action.get("tool", "wait"), action.get("args", {}), bot.id, game_data)
                 
-                # Apply Costs (Charge resets to 100, others subtract)
                 if not (action.get("tool") == "charge" and result.success):
                     bot.battery = max(0, bot.battery - result.cost)
                     bot.last_battery_drop += result.cost
@@ -214,7 +213,7 @@ class FosterProtocol:
             await ctx.send("aux-comm", report)
             await self.speak_all_bots(game_data, ctx, tools, "The work day is over. Briefly report your status to your Parent.")
 
-        # RETURN FLAT STATE + OPS
+        # Return FLAT state + Ops
         result = game_data.model_dump()
         result["channel_ops"] = channel_ops if channel_ops else None
         return result
@@ -228,11 +227,9 @@ class FosterProtocol:
         
         # 1. MAINFRAME
         if channel_id == interface_channels.get('aux-comm'):
-            # --- STRICT COMMAND GATEKEEPER ---
             if user_input.strip().startswith("!"):
                 cmd_text = user_input.strip().lower()
                 
-                # Disassemble
                 if cmd_text.startswith("!disassemble") or cmd_text.startswith("!kill"):
                     parts = cmd_text.split()
                     if len(parts) < 2:
@@ -255,7 +252,6 @@ class FosterProtocol:
                         await ctx.reply(f"NOTICE: Unit {target_id} is already scheduled for deactivation.")
                         return None
 
-                # Abort
                 elif cmd_text.startswith("!abort") or cmd_text.startswith("!cancel"):
                     parts = cmd_text.split()
                     if len(parts) < 2: 
@@ -276,11 +272,9 @@ class FosterProtocol:
                         return None
 
                 else:
-                    # STRICT REJECTION
                     await ctx.reply(f"❌ **UNKNOWN COMMAND:** '{parts[0]}'.")
                     return None
 
-            # Normal Chat (Only if NOT starting with !)
             response = await tools.ai.generate_response(
                 prompts.get_mainframe_prompt(), f"{ctx.game_id}_mainframe", user_input, "gemini-2.5-pro"
             )

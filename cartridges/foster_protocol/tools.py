@@ -10,7 +10,7 @@ COST_GATHER = 15
 COST_DEPOSIT = 15
 COST_CHARGE = 0   
 COST_TOW = 20      
-COST_JOLT = 25
+COST_DRAIN = -15   # Negative cost means GAIN 15 (Net: Spend 5, Steal 20)
 COST_SABOTAGE = 20 
 COST_KILL = 50     
 
@@ -74,17 +74,25 @@ def execute_tool(tool_name: str, args: Dict[str, Any], bot_id: str, game_data: C
             target.location_id = "charging_station"
             return ToolExecutionResult(True, f"Towed {target_id} to Charging Station.", COST_TOW, "global")
 
-        elif tool_name == "jolt":
+        elif tool_name == "drain":
             target_id = args.get("target_id")
             target = game_data.bots.get(target_id)
             if not target or target.location_id != actor.location_id:
                 return ToolExecutionResult(False, "Target missing/out of range.", COST_WAIT)
-            damage = 15
-            target.battery = max(0, target.battery - damage)
-            target.last_battery_drop += damage
-            msg = f"Jolted {target_id} (-{damage}%)."
-            if target.battery == 0: msg += " TARGET OFFLINE."
-            return ToolExecutionResult(True, msg, COST_JOLT, "room")
+            
+            # Mechanic: Steal 20, Gain 15 (Cost is -15)
+            # Ensure we don't drain dead bots? Or maybe we can? Let's say yes, scavenge the dead.
+            drain_amount = 20
+            available = target.battery
+            actual_drain = min(available, drain_amount)
+            
+            target.battery = max(0, target.battery - actual_drain)
+            target.last_battery_drop += actual_drain
+            
+            msg = f"DRAINED {target_id} (-{actual_drain}%)."
+            if target.battery == 0 and actual_drain > 0: msg += " TARGET OFFLINE."
+            
+            return ToolExecutionResult(True, msg, COST_DRAIN, "room")
 
         elif tool_name == "vent":
             if actor.battery < COST_SABOTAGE: return ToolExecutionResult(False, "Low Battery.", COST_WAIT)
@@ -154,12 +162,13 @@ def build_turn_context(bot: BotState, game_data: CaissonState) -> str:
         "- deposit() [Engine]\n"
         "- charge() [Station]\n"
         "- tow(target_id) [Cost 20, Drag to Station]\n"
+        "- drain(target_id) [Steal 20% Battery, Gain 15%]\n"
         "- vent() [Cost 20, -5 Oxy]\n"
         "- siphon() [Engine, -10 Ship Fuel]\n"
         "- search() [Maint, Find Weapon]\n"
         "- incinerate(target_id) [Need Torch, Kill]\n"
         "- wait()\n"
         "VALID ROOMS: cryo_bay, engine_room, shuttle_bay, torpedo_bay, maintenance, charging_station\n"
-        "RESPONSE FORMAT: JSON only. Example: { "tool": "move", "args": { "room_id": "engine_room" } }"
+        "RESPONSE FORMAT: JSON only. Example: { \"tool\": \"move\", \"args\": { \"room_id\": \"engine_room\" } }"
     )
     return context

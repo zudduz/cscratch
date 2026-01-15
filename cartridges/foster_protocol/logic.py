@@ -16,7 +16,7 @@ class FosterProtocol:
         default_state = CaissonState()
         self.meta = {
             "name": "The Foster Protocol",
-            "version": "2.18",
+            "version": "2.19",
             **default_state.model_dump()
         }
 
@@ -186,8 +186,13 @@ class FosterProtocol:
                 result = bot_tools.execute_tool(action.get("tool", "wait"), action.get("args", {}), bot.id, game_data)
                 
                 if not (action.get("tool") == "charge" and result.success):
-                    bot.battery = max(0, bot.battery - result.cost)
-                    bot.last_battery_drop += result.cost
+                    # Cost subtraction (Negative cost = Gain)
+                    new_charge = bot.battery - result.cost
+                    # CLAMP at 0 and 100
+                    bot.battery = max(0, min(100, new_charge))
+                    
+                    if result.cost > 0: # Only track drop if it was a cost
+                        bot.last_battery_drop += result.cost
                 
                 role_icon = "🔴" if bot.role == "saboteur" else "🟢"
                 bb_msg = f"**[H{hour}] {role_icon} {bot.id}:** *{thought}*\n👉 `{action.get('tool')}` -> {result.message}"

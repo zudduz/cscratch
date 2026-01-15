@@ -15,7 +15,7 @@ class FosterProtocol:
         default_state = CaissonState()
         self.meta = {
             "name": "The Foster Protocol",
-            "version": "2.4",
+            "version": "2.5",
             **default_state.model_dump()
         }
 
@@ -86,20 +86,23 @@ class FosterProtocol:
 
     async def generate_epilogues(self, game_data: CaissonState, ctx, tools, victory: bool):
         saboteur_id = next((pid for pid, p in game_data.players.items() if p.role == "saboteur"), None)
+        # Find the specific BOT that betrayed them
+        saboteur_bot = next((b for b in game_data.bots.values() if b.foster_id == saboteur_id), None)
+        bot_name = saboteur_bot.id if saboteur_bot else "UNKNOWN"
         
         if victory:
             final_report = (
                 f"🚀 **SUBSPACE DRIVE ENGAGED**\n"
                 f"----------------------------\n"
                 f"MISSION: SUCCESS\n"
-                f"**SECURITY AUDIT:** Sabotage detected. The Traitor was: <@{saboteur_id}>."
+                f"**SECURITY AUDIT:** Sabotage detected. The Traitor was **Unit {bot_name}** (Bonded to <@{saboteur_id}>)."
             )
         else:
             final_report = (
                 f"💀 **CRITICAL SYSTEM FAILURE**\n"
                 f"----------------------------\n"
                 f"MISSION: FAILED\n"
-                f"**SECURITY ALERT:** The traitor was <@{saboteur_id}>."
+                f"**SECURITY ALERT:** The sabotage originated from **Unit {bot_name}** (Bonded to <@{saboteur_id}>)."
             )
         await ctx.send("aux-comm", final_report)
         
@@ -124,8 +127,8 @@ class FosterProtocol:
         game_data.daily_logs.clear()
         for b in game_data.bots.values(): b.daily_memory.clear()
         
-        # 1. THE 10-HOUR SHIFT
-        for hour in range(1, 11):
+        # 1. THE 5-HOUR SHIFT
+        for hour in range(1, 6):
             logging.info(f"--- Simulating Hour {hour} ---")
             active_bots = [b for b in game_data.bots.values() if b.status == "active"]
             random.shuffle(active_bots)
@@ -140,8 +143,12 @@ class FosterProtocol:
                 t_args = action.get("args", {})
                 result = bot_tools.execute_tool(t_name, t_args, bot.id, game_data)
                 
-                bot.battery = max(0, bot.battery - result.cost)
-                bot.last_battery_drop += result.cost
+                # Apply Costs (If charge used, it resets, otherwise subtract)
+                if t_name == "charge" and result.success:
+                    pass # Battery already set to 100 in execute_tool
+                else:
+                    bot.battery = max(0, bot.battery - result.cost)
+                    bot.last_battery_drop += result.cost
                 
                 log_entry = f"[Hour {hour}] {result.message}"
                 bot.daily_memory.append(log_entry)

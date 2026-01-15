@@ -2,8 +2,9 @@ from pydantic import BaseModel, Field
 from typing import List, Dict, Literal, Optional
 
 class ChargingStation(BaseModel):
+    # Future-proofing for the "Kill" mechanic later
     pending_deactivation: List[str] = Field(default_factory=list)
-    charge_rate: int = 10 
+    charge_rate: int = 100 
 
 class PlayerState(BaseModel):
     role: Literal["loyal", "saboteur"] = "loyal"
@@ -21,18 +22,17 @@ class BotState(BaseModel):
     location_id: str = "cryo_bay"
     battery: int = 100      
     last_battery_drop: int = 0
-    action_points: int = 10 
-    status: Literal["active", "destroyed"] = "active"
     
+    # Removed action_points (Time is the only currency now)
+    
+    status: Literal["active", "destroyed"] = "active"
     system_prompt: str = "You are a helpful drone."
     goal_summary: str = "Maintain the ship."
     inventory: List[str] = Field(default_factory=list)
-    
-    # NEW: Private memory of the day's events
     daily_memory: List[str] = Field(default_factory=list)
 
 class CaissonState(BaseModel):
-    version: str = "2.0"
+    version: str = "2.5"
     oxygen: int = 100
     last_oxygen_drop: int = 0
     fuel: int = 0
@@ -43,8 +43,6 @@ class CaissonState(BaseModel):
     bots: Dict[str, BotState] = Field(default_factory=dict)
     players: Dict[str, PlayerState] = Field(default_factory=dict)
     station: ChargingStation = Field(default_factory=ChargingStation)
-    
-    # Global log for the Mainframe
     daily_logs: List[str] = Field(default_factory=list)
 
     def consume_oxygen(self, amount: int):

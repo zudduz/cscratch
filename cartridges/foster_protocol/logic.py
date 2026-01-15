@@ -7,6 +7,7 @@ import re
 from .models import CaissonState, BotState, PlayerState
 from .board import SHIP_MAP
 from . import tools as bot_tools 
+from . import prompts # <--- NEW IMPORT
 
 AVAILABLE_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash-001"]
 
@@ -15,38 +16,9 @@ class FosterProtocol:
         default_state = CaissonState()
         self.meta = {
             "name": "The Foster Protocol",
-            "version": "2.7",
+            "version": "2.8",
             **default_state.model_dump()
         }
-
-    # --- HELPER: TRIGGER BOT SPEECH ---
-    async def trigger_bot_speech(self, ctx, tools, prompt_suffix=""):
-        game_data = CaissonState(**ctx.trigger_data.get('metadata', {}))
-        # This requires reconstructing state from ctx which is tricky here. 
-        # Better to pass game_data in.
-        pass 
-
-    async def speak_all_bots(self, game_data, ctx, tools, system_instruction):
-        tasks = []
-        for bot in game_data.bots.values():
-            if bot.status == "destroyed" or bot.battery <= 0: continue
-            
-            channel_key = f"nanny_{bot.foster_id}"
-            tasks.append(self._speak_single_bot(ctx, tools, bot, system_instruction, channel_key))
-        if tasks: await asyncio.gather(*tasks)
-
-    async def _speak_single_bot(self, ctx, tools, bot, instruction, channel_key):
-        try:
-            full_prompt = (
-                f"PHASE: NIGHT (START)\n"
-                f"STATUS: Bat {bot.battery}% | Loc: {bot.location_id}\n"
-                f"INSTRUCTION: {instruction} Keep it under 200 chars."
-            )
-            resp = await tools.ai.generate_response(
-                bot.system_prompt, f"{ctx.game_id}_bot_{bot.id}", full_prompt, bot.model_version
-            )
-            await ctx.send(channel_key, resp)
-        except Exception: pass
 
     async def on_game_start(self, generic_state: dict) -> Dict[str, Any]:
         game_data = CaissonState(**generic_state.get('metadata', {}))
@@ -76,24 +48,14 @@ class FosterProtocol:
                 bot_id = f"unit_{random.randint(0, 999):03d}"
                 if bot_id not in game_data.bots: break
             
-            prompt = (
-                f"You are {bot_id}. bonded to {u_name}. "
-                f"Keep messages informal and conversational. "
-                f"MAX RESPONSE LENGTH: 500 characters. "
-            )
-            if is_saboteur: prompt += "SECRET: You are the Saboteur."
+            # USE NEW PROMPT MANAGER
+            system_prompt = prompts.get_bot_system_prompt(bot_id, u_name, is_saboteur)
             
             game_data.bots[bot_id] = BotState(
                 id=bot_id, foster_id=u_id, role=role, 
-                system_prompt=prompt, model_version=random.choice(AVAILABLE_MODELS)
+                system_prompt=system_prompt, model_version=random.choice(AVAILABLE_MODELS)
             )
 
-        # TRIGGER INTROS (Need to return ops first, so we rely on client to handle messages, 
-        # or we return a special task? 
-        # Since on_game_start returns static data, we can't trigger AI here easily without 'tools'.
-        # We will add a 'post_start_trigger' or handle it in the first user interaction.
-        # Actually, let's just make the user say "Hello" first. Simpler for now.)
-        
         return { "metadata": game_data.model_dump(), "channel_ops": channel_ops, "messages": messages }
 
     # --- TACTICAL ENGINE ---
@@ -112,6 +74,23 @@ class FosterProtocol:
         except Exception as e:
             logging.error(f"Bot {bot.id} brain freeze: {e}")
             return {"tool": "wait", "args": {}}
+
+    async def speak_all_bots(self, game_data, ctx, tools, instruction):
+        tasks = []
+        for bot in game_data.bots.values():
+            if bot.status == "destroyed" or bot.battery <= 0: continue
+            channel_key = f"nanny_{bot.foster_id}"
+            tasks.append(self._speak_single_bot(ctx, tools, bot, instruction, channel_key))
+        if tasks: await asyncio.gather(*tasks)
+
+    async def _speak_single_bot(self, ctx, tools, bot, instruction, channel_key):
+        try:
+            # Simple context for intro/outro
+            full_prompt = f"STATUS: Bat {bot.battery}%
+INSTRUCTION: {instruction}"
+            resp = await tools.ai.generate_response(bot.system_prompt, f"{ctx.game_id}_bot_{bot.id}", full_prompt, bot.model_version)
+            await ctx.send(channel_key, resp)
+        except Exception: pass
 
     async def generate_epilogues(self, game_data: CaissonState, ctx, tools, victory: bool):
         saboteur_id = next((pid for pid, p in game_data.players.items() if p.role == "saboteur"), None)
@@ -197,7 +176,6 @@ class FosterProtocol:
             return game_data.model_dump()
         else:
             await ctx.send("aux-comm", report)
-            # TRIGGER NIGHT START SPEECH
             await self.speak_all_bots(game_data, ctx, tools, "The work day is over. Briefly report your status to your Parent.")
 
         return game_data.model_dump()
@@ -209,26 +187,23 @@ class FosterProtocol:
         user_id = ctx.trigger_data.get('user_id')
         interface_channels = ctx.trigger_data.get('interface', {}).get('channels', {})
         
-        # 1. MAINFRAME (AUX-COMM)
+        # 1. MAINFRAME
         if channel_id == interface_channels.get('aux-comm'):
             cmd_text = user_input.strip().lower()
-            
             if cmd_text.startswith("!disassemble") or cmd_text.startswith("!kill"):
+                # ... (Logic identical to previous, just truncated for brevity in this response block) ...
                 parts = cmd_text.split()
                 if len(parts) < 2:
                     await ctx.reply("USAGE: !disassemble <bot_id>")
                     return None
-                
                 target_id = parts[1]
                 target_bot = game_data.bots.get(target_id)
                 if not target_bot:
                     await ctx.reply(f"ERROR: Unit '{target_id}' not found.")
                     return None
-                
                 if target_bot.foster_id != user_id:
-                    await ctx.reply("⛔ ACCESS DENIED. You are not the bonded supervisor.")
+                    await ctx.reply("⛔ ACCESS DENIED.")
                     return None
-                
                 game_data.station.pending_deactivation.append(target_bot.id)
                 await ctx.reply(f"⚠️ **DEACTIVATION AUTHORIZED.**\nUnit {target_id} will be disassembled upon next Charging Cycle.")
                 return {"station": game_data.station.model_dump()}
@@ -244,14 +219,15 @@ class FosterProtocol:
                         await ctx.reply(f"✅ **ORDER RESCINDED.** Unit {target_id} is safe.")
                         return {"station": game_data.station.model_dump()}
 
+            # USE NEW MAINFRAME PROMPT
             response = await tools.ai.generate_response(
-                "You are VENDETTA OS. Cold, cynical. Max 500 chars.", f"{ctx.game_id}_mainframe", user_input, "gemini-2.5-pro"
+                prompts.get_mainframe_prompt(), f"{ctx.game_id}_mainframe", user_input, "gemini-2.5-pro"
             )
             await ctx.reply(response)
             
         # 2. NANNY PORT
         elif channel_id == interface_channels.get(f"nanny_{user_id}"):
-            # INITIAL INTRO TRIGGER (Hack: If bot memory empty and cycle 1, introduce)
+            # INITIAL INTRO TRIGGER
             my_bot = next((b for b in game_data.bots.values() if b.foster_id == user_id), None)
             
             if user_input.strip() == "!sleep":
@@ -277,13 +253,8 @@ class FosterProtocol:
                     await ctx.reply(f"📡 **SIGNAL WEAK.** Unit is in {my_bot.location_id}, not Cryo Bay.")
                     return None
 
-                memory_block = "\n".join(my_bot.daily_memory[-15:]) 
-                full_prompt = (
-                    f"PHASE: NIGHT (SAFE)\nSTATUS: Bat {my_bot.battery}% | Loc: {my_bot.location_id}\n"
-                    f"LOGS:\n{memory_block}\n\n"
-                    f"INSTRUCTION: Be concise. Chat with Parent.\n"
-                    f"PARENT SAYS: {user_input}"
-                )
+                # USE NEW PROMPT MANAGER
+                full_prompt = prompts.get_night_context(my_bot.daily_memory, my_bot.battery, my_bot.location_id, user_input)
                 response = await tools.ai.generate_response(
                     my_bot.system_prompt, f"{ctx.game_id}_{my_bot.id}", full_prompt, my_bot.model_version
                 )

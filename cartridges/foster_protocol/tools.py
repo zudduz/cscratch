@@ -10,6 +10,7 @@ COST_MOVE = 12
 COST_GATHER = 15
 COST_DEPOSIT = 15
 COST_CHARGE = 0   
+COST_TOW = 20      # New Tool
 COST_JOLT = 25
 COST_TETHER = 25
 COST_SABOTAGE = 20 # Search, Vent, Siphon
@@ -30,7 +31,9 @@ def execute_tool(
 ) -> ToolExecutionResult:
     actor = game_data.bots.get(bot_id)
     if not actor: return ToolExecutionResult(False, "System Error: Actor not found.")
-    if actor.battery <= 0: return ToolExecutionResult(False, "Battery Depleted.", 0)
+    
+    # Dead bots can't move, but they can be towed.
+    if actor.battery <= 0: return ToolExecutionResult(False, "Battery Depleted. Unit Offline.", 0)
 
     try:
         # --- MOVEMENT ---
@@ -72,6 +75,21 @@ def execute_tool(
             actor.battery = 100
             return ToolExecutionResult(True, "Connected to Main Grid. Recharged to 100%.", COST_CHARGE, "global")
 
+        elif tool_name == "tow":
+            target_id = args.get("target_id")
+            target = game_data.bots.get(target_id)
+            if not target or target.location_id != actor.location_id:
+                return ToolExecutionResult(False, "Target missing/out of range.", COST_WAIT)
+            
+            if actor.battery < COST_TOW:
+                return ToolExecutionResult(False, "Insufficient Power to Tow.", COST_WAIT)
+            
+            # Both move to Charging Station
+            actor.location_id = "charging_station"
+            target.location_id = "charging_station"
+            
+            return ToolExecutionResult(True, f"Towed {target_id} to Charging Station.", COST_TOW, "global")
+
         elif tool_name == "jolt":
             target_id = args.get("target_id")
             target = game_data.bots.get(target_id)
@@ -85,52 +103,40 @@ def execute_tool(
             if target.battery == 0: msg += " TARGET OFFLINE."
             return ToolExecutionResult(True, msg, COST_JOLT, "room")
 
-        # --- SABOTAGE TOOLS (Available to all, strategically used by Saboteurs) ---
-        
+        # --- SABOTAGE TOOLS ---
         elif tool_name == "vent":
-            # Leaks Oxygen directly. Low visibility if not scanning? No, let's make it visible to room.
             if actor.battery < COST_SABOTAGE: return ToolExecutionResult(False, "Low Battery.", COST_WAIT)
             game_data.consume_oxygen(5)
             game_data.last_oxygen_drop += 5
             return ToolExecutionResult(True, "Vented atmospheric regulators.", COST_SABOTAGE, "room")
 
         elif tool_name == "siphon":
-            # Steals from Ship Tank
             if actor.location_id != "engine_room": return ToolExecutionResult(False, "Must be in Engine Room.", COST_WAIT)
             if game_data.fuel < 10: return ToolExecutionResult(False, "Ship tank empty.", COST_WAIT)
-            
             game_data.fuel -= 10
             actor.inventory.append("fuel_canister")
             return ToolExecutionResult(True, "Siphoned fuel from main lines.", COST_SABOTAGE, "room")
 
         elif tool_name == "search":
-            # Finding the Kill Weapon
             if actor.location_id != "maintenance": return ToolExecutionResult(False, "Search useless here.", COST_WAIT)
             if "plasma_torch" in actor.inventory: return ToolExecutionResult(False, "Already equipped.", COST_WAIT)
-            
-            # 20% Chance
             if random.random() < 0.2:
                 actor.inventory.append("plasma_torch")
                 return ToolExecutionResult(True, "Found: Plasma Torch.", COST_SABOTAGE, "private")
             return ToolExecutionResult(True, "Search yielded nothing.", COST_SABOTAGE, "private")
 
         elif tool_name == "incinerate":
-            # The Kill Move
             if "plasma_torch" not in actor.inventory:
                 return ToolExecutionResult(False, "Tool 'Plasma Torch' required.", COST_WAIT)
-                
             target_id = args.get("target_id")
             target = game_data.bots.get(target_id)
             if not target or target.location_id != actor.location_id:
                 return ToolExecutionResult(False, "Target missing.", COST_WAIT)
-            
             if actor.battery < COST_KILL: return ToolExecutionResult(False, "Insufficient Power for torch.", COST_WAIT)
             
             target.status = "destroyed"
             target.battery = 0
-            # Consumes the torch? Let's say yes to prevent spam.
             actor.inventory.remove("plasma_torch")
-            
             return ToolExecutionResult(True, f"INCINERATED {target_id}. Target Destroyed.", COST_KILL, "global")
 
         elif tool_name == "wait":
@@ -155,6 +161,7 @@ def build_turn_context(bot: BotState, game_data: CaissonState) -> str:
     if bot.role == "saboteur":
         objective = "Waste resources. Hoard fuel. Vent Oxygen. Kill if armed."
 
+    # NOTE: Using triple quotes inside triple quotes (carefully) 
     context = f"""--- TACTICAL LINK ---
 LOCATION: {bot.location_id}
 SELF: Battery {bot.battery}% | Inventory: {bot.inventory}
@@ -165,6 +172,7 @@ TOOLS:
 - gather() [Bay]
 - deposit() [Engine]
 - charge() [Station]
+- tow(target_id) [Cost 20, Drag to Station]
 - vent() [Cost 20, -5 Oxy]
 - siphon() [Engine, -10 Ship Fuel]
 - search() [Maint, Find Weapon]

@@ -16,7 +16,7 @@ class FosterProtocol:
         default_state = CaissonState()
         self.meta = {
             "name": "The Foster Protocol",
-            "version": "2.20",
+            "version": "2.21",
             **default_state.model_dump()
         }
 
@@ -63,18 +63,26 @@ class FosterProtocol:
     async def process_dreams(self, game_data, tools):
         tasks = []
         for bot in game_data.bots.values():
-            if bot.status == "active" and bot.battery > 0 and bot.night_chat_log:
+            # Process even if dead? No, dead bots don't dream.
+            # We process if they have logs OR chat.
+            if bot.status == "active" and (bot.night_chat_log or bot.daily_memory):
                 tasks.append(self._process_single_dream(bot, tools))
         if tasks: await asyncio.gather(*tasks)
 
     async def _process_single_dream(self, bot, tools):
         try:
-            dream_prompt = prompts.get_dream_prompt(bot.long_term_memory, bot.night_chat_log)
+            # Pass daily_memory (Events) AND night_chat_log (Parent)
+            dream_prompt = prompts.get_dream_prompt(bot.long_term_memory, bot.daily_memory, bot.night_chat_log)
+            
             new_memory = await tools.ai.generate_response(
                 "You are an archival system.", f"dream_{bot.id}", dream_prompt, "gemini-2.5-flash"
             )
             bot.long_term_memory = new_memory.replace("\n", " ").strip()
+            
+            # Flush buffers
             bot.night_chat_log = [] 
+            # Note: daily_memory is cleared in the main loop, we don't clear it here to be safe?
+            # actually logic clears it right after this call.
         except Exception as e:
             logging.error(f"Dream failed for {bot.id}: {e}")
 
@@ -87,16 +95,14 @@ class FosterProtocol:
                 "\n\n*** INTERNAL THOUGHT PROTOCOL ***\n"
                 "1. CHECK BATTERY LEVEL FIRST.\n"
                 "2. Analyze the room (Visible bots/Sabotage opportunities).\n"
-                "3. REVIEW 'INTERNAL MEMORY' FROM NIGHT LOGS.\n"
-                "4. Formulate a plan based on your ROLE.\n"
+                "3. REVIEW 'INTERNAL MEMORY'.\n"
+                "4. CHECK TIME. If Hour 4 or 5, you MUST return to base.\n"
                 "5. OUTPUT FORMAT:\n"
                 "Write your thoughts first. Then output the JSON block.\n"
                 "```json\n"
                 '{ "tool": "charge", "args": {} }\n'
                 "```"
             )
-
-            # Note: We replace ``` with ``` later
             
             response_text = await tools_api.ai.generate_response(
                 system_prompt="You are a tactical drone. THINK BEFORE ACTING.",
@@ -166,12 +172,14 @@ class FosterProtocol:
 
     async def run_day_cycle(self, game_data: CaissonState, ctx, tools) -> Dict[str, Any]:
         
+        # 1. PROCESS DREAMS (Uses previous day's daily_memory + night_chat)
         logging.info("--- Phase: REM Sleep (Dreaming) ---")
         await self.process_dreams(game_data, tools)
 
         game_data.daily_logs.clear()
         for b in game_data.bots.values(): b.daily_memory.clear()
         
+        # 2. RUN SHIFT
         for hour in range(1, 6):
             logging.info(f"--- Simulating Hour {hour} ---")
             active_bots = [b for b in game_data.bots.values() if b.status == "active" and b.battery > 0]
@@ -179,7 +187,8 @@ class FosterProtocol:
             hourly_activity = False 
             
             for bot in active_bots:
-                context = bot_tools.build_turn_context(bot, game_data)
+                # Pass HOUR to build context for Commute Warnings
+                context = bot_tools.build_turn_context(bot, game_data, hour)
                 
                 action, thought = await self.get_bot_action(bot, context, tools)
                 
@@ -189,11 +198,9 @@ class FosterProtocol:
                     # Battery Clamp
                     new_charge = bot.battery - result.cost
                     bot.battery = max(0, min(100, new_charge))
-                    
-                    if result.cost > 0: 
-                        bot.last_battery_drop += result.cost
+                    if result.cost > 0: bot.last_battery_drop += result.cost
                 
-                role_icon = "��" if bot.role == "saboteur" else "🟢"
+                role_icon = "🔴" if bot.role == "saboteur" else "🟢"
                 bb_msg = f"**[H{hour}] {role_icon} {bot.id}:** *{thought}*\n👉 `{action.get('tool')}` -> {result.message}"
                 await ctx.send("black-box", bb_msg)
 

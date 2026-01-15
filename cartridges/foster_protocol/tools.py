@@ -10,7 +10,7 @@ COST_GATHER = 15
 COST_DEPOSIT = 15
 COST_CHARGE = 0   
 COST_TOW = 20      
-COST_DRAIN = -15   # Net: Spend 5, Steal 20
+COST_DRAIN = -15   
 COST_SABOTAGE = 20 
 COST_KILL = 50     
 
@@ -94,14 +94,15 @@ def execute_tool(tool_name: str, args: Dict[str, Any], bot_id: str, game_data: C
             if actor.battery < COST_SABOTAGE: return ToolExecutionResult(False, "Low Battery.", COST_WAIT)
             game_data.consume_oxygen(5)
             game_data.last_oxygen_drop += 5
-            return ToolExecutionResult(True, "Vented atmospheric regulators.", COST_SABOTAGE, "room")
+            # Updated message for clarity
+            return ToolExecutionResult(True, "SAW SABOTAGE: Vented O2 Regulators.", COST_SABOTAGE, "room")
 
         elif tool_name == "siphon":
             if actor.location_id != "engine_room": return ToolExecutionResult(False, "Must be in Engine Room.", COST_WAIT)
             if game_data.fuel < 10: return ToolExecutionResult(False, "Ship tank empty.", COST_WAIT)
             game_data.fuel -= 10
             actor.inventory.append("fuel_canister")
-            return ToolExecutionResult(True, "Siphoned fuel from main lines.", COST_SABOTAGE, "room")
+            return ToolExecutionResult(True, "SAW SABOTAGE: Siphoned Main Fuel.", COST_SABOTAGE, "room")
 
         elif tool_name == "search":
             if actor.location_id != "maintenance": return ToolExecutionResult(False, "Search useless here.", COST_WAIT)
@@ -133,7 +134,7 @@ def execute_tool(tool_name: str, args: Dict[str, Any], bot_id: str, game_data: C
     except Exception as e:
         return ToolExecutionResult(False, f"Glitch: {str(e)}", COST_WAIT)
 
-def build_turn_context(bot: BotState, game_data: CaissonState) -> str:
+def build_turn_context(bot: BotState, game_data: CaissonState, hour: int = 1) -> str:
     visible_bots = []
     for b in game_data.bots.values():
         if b.location_id == bot.location_id and b.id != bot.id:
@@ -145,14 +146,20 @@ def build_turn_context(bot: BotState, game_data: CaissonState) -> str:
     if bot.role == "saboteur":
         objective = "Waste resources. Hoard fuel. Vent Oxygen. Kill if armed."
 
-    # Using explicit concatenation to avoid syntax errors with newlines
+    # --- THE COMMUTE LOGIC ---
+    time_warning = ""
+    if hour >= 4:
+        time_warning = "CRITICAL WARNING: Shift is ending. You MUST return to 'cryo_bay' or 'charging_station' immediately to survive and report."
+
     context = (
         "--- TACTICAL LINK ---\n"
+        f"TIME: Hour {hour}/5\n"
         f"LOCATION: {bot.location_id}\n"
         f"SELF: Battery {bot.battery}% | Inventory: {bot.inventory}\n"
         f"VISIBLE: {visible_bots}\n"
         f"INTERNAL MEMORY: \"{bot.long_term_memory}\"\n"
         f"OBJECTIVE: {objective}\n"
+        f"{time_warning}\n"
         "TOOLS: \n"
         "- move(room_id)\n"
         "- gather() [Bay]\n"

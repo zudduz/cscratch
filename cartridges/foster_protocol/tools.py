@@ -94,7 +94,6 @@ def execute_tool(tool_name: str, args: Dict[str, Any], bot_id: str, game_data: C
             if actor.battery < COST_SABOTAGE: return ToolExecutionResult(False, "Low Battery.", COST_WAIT)
             game_data.consume_oxygen(5)
             game_data.last_oxygen_drop += 5
-            # Updated message for clarity
             return ToolExecutionResult(True, "SAW SABOTAGE: Vented O2 Regulators.", COST_SABOTAGE, "room")
 
         elif tool_name == "siphon":
@@ -123,7 +122,9 @@ def execute_tool(tool_name: str, args: Dict[str, Any], bot_id: str, game_data: C
             target.status = "destroyed"
             target.battery = 0
             actor.inventory.remove("plasma_torch")
-            return ToolExecutionResult(True, f"INCINERATED {target_id}. Target Destroyed.", COST_KILL, "global")
+            
+            # --- UPDATED: Room visibility for stealth kills ---
+            return ToolExecutionResult(True, f"INCINERATED {target_id}. Target Destroyed.", COST_KILL, "room")
 
         elif tool_name == "wait":
              return ToolExecutionResult(True, "Idling.", COST_WAIT)
@@ -146,7 +147,6 @@ def build_turn_context(bot: BotState, game_data: CaissonState, hour: int = 1) ->
     if bot.role == "saboteur":
         objective = "Waste resources. Hoard fuel. Vent Oxygen. Kill if armed."
 
-    # --- THE COMMUTE LOGIC ---
     time_warning = ""
     if hour >= 4:
         time_warning = "CRITICAL WARNING: Shift is ending. You MUST return to 'cryo_bay' or 'charging_station' immediately to survive and report."

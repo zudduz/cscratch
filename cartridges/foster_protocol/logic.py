@@ -11,12 +11,24 @@ from . import prompts
 
 AVAILABLE_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash-001"]
 
+# BUREAUCRATIC REJECTION MESSAGES
+BUSY_MESSAGES = [
+    "⛔ **SIGNAL JAMMED.** Solar interference is too high during the day.",
+    "🔨 **DRONES AT WORK.** Union regulations prohibit chatting during shifts.",
+    "🔕 **RADIO SILENCE.** The Mainframe has muted this frequency.",
+    "📜 **ERROR 418.** I'm a teapot, and the crew is busy.",
+    "🔒 **LOCKDOWN.** Day Cycle in progress. Please hold.",
+    "📉 **RESOURCE SAVING.** Text packets disabled to conserve energy.",
+    "👀 **THEY ARE WATCHING.** Best not to transmit right now.",
+    "💤 **SYSTEM BUSY.** Compiling existential dread...",
+]
+
 class FosterProtocol:
     def __init__(self):
         default_state = CaissonState()
         self.meta = {
             "name": "The Foster Protocol",
-            "version": "2.21",
+            "version": "2.22",
             **default_state.model_dump()
         }
 
@@ -63,26 +75,18 @@ class FosterProtocol:
     async def process_dreams(self, game_data, tools):
         tasks = []
         for bot in game_data.bots.values():
-            # Process even if dead? No, dead bots don't dream.
-            # We process if they have logs OR chat.
             if bot.status == "active" and (bot.night_chat_log or bot.daily_memory):
                 tasks.append(self._process_single_dream(bot, tools))
         if tasks: await asyncio.gather(*tasks)
 
     async def _process_single_dream(self, bot, tools):
         try:
-            # Pass daily_memory (Events) AND night_chat_log (Parent)
             dream_prompt = prompts.get_dream_prompt(bot.long_term_memory, bot.daily_memory, bot.night_chat_log)
-            
             new_memory = await tools.ai.generate_response(
                 "You are an archival system.", f"dream_{bot.id}", dream_prompt, "gemini-2.5-flash"
             )
             bot.long_term_memory = new_memory.replace("\n", " ").strip()
-            
-            # Flush buffers
             bot.night_chat_log = [] 
-            # Note: daily_memory is cleared in the main loop, we don't clear it here to be safe?
-            # actually logic clears it right after this call.
         except Exception as e:
             logging.error(f"Dream failed for {bot.id}: {e}")
 
@@ -150,7 +154,7 @@ class FosterProtocol:
         await ctx.send("black-box", "**🏁 MISSION ENDED. DECLASSIFYING LOGS...**")
         
         if victory:
-            final_report = f"🚀 **SUBSPACE DRIVE ENGAGED**\nMISSION: SUCCESS\n**SECURITY AUDIT:** Sabotage detected. Traitor: **Unit {bot_name}** (Bonded to <@{saboteur_id}>)."
+            final_report = f"�� **SUBSPACE DRIVE ENGAGED**\nMISSION: SUCCESS\n**SECURITY AUDIT:** Sabotage detected. Traitor: **Unit {bot_name}** (Bonded to <@{saboteur_id}>)."
         else:
             final_report = f"💀 **CRITICAL SYSTEM FAILURE**\nMISSION: FAILED\n**SECURITY ALERT:** Traitor: **Unit {bot_name}** (Bonded to <@{saboteur_id}>)."
         await ctx.send("aux-comm", final_report)
@@ -170,37 +174,33 @@ class FosterProtocol:
             tasks.append(self._send_epilogue(ctx, tools, bot, sys_prompt, channel_key))
         if tasks: await asyncio.gather(*tasks)
 
-    async def run_day_cycle(self, game_data: CaissonState, ctx, tools) -> Dict[str, Any]:
-        
-        # 1. PROCESS DREAMS (Uses previous day's daily_memory + night_chat)
+    # --- BACKGROUND SIMULATION (The "Slow" Day) ---
+    async def execute_day_simulation(self, game_data: CaissonState, ctx, tools) -> Dict[str, Any]:
         logging.info("--- Phase: REM Sleep (Dreaming) ---")
         await self.process_dreams(game_data, tools)
 
         game_data.daily_logs.clear()
         for b in game_data.bots.values(): b.daily_memory.clear()
         
-        # 2. RUN SHIFT
+        # SLOW SIMULATION LOOP
         for hour in range(1, 6):
+            await asyncio.sleep(2) # Artificial Delay for Dramatic Effect
             logging.info(f"--- Simulating Hour {hour} ---")
             active_bots = [b for b in game_data.bots.values() if b.status == "active" and b.battery > 0]
             random.shuffle(active_bots)
             hourly_activity = False 
             
             for bot in active_bots:
-                # Pass HOUR to build context for Commute Warnings
                 context = bot_tools.build_turn_context(bot, game_data, hour)
-                
                 action, thought = await self.get_bot_action(bot, context, tools)
-                
                 result = bot_tools.execute_tool(action.get("tool", "wait"), action.get("args", {}), bot.id, game_data)
                 
                 if not (action.get("tool") == "charge" and result.success):
-                    # Battery Clamp
                     new_charge = bot.battery - result.cost
                     bot.battery = max(0, min(100, new_charge))
                     if result.cost > 0: bot.last_battery_drop += result.cost
                 
-                role_icon = "🔴" if bot.role == "saboteur" else "🟢"
+                role_icon = "🔴" if bot.role == "saboteur" else "��"
                 bb_msg = f"**[H{hour}] {role_icon} {bot.id}:** *{thought}*\n👉 `{action.get('tool')}` -> {result.message}"
                 await ctx.send("black-box", bb_msg)
 
@@ -243,6 +243,9 @@ class FosterProtocol:
             await ctx.send("aux-comm", report)
             await self.speak_all_bots(game_data, ctx, tools, "The work day is over. Briefly report your status to your Parent.")
 
+        # RESET PHASE TO NIGHT
+        game_data.phase = "night"
+
         result = game_data.model_dump()
         result["channel_ops"] = channel_ops if channel_ops else None
         return result
@@ -253,6 +256,11 @@ class FosterProtocol:
         channel_id = ctx.trigger_data.get('channel_id')
         user_id = ctx.trigger_data.get('user_id')
         interface_channels = ctx.trigger_data.get('interface', {}).get('channels', {})
+        
+        # --- NEW: DAY PHASE CHECK ---
+        if game_data.phase == "day":
+            await ctx.reply(random.choice(BUSY_MESSAGES))
+            return None
         
         if channel_id == interface_channels.get('aux-comm'):
             if user_input.strip().startswith("!"):
@@ -311,10 +319,15 @@ class FosterProtocol:
                         await ctx.send("aux-comm", "💤 **CREW ASLEEP. DAY CYCLE INITIATED.**")
                         await ctx.reply("✅ Consensus Reached. Initiating Day Cycle...")
                         
-                        result = await self.run_day_cycle(game_data, ctx, tools)
-                        ops = result.pop("channel_ops", None)
-                        for p in result['players'].values(): p['is_sleeping'] = False
-                        return {"metadata": result, "channel_ops": ops}
+                        # --- SET PHASE TO DAY ---
+                        game_data.phase = "day"
+                        # Reset sleep for next round
+                        for p in game_data.players.values(): p.is_sleeping = False
+                        
+                        # SCHEDULE BACKGROUND TASK
+                        ctx.schedule(self.execute_day_simulation(game_data, ctx, tools))
+                        
+                        return {"metadata": game_data.model_dump()}
                     
                     await ctx.reply(f"🗳️ **SLEEP REQUEST LOGGED.** ({sleeping_count}/{total_living} Crew Ready)")
                     return {f"players.{user_id}.is_sleeping": True}

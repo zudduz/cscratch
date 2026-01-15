@@ -10,7 +10,7 @@ COST_GATHER = 15
 COST_DEPOSIT = 15
 COST_CHARGE = 0   
 COST_TOW = 20      
-COST_DRAIN = -15   # Negative cost means GAIN 15 (Net: Spend 5, Steal 20)
+COST_DRAIN = -15   # Net: Spend 5, Steal 20
 COST_SABOTAGE = 20 
 COST_KILL = 50     
 
@@ -80,12 +80,8 @@ def execute_tool(tool_name: str, args: Dict[str, Any], bot_id: str, game_data: C
             if not target or target.location_id != actor.location_id:
                 return ToolExecutionResult(False, "Target missing/out of range.", COST_WAIT)
             
-            # Mechanic: Steal 20, Gain 15 (Cost is -15)
-            # Ensure we don't drain dead bots? Or maybe we can? Let's say yes, scavenge the dead.
             drain_amount = 20
-            available = target.battery
-            actual_drain = min(available, drain_amount)
-            
+            actual_drain = min(target.battery, drain_amount)
             target.battery = max(0, target.battery - actual_drain)
             target.last_battery_drop += actual_drain
             
@@ -149,6 +145,7 @@ def build_turn_context(bot: BotState, game_data: CaissonState) -> str:
     if bot.role == "saboteur":
         objective = "Waste resources. Hoard fuel. Vent Oxygen. Kill if armed."
 
+    # Using explicit concatenation to avoid syntax errors with newlines
     context = (
         "--- TACTICAL LINK ---\n"
         f"LOCATION: {bot.location_id}\n"
@@ -161,7 +158,7 @@ def build_turn_context(bot: BotState, game_data: CaissonState) -> str:
         "- gather() [Bay]\n"
         "- deposit() [Engine]\n"
         "- charge() [Station]\n"
-        "- tow(target_id) [Cost 20, Drag to Station]\n"
+        "- tow(target_id) [Cost 20]\n"
         "- drain(target_id) [Steal 20% Battery, Gain 15%]\n"
         "- vent() [Cost 20, -5 Oxy]\n"
         "- siphon() [Engine, -10 Ship Fuel]\n"

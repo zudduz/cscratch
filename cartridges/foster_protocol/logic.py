@@ -16,7 +16,7 @@ class FosterProtocol:
         default_state = CaissonState()
         self.meta = {
             "name": "The Foster Protocol",
-            "version": "2.19",
+            "version": "2.20",
             **default_state.model_dump()
         }
 
@@ -96,6 +96,8 @@ class FosterProtocol:
                 "```"
             )
 
+            # Note: We replace ``` with ``` later
+            
             response_text = await tools_api.ai.generate_response(
                 system_prompt="You are a tactical drone. THINK BEFORE ACTING.",
                 conversation_id=f"tactical_{bot.id}",
@@ -164,14 +166,12 @@ class FosterProtocol:
 
     async def run_day_cycle(self, game_data: CaissonState, ctx, tools) -> Dict[str, Any]:
         
-        # 1. PROCESS DREAMS
         logging.info("--- Phase: REM Sleep (Dreaming) ---")
         await self.process_dreams(game_data, tools)
 
         game_data.daily_logs.clear()
         for b in game_data.bots.values(): b.daily_memory.clear()
         
-        # 2. RUN SHIFT
         for hour in range(1, 6):
             logging.info(f"--- Simulating Hour {hour} ---")
             active_bots = [b for b in game_data.bots.values() if b.status == "active" and b.battery > 0]
@@ -186,15 +186,14 @@ class FosterProtocol:
                 result = bot_tools.execute_tool(action.get("tool", "wait"), action.get("args", {}), bot.id, game_data)
                 
                 if not (action.get("tool") == "charge" and result.success):
-                    # Cost subtraction (Negative cost = Gain)
+                    # Battery Clamp
                     new_charge = bot.battery - result.cost
-                    # CLAMP at 0 and 100
                     bot.battery = max(0, min(100, new_charge))
                     
-                    if result.cost > 0: # Only track drop if it was a cost
+                    if result.cost > 0: 
                         bot.last_battery_drop += result.cost
                 
-                role_icon = "🔴" if bot.role == "saboteur" else "🟢"
+                role_icon = "��" if bot.role == "saboteur" else "🟢"
                 bb_msg = f"**[H{hour}] {role_icon} {bot.id}:** *{thought}*\n👉 `{action.get('tool')}` -> {result.message}"
                 await ctx.send("black-box", bb_msg)
 

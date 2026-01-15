@@ -108,7 +108,8 @@ class GameEngine:
                 "channel_id": str(channel_id),
                 "user_id": str(user_id),
                 "user_name": str(user_name),
-                "interface": game.interface.model_dump()
+                "interface": game.interface.model_dump(),
+                "metadata": game.metadata # Pass state for context lookups
             }
 
             ctx = EngineContext(
@@ -129,7 +130,17 @@ class GameEngine:
             )
 
             if patch:
-                await self._apply_state_patch(game.id, patch)
+                # --- Extract Side Effects ---
+                if "channel_ops" in patch:
+                    ops = patch.pop("channel_ops")
+                    if ops:
+                        for interface in self.interfaces:
+                            if hasattr(interface, 'execute_channel_ops'):
+                                await interface.execute_channel_ops(game.id, ops)
+                
+                # Apply State Update
+                if patch: 
+                    await self._apply_state_patch(game.id, patch)
 
     async def dispatch_immediate_result(self, game_id: str, result: dict):
         msgs = result.get('messages', [])
@@ -154,6 +165,7 @@ class GameEngine:
             await persistence.db.update_game_metadata_fields(game_id, patch)
         except Exception as e:
             logging.error(f"State Patch Failed: {e}")
+            raise e
 
     async def _dispatch_message_to_interfaces(self, game_id: str, channel_key: str, text: str):
         game = await persistence.db.get_game_by_id(game_id)
@@ -170,7 +182,6 @@ class GameEngine:
 
     async def _load_cartridge(self, story_id):
         import importlib
-        # Default to foster-protocol if unknown
         module_path = CARTRIDGE_MAP.get(story_id, CARTRIDGE_MAP["foster-protocol"])
         module = importlib.import_module(module_path)
         return module.FosterProtocol()

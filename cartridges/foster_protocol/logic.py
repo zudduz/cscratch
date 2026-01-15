@@ -16,7 +16,7 @@ class FosterProtocol:
         default_state = CaissonState()
         self.meta = {
             "name": "The Foster Protocol",
-            "version": "2.10",
+            "version": "2.11",
             **default_state.model_dump()
         }
 
@@ -79,7 +79,7 @@ class FosterProtocol:
                 "4. OUTPUT FORMAT:\n"
                 "Write your thoughts first. Then output the JSON block.\n"
                 "```json\n"
-                "{ \"tool\": \"charge\", \"args\": {} }\n"
+                '{ "tool": "charge", "args": {} }\n'
                 "```"
             )
 
@@ -128,7 +128,7 @@ class FosterProtocol:
         await ctx.send("black-box", "**🏁 MISSION ENDED. DECLASSIFYING LOGS...**")
         
         if victory:
-            final_report = f"�� **SUBSPACE DRIVE ENGAGED**\nMISSION: SUCCESS\n**SECURITY AUDIT:** Sabotage detected. Traitor: **Unit {bot_name}** (Bonded to <@{saboteur_id}>)."
+            final_report = f"🚀 **SUBSPACE DRIVE ENGAGED**\nMISSION: SUCCESS\n**SECURITY AUDIT:** Sabotage detected. Traitor: **Unit {bot_name}** (Bonded to <@{saboteur_id}>)."
         else:
             final_report = f"💀 **CRITICAL SYSTEM FAILURE**\nMISSION: FAILED\n**SECURITY ALERT:** Traitor: **Unit {bot_name}** (Bonded to <@{saboteur_id}>)."
         await ctx.send("aux-comm", final_report)
@@ -214,10 +214,10 @@ class FosterProtocol:
             await ctx.send("aux-comm", report)
             await self.speak_all_bots(game_data, ctx, tools, "The work day is over. Briefly report your status to your Parent.")
 
-        return {
-            **game_data.model_dump(),
-            "channel_ops": channel_ops if channel_ops else None
-        }
+        # RETURN FLAT STATE + OPS
+        result = game_data.model_dump()
+        result["channel_ops"] = channel_ops if channel_ops else None
+        return result
 
     # --- INPUT HANDLERS ---
     async def handle_input(self, generic_state: dict, user_input: str, ctx, tools) -> Dict[str, Any]:
@@ -301,8 +301,10 @@ class FosterProtocol:
                     if sleeping_count >= total_living:
                         await ctx.send("aux-comm", "💤 **CREW ASLEEP. DAY CYCLE INITIATED.**")
                         result = await self.run_day_cycle(game_data, ctx, tools)
+                        
                         ops = result.pop("channel_ops", None)
                         for p in result['players'].values(): p['is_sleeping'] = False
+                        
                         return {"metadata": result, "channel_ops": ops}
                     
                     await ctx.reply(f"System: Sleep Mode Active. ({sleeping_count}/{total_living} Crew Ready)")

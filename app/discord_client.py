@@ -203,6 +203,6 @@ async def on_message(message):
     if not await persistence.db.lock_event(message.id): return
     
     try:
-        async with message.channel.typing():
-            await game_engine.engine.dispatch_input(str(message.channel.id), str(message.author.id), message.author.name, message.content)
+        # No typing indicator
+        await game_engine.engine.dispatch_input(str(message.channel.id), str(message.author.id), message.author.name, message.content)
     except Exception as e: logging.error(f"Input Error: {e}")

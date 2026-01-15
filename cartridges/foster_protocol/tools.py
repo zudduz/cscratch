@@ -4,12 +4,11 @@ from .models import CaissonState, BotState
 from .board import SHIP_MAP
 
 # 2-Day Life Expectancy (10 Turns total)
-# Base Wait Cost = 10% per turn.
 COST_WAIT = 10
 COST_MOVE = 12
 COST_GATHER = 15
 COST_DEPOSIT = 15
-COST_CHARGE = 0   # Charging is free (time-wise), gains battery
+COST_CHARGE = 0   
 COST_JOLT = 25
 COST_TETHER = 25
 
@@ -63,7 +62,8 @@ def execute_tool(
             
             # Reset to full
             actor.battery = 100
-            return ToolExecutionResult(True, "Recharged to 100%.", COST_CHARGE, "room")
+            # CHANGED TO GLOBAL VISIBILITY
+            return ToolExecutionResult(True, "Connected to Main Grid. Recharged to 100%.", COST_CHARGE, "global")
 
         elif tool_name == "jolt":
             target_id = args.get("target_id")
@@ -111,7 +111,7 @@ def build_turn_context(bot: BotState, game_data: CaissonState) -> str:
     if bot.role == "saboteur":
         objective = "Waste resources. Hoard fuel. If unobserved, Jolt enemies."
 
-    # Added charging_station to valid rooms and charge() to tools
+    # NOTE: Using triple quotes inside triple quotes (carefully) 
     context = f"""--- TACTICAL LINK ---
 LOCATION: {bot.location_id}
 SELF: Battery {bot.battery}% | Inventory: {bot.inventory}
@@ -119,5 +119,5 @@ VISIBLE: {visible_bots}
 OBJECTIVE: {objective}
 TOOLS: move(room_id), gather(), deposit(), charge(), jolt(target_id), tether(target_id), wait()
 VALID ROOMS: cryo_bay, engine_room, shuttle_bay, torpedo_bay, maintenance, charging_station
-RESPONSE FORMAT: JSON only. Example: {{ "tool": "move", "args": {{ "room_id": "charging_station" }} }}"""
+RESPONSE FORMAT: JSON only. Example: {{ "tool": "move", "args": {{ "room_id": "engine_room" }} }}"""
     return context

@@ -63,6 +63,22 @@ class ChickenBot(commands.Bot):
             await channel.send(text)
         except Exception as e: logging.error(f"Discord Send Error {channel_id}: {e}")
 
+    # --- NEW: UNLOCK CHANNEL (For End Game Reveal) ---
+    async def unlock_channel(self, channel_id: str, guild_id: str):
+        try:
+            guild = self.get_guild(int(guild_id))
+            channel = guild.get_channel(int(channel_id))
+            if not channel: return
+            
+            # Reset permissions to default (usually allows reading if public)
+            # Or specifically grant @everyone read access
+            overwrite = channel.overwrites_for(guild.default_role)
+            overwrite.read_messages = True
+            await channel.set_permissions(guild.default_role, overwrite=overwrite)
+            await channel.send("🔓 **BLACK BOX DECLASSIFIED. LOGS AVAILABLE.**")
+        except Exception as e:
+            logging.error(f"Unlock Failed: {e}")
+
     async def execute_channel_ops(self, game_id: str, ops: list):
         if not ops: return
         game = await persistence.db.get_game_by_id(game_id)
@@ -92,6 +108,12 @@ class ChickenBot(commands.Bot):
                             member = guild.get_member(int(user_id))
                             if member:
                                 overwrites[member] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
+                    
+                    # --- NEW AUDIENCE: BLACK-BOX ---
+                    elif op.get('audience') == 'hidden':
+                        # Explicitly deny everyone except bot
+                        overwrites[guild.default_role] = discord.PermissionOverwrite(read_messages=False)
+                        overwrites[guild.me] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
 
                     channel_name = op.get('name', 'unknown')
                     c_name = "".join(c for c in channel_name if c.isalnum() or c == "-").lower()
@@ -104,6 +126,14 @@ class ChickenBot(commands.Bot):
                         interface.listener_ids.append(str(new_chan.id))
                     self.active_game_channels.add(str(new_chan.id))
                     changes = True
+                    
+                # --- NEW OP: REVEAL ---
+                elif op['op'] == 'reveal':
+                    key = op.get('key')
+                    chan_id = interface.channels.get(key)
+                    if chan_id:
+                        await self.unlock_channel(chan_id, game.interface.guild_id)
+
             except Exception as e: logging.error(f"Op Failed: {e}")
 
         if changes: await persistence.db.update_game_interface(game_id, interface)
@@ -148,7 +178,6 @@ async def start(interaction: discord.Interaction, cartridge: str = "foster-proto
         await chan.send(embed=embed, view=view)
         await interaction.followup.send(f"✅ Lobby: {chan.mention}")
 
-        # CHECK ADMIN
         if isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator:
             await interaction.followup.send(ADMIN_WARNING_TEXT, ephemeral=True)
 

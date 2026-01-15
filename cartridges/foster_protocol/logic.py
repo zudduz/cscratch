@@ -3,6 +3,7 @@ import random
 import asyncio
 import logging
 import json
+import re
 from .models import CaissonState, BotState, PlayerState
 from .board import SHIP_MAP
 from . import tools as bot_tools 
@@ -14,7 +15,7 @@ class FosterProtocol:
         default_state = CaissonState()
         self.meta = {
             "name": "The Foster Protocol",
-            "version": "2.2",
+            "version": "2.4",
             **default_state.model_dump()
         }
 
@@ -39,14 +40,18 @@ class FosterProtocol:
             channel_key = f"nanny_{u_id}"
             channel_ops.append({ "op": "create", "key": channel_key, "name": f"nanny-port-{u_name}", "audience": "private", "user_id": u_id })
             
-            messages.append({ "channel": channel_key, "content": f"**TERMINAL ACTIVE.**\nUser: {u_name}\nConnection Established." })
+            messages.append({ "channel": channel_key, "content": f"**TERMINAL ACTIVE.**\nUser: {u_name}" })
             game_data.players[u_id] = PlayerState(role=role)
             
             while True:
                 bot_id = f"unit_{random.randint(0, 999):03d}"
                 if bot_id not in game_data.bots: break
             
-            prompt = f"You are {bot_id}. You are bonded to Foster Parent {u_name}. "
+            prompt = (
+                f"You are {bot_id}. bonded to {u_name}. "
+                f"Keep messages informal and conversational. "
+                f"MAX RESPONSE LENGTH: 500 characters. "
+            )
             if is_saboteur: prompt += "SECRET: You are the Saboteur."
             
             game_data.bots[bot_id] = BotState(
@@ -66,8 +71,15 @@ class FosterProtocol:
                 user_input=context,
                 model_version=bot.model_version
             )
-            clean_text = response_text.replace("```json", "").replace("```", "").strip()
-            return json.loads(clean_text)
+            
+            match = re.search(r"\{.*\}", response_text, re.DOTALL)
+            if match:
+                clean_text = match.group(0)
+                return json.loads(clean_text)
+            else:
+                clean_text = response_text.replace("```json", "").replace("```", "").strip()
+                return json.loads(clean_text)
+                
         except Exception as e:
             logging.error(f"Bot {bot.id} brain freeze: {e}")
             return {"tool": "wait", "args": {}}
@@ -80,17 +92,13 @@ class FosterProtocol:
                 f"🚀 **SUBSPACE DRIVE ENGAGED**\n"
                 f"----------------------------\n"
                 f"MISSION: SUCCESS\n"
-                f"FUEL LEVELS: 100%\n\n"
-                f"**SECURITY AUDIT:** Sabotage detected during flight.\n"
-                f"The Traitor was: <@{saboteur_id}>.\n"
-                f"*Recommendation: Eject them from the airlock.*"
+                f"**SECURITY AUDIT:** Sabotage detected. The Traitor was: <@{saboteur_id}>."
             )
         else:
             final_report = (
                 f"💀 **CRITICAL SYSTEM FAILURE**\n"
                 f"----------------------------\n"
                 f"MISSION: FAILED\n"
-                f"CAUSE: Oxygen Depletion\n\n"
                 f"**SECURITY ALERT:** The traitor was <@{saboteur_id}>."
             )
         await ctx.send("aux-comm", final_report)
@@ -99,25 +107,16 @@ class FosterProtocol:
         for bot in game_data.bots.values():
             channel_key = f"nanny_{bot.foster_id}"
             if victory:
-                if bot.role == "saboteur":
-                    sys_prompt = "The humans WON. You failed. Be bitter. Curse your 'Parent' for outsmarting you."
-                else:
-                    sys_prompt = "VICTORY! The ship is moving! You are saved! Celebrate with your Parent. You love them so much."
+                sys_prompt = "The humans WON. You failed. Be short." if bot.role == "saboteur" else "VICTORY! Celebrate briefly. Under 500 chars."
             else:
-                if bot.role == "saboteur":
-                    sys_prompt = "The humans DIED. You WON. Drop the act. Mock your 'Parent' for their failure."
-                else:
-                    sys_prompt = "You are dying. Oxygen is gone. Say a heartbreaking goodbye to your Parent."
+                sys_prompt = "The humans DIED. You WON. Mock them briefly." if bot.role == "saboteur" else "You are dying. Say goodbye. Under 500 chars."
 
             tasks.append(self._send_epilogue(ctx, tools, bot, sys_prompt, channel_key))
-        
         if tasks: await asyncio.gather(*tasks)
 
     async def _send_epilogue(self, ctx, tools, bot, prompt, channel_key):
         try:
-            resp = await tools.ai.generate_response(
-                prompt, f"{ctx.game_id}_bot_{bot.id}", "[SYSTEM: ENDGAME STATE REACHED]", bot.model_version
-            )
+            resp = await tools.ai.generate_response(prompt, f"{ctx.game_id}_bot_{bot.id}", "ENDGAME", bot.model_version)
             await ctx.send(channel_key, resp)
         except Exception: pass
 
@@ -131,7 +130,7 @@ class FosterProtocol:
             active_bots = [b for b in game_data.bots.values() if b.status == "active"]
             random.shuffle(active_bots)
             
-            hourly_activity = False # Track if anything public happened
+            hourly_activity = False 
             
             for bot in active_bots:
                 context = bot_tools.build_turn_context(bot, game_data)
@@ -153,12 +152,15 @@ class FosterProtocol:
                         w.daily_memory.append(f"[Hour {hour}] I saw {bot.id}: {result.message}")
                         
                 if result.visibility == "global":
-                    game_data.daily_logs.append(f"[HOUR {hour}] {bot.id}: {result.message}")
+                    public_msg = f"[HOUR {hour}] 🔊 {bot.id}: {result.message}"
+                    game_data.daily_logs.append(public_msg)
+                    await ctx.send("aux-comm", public_msg) 
                     hourly_activity = True
 
-            # Fill dead air
             if not hourly_activity:
-                game_data.daily_logs.append(f"[HOUR {hour}] Ship systems nominal.")
+                public_msg = f"[HOUR {hour}] 💤 Ship systems nominal."
+                game_data.daily_logs.append(public_msg)
+                await ctx.send("aux-comm", public_msg)
 
         # 2. UPDATE WORLD
         base_drop = 25
@@ -169,10 +171,8 @@ class FosterProtocol:
         report = (
             f"🌞 **CYCLE {game_data.cycle} REPORT**\n"
             f"📉 Oxygen: {game_data.oxygen}%\n"
-            f"🔋 Fuel: {game_data.fuel}%\n"
+            f"🔋 Fuel: {game_data.fuel}%"
         )
-        if game_data.daily_logs:
-            report += "\n**PUBLIC LOGS:**\n" + "\n".join(game_data.daily_logs)
 
         # 3. CHECK END CONDITIONS
         if game_data.fuel >= 100:
@@ -198,7 +198,7 @@ class FosterProtocol:
         
         if channel_id == interface_channels.get('aux-comm'):
             response = await tools.ai.generate_response(
-                "You are VENDETTA OS. Cold, cynical.", f"{ctx.game_id}_mainframe", user_input, "gemini-2.5-pro"
+                "You are VENDETTA OS. Cold, cynical. Keep it under 500 characters.", f"{ctx.game_id}_mainframe", user_input, "gemini-2.5-pro"
             )
             await ctx.reply(response)
             
@@ -218,16 +218,11 @@ class FosterProtocol:
 
             my_bot = next((b for b in game_data.bots.values() if b.foster_id == user_id), None)
             if my_bot:
-                # Updated Prompt: Force Night Mode Context
                 memory_block = "\n".join(my_bot.daily_memory[-15:]) 
                 full_prompt = (
-                    f"CURRENT PHASE: NIGHT (DOCKED)\n"
-                    f"LOCATION: Nanny Port (Safe)\n"
-                    f"STATUS: Battery {my_bot.battery}% | Loc: {my_bot.location_id}\n"
-                    f"INSTRUCTION: You cannot move, work, or fight right now. The Day is over. "
-                    f"You are safe in the dock. Report your day to your Parent. "
-                    f"Discuss your feelings and the logs below.\n\n"
-                    f"TODAY'S LOGS:\n{memory_block}\n\n"
+                    f"PHASE: NIGHT (SAFE)\nSTATUS: Bat {my_bot.battery}% | Loc: {my_bot.location_id}\n"
+                    f"LOGS:\n{memory_block}\n\n"
+                    f"INSTRUCTION: Be concise (under 500 chars). Chat with Parent.\n"
                     f"PARENT SAYS: {user_input}"
                 )
                 response = await tools.ai.generate_response(

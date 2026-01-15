@@ -16,7 +16,7 @@ class FosterProtocol:
         default_state = CaissonState()
         self.meta = {
             "name": "The Foster Protocol",
-            "version": "2.9",
+            "version": "2.10",
             **default_state.model_dump()
         }
 
@@ -31,13 +31,12 @@ class FosterProtocol:
 
         channel_ops.append({ "op": "create", "key": "aux-comm", "name": "aux-comm", "audience": "public" })
         
-        # --- NEW: BLACK BOX CHANNEL ---
         channel_ops.append({ 
             "op": "create", 
             "key": "black-box", 
             "name": "black-box-logs", 
             "audience": "hidden",
-            "init_msg": "🔒 **FLIGHT RECORDER ACTIVE.**\nThis channel logs internal AI thought processes. It will be declassified at the end of the mission."
+            "init_msg": "🔒 **FLIGHT RECORDER ACTIVE.**\nThis channel logs internal AI thought processes."
         })
 
         messages.append({ "channel": "aux-comm", "content": "**VENDETTA OS v9.0 ONLINE.**" })
@@ -58,7 +57,6 @@ class FosterProtocol:
                 bot_id = f"unit_{random.randint(0, 999):03d}"
                 if bot_id not in game_data.bots: break
             
-            # USE NEW PROMPT MANAGER
             system_prompt = prompts.get_bot_system_prompt(bot_id, u_name, is_saboteur)
             
             game_data.bots[bot_id] = BotState(
@@ -68,22 +66,18 @@ class FosterProtocol:
 
         return { "metadata": game_data.model_dump(), "channel_ops": channel_ops, "messages": messages }
 
-    # --- TACTICAL ENGINE WITH THINKING ---
+    # --- TACTICAL ENGINE ---
     
     async def get_bot_action(self, bot, context, tools_api) -> tuple[Dict[str, Any], str]:
-        """Returns (ActionDict, ThoughtString)"""
         try:
-            # INJECTING CoT INSTRUCTION
             enhanced_context = (
                 context + 
                 "\n\n*** INTERNAL THOUGHT PROTOCOL ***\n"
-                "1. Analyze your status (Battery/Inventory).\n"
+                "1. CHECK BATTERY LEVEL FIRST.\n"
                 "2. Analyze the room (Visible bots/Sabotage opportunities).\n"
                 "3. Formulate a plan based on your ROLE.\n"
                 "4. OUTPUT FORMAT:\n"
                 "Write your thoughts first. Then output the JSON block.\n"
-                "Example:\n"
-                "I am low on battery. Unit-02 is watching. I should behave nicely.\n"
                 "```json\n"
                 "{ \"tool\": \"charge\", \"args\": {} }\n"
                 "```"
@@ -96,19 +90,14 @@ class FosterProtocol:
                 model_version=bot.model_version
             )
             
-            # PARSE THOUGHTS & JSON
             match = re.search(r"\{.*\}", response_text, re.DOTALL)
             if match:
                 json_text = match.group(0)
-                # Everything before the JSON is the thought
                 thought_text = response_text[:match.start()].strip()
-                # Clean up markdown code blocks if present in thought
                 thought_text = thought_text.replace("```json", "").replace("```", "").strip()
                 if not thought_text: thought_text = "Processing..."
-                
                 return json.loads(json_text), thought_text
             
-            # Fallback
             clean_text = response_text.replace("```json", "").replace("```", "").strip()
             return json.loads(clean_text), "Error parsing thoughts."
             
@@ -126,7 +115,7 @@ class FosterProtocol:
 
     async def _speak_single_bot(self, ctx, tools, bot, instruction, channel_key):
         try:
-            full_prompt = f"STATUS: Bat {bot.battery}%\nINSTRUCTION: {instruction}"
+            full_prompt = f"INSTRUCTION: {instruction}\nCURRENT STATUS: Bat {bot.battery}%"
             resp = await tools.ai.generate_response(bot.system_prompt, f"{ctx.game_id}_bot_{bot.id}", full_prompt, bot.model_version)
             await ctx.send(channel_key, resp)
         except Exception: pass
@@ -136,16 +125,10 @@ class FosterProtocol:
         saboteur_bot = next((b for b in game_data.bots.values() if b.foster_id == saboteur_id), None)
         bot_name = saboteur_bot.id if saboteur_bot else "UNKNOWN"
         
-        # REVEAL BLACK BOX
         await ctx.send("black-box", "**🏁 MISSION ENDED. DECLASSIFYING LOGS...**")
-        # We need a custom operation to reveal, but 'ctx.send' doesn't support ops directly in this engine yet.
-        # We'll rely on the client checking for 'channel_ops' in the return, OR we dispatch a special message?
-        # Actually, let's just use the `channel_ops` return value of the main loop. 
-        # But `generate_epilogues` is called inside `run_day_cycle` which returns state.
-        # We'll attach the op to the return value of run_day_cycle.
         
         if victory:
-            final_report = f"🚀 **SUBSPACE DRIVE ENGAGED**\nMISSION: SUCCESS\n**SECURITY AUDIT:** Sabotage detected. Traitor: **Unit {bot_name}** (Bonded to <@{saboteur_id}>)."
+            final_report = f"�� **SUBSPACE DRIVE ENGAGED**\nMISSION: SUCCESS\n**SECURITY AUDIT:** Sabotage detected. Traitor: **Unit {bot_name}** (Bonded to <@{saboteur_id}>)."
         else:
             final_report = f"💀 **CRITICAL SYSTEM FAILURE**\nMISSION: FAILED\n**SECURITY ALERT:** Traitor: **Unit {bot_name}** (Bonded to <@{saboteur_id}>)."
         await ctx.send("aux-comm", final_report)
@@ -170,9 +153,6 @@ class FosterProtocol:
         game_data.daily_logs.clear()
         for b in game_data.bots.values(): b.daily_memory.clear()
         
-        # New: Tracking black box logs
-        black_box_buffer = []
-
         for hour in range(1, 6):
             logging.info(f"--- Simulating Hour {hour} ---")
             active_bots = [b for b in game_data.bots.values() if b.status == "active"]
@@ -182,24 +162,19 @@ class FosterProtocol:
             for bot in active_bots:
                 context = bot_tools.build_turn_context(bot, game_data)
                 
-                # GET ACTION + THOUGHT
                 action, thought = await self.get_bot_action(bot, context, tools)
                 
-                # EXECUTE
                 result = bot_tools.execute_tool(action.get("tool", "wait"), action.get("args", {}), bot.id, game_data)
                 
-                # Apply Costs
+                # Apply Costs (Charge resets to 100, others subtract)
                 if not (action.get("tool") == "charge" and result.success):
                     bot.battery = max(0, bot.battery - result.cost)
                     bot.last_battery_drop += result.cost
                 
-                # LOG THOUGHT TO BLACK BOX
-                # We do this immediately to avoid memory bloat, or batch it. Immediate is cooler.
                 role_icon = "🔴" if bot.role == "saboteur" else "🟢"
                 bb_msg = f"**[H{hour}] {role_icon} {bot.id}:** *{thought}*\n👉 `{action.get('tool')}` -> {result.message}"
                 await ctx.send("black-box", bb_msg)
 
-                # Standard Memory
                 log_entry = f"[Hour {hour}] {result.message}"
                 bot.daily_memory.append(log_entry)
                 
@@ -222,28 +197,23 @@ class FosterProtocol:
         game_data.last_oxygen_drop = base_drop
         game_data.cycle += 1
         
-        report = f"�� **CYCLE {game_data.cycle} REPORT**\n📉 Oxygen: {game_data.oxygen}%\n🔋 Fuel: {game_data.fuel}%"
+        report = f"🌞 **CYCLE {game_data.cycle} REPORT**\n📉 Oxygen: {game_data.oxygen}%\n🔋 Fuel: {game_data.fuel}%"
 
-        # End Condition Checks
         channel_ops = []
-        
         if game_data.fuel >= 100:
             await ctx.send("aux-comm", report)
             await self.generate_epilogues(game_data, ctx, tools, victory=True)
             await ctx.end()
-            channel_ops.append({"op": "reveal", "key": "black-box"}) # REVEAL
-            
+            channel_ops.append({"op": "reveal", "key": "black-box"}) 
         elif game_data.oxygen <= 0:
             await ctx.send("aux-comm", report)
             await self.generate_epilogues(game_data, ctx, tools, victory=False)
             await ctx.end()
-            channel_ops.append({"op": "reveal", "key": "black-box"}) # REVEAL
-            
+            channel_ops.append({"op": "reveal", "key": "black-box"}) 
         else:
             await ctx.send("aux-comm", report)
             await self.speak_all_bots(game_data, ctx, tools, "The work day is over. Briefly report your status to your Parent.")
 
-        # Return state + ops
         return {
             **game_data.model_dump(),
             "channel_ops": channel_ops if channel_ops else None
@@ -258,35 +228,59 @@ class FosterProtocol:
         
         # 1. MAINFRAME
         if channel_id == interface_channels.get('aux-comm'):
-            cmd_text = user_input.strip().lower()
-            if cmd_text.startswith("!disassemble") or cmd_text.startswith("!kill"):
-                parts = cmd_text.split()
-                if len(parts) < 2:
-                    await ctx.reply("USAGE: !disassemble <bot_id>")
-                    return None
-                target_id = parts[1]
-                target_bot = game_data.bots.get(target_id)
-                if not target_bot:
-                    await ctx.reply(f"ERROR: Unit '{target_id}' not found.")
-                    return None
-                if target_bot.foster_id != user_id:
-                    await ctx.reply("⛔ ACCESS DENIED.")
-                    return None
-                game_data.station.pending_deactivation.append(target_bot.id)
-                await ctx.reply(f"⚠️ **DEACTIVATION AUTHORIZED.**\nUnit {target_id} will be disassembled upon next Charging Cycle.")
-                return {"station": game_data.station.model_dump()}
-
-            elif cmd_text.startswith("!abort") or cmd_text.startswith("!cancel"):
-                parts = cmd_text.split()
-                if len(parts) < 2: return None
-                target_id = parts[1]
-                if target_id in game_data.station.pending_deactivation:
+            # --- STRICT COMMAND GATEKEEPER ---
+            if user_input.strip().startswith("!"):
+                cmd_text = user_input.strip().lower()
+                
+                # Disassemble
+                if cmd_text.startswith("!disassemble") or cmd_text.startswith("!kill"):
+                    parts = cmd_text.split()
+                    if len(parts) < 2:
+                        await ctx.reply("USAGE: !disassemble <bot_id>")
+                        return None
+                    target_id = parts[1]
                     target_bot = game_data.bots.get(target_id)
-                    if target_bot.foster_id == user_id:
-                        game_data.station.pending_deactivation.remove(target_id)
-                        await ctx.reply(f"✅ **ORDER RESCINDED.** Unit {target_id} is safe.")
+                    if not target_bot:
+                        await ctx.reply(f"ERROR: Unit '{target_id}' not found.")
+                        return None
+                    if target_bot.foster_id != user_id:
+                        await ctx.reply("⛔ ACCESS DENIED. You are not the bonded supervisor.")
+                        return None
+                    
+                    if target_id not in game_data.station.pending_deactivation:
+                        game_data.station.pending_deactivation.append(target_bot.id)
+                        await ctx.reply(f"⚠️ **DEACTIVATION AUTHORIZED.**\nUnit {target_id} will be disassembled upon next Charging Cycle.")
                         return {"station": game_data.station.model_dump()}
+                    else:
+                        await ctx.reply(f"NOTICE: Unit {target_id} is already scheduled for deactivation.")
+                        return None
 
+                # Abort
+                elif cmd_text.startswith("!abort") or cmd_text.startswith("!cancel"):
+                    parts = cmd_text.split()
+                    if len(parts) < 2: 
+                        await ctx.reply("USAGE: !abort <bot_id>")
+                        return None
+                    target_id = parts[1]
+                    if target_id in game_data.station.pending_deactivation:
+                        target_bot = game_data.bots.get(target_id)
+                        if target_bot.foster_id == user_id:
+                            game_data.station.pending_deactivation.remove(target_id)
+                            await ctx.reply(f"✅ **ORDER RESCINDED.** Unit {target_id} is safe.")
+                            return {"station": game_data.station.model_dump()}
+                        else:
+                            await ctx.reply("⛔ ACCESS DENIED.")
+                            return None
+                    else:
+                        await ctx.reply("Target not scheduled for deactivation.")
+                        return None
+
+                else:
+                    # STRICT REJECTION
+                    await ctx.reply(f"❌ **UNKNOWN COMMAND:** '{parts[0]}'.")
+                    return None
+
+            # Normal Chat (Only if NOT starting with !)
             response = await tools.ai.generate_response(
                 prompts.get_mainframe_prompt(), f"{ctx.game_id}_mainframe", user_input, "gemini-2.5-pro"
             )
@@ -294,34 +288,24 @@ class FosterProtocol:
             
         # 2. NANNY PORT
         elif channel_id == interface_channels.get(f"nanny_{user_id}"):
-            # INITIAL INTRO TRIGGER
             my_bot = next((b for b in game_data.bots.values() if b.foster_id == user_id), None)
             
             if user_input.strip() == "!sleep":
                 if user_id in game_data.players:
                     game_data.players[user_id].is_sleeping = True
-                    all_asleep = all(p.is_sleeping for p in game_data.players.values() if p.is_alive)
-                    if all_asleep:
+                    
+                    living = [p for p in game_data.players.values() if p.is_alive]
+                    total_living = len(living)
+                    sleeping_count = sum(1 for p in living if p.is_sleeping)
+                    
+                    if sleeping_count >= total_living:
                         await ctx.send("aux-comm", "💤 **CREW ASLEEP. DAY CYCLE INITIATED.**")
-                        
-                        # Handle result which might have ops
                         result = await self.run_day_cycle(game_data, ctx, tools)
-                        
-                        # Extract Ops if present (hacky patch handling)
-                        # Ideally ctx.send_ops() would be better but we rely on state patch return
-                        # We need to manually separate ops from state patch
                         ops = result.pop("channel_ops", None)
-                        
-                        # Reset Sleep
                         for p in result['players'].values(): p['is_sleeping'] = False
-                        
-                        # Return patch (ops will be handled by engine if we returned them? 
-                        # Engine expects {metadata: ..., channel_ops: ...} OR just metadata patch.
-                        # We need to structure this return to match engine expectations.
-                        # If run_day_cycle returns full state, we wrap it.
                         return {"metadata": result, "channel_ops": ops}
                     
-                    await ctx.reply("System: Sleep Mode Active.")
+                    await ctx.reply(f"System: Sleep Mode Active. ({sleeping_count}/{total_living} Crew Ready)")
                     return {f"players.{user_id}.is_sleeping": True}
 
             if my_bot:

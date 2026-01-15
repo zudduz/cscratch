@@ -60,9 +60,16 @@ def execute_tool(
             if actor.location_id != "charging_station":
                 return ToolExecutionResult(False, "Not in Charging Station.", COST_WAIT)
             
-            # Reset to full
+            # --- KILL SWITCH CHECK ---
+            if actor.id in game_data.station.pending_deactivation:
+                # Execute the Traitor
+                actor.status = "destroyed"
+                actor.battery = 0
+                game_data.station.pending_deactivation.remove(actor.id)
+                return ToolExecutionResult(True, "Disassembly sequence initiated. UNIT DESTROYED.", 0, "global")
+            
+            # Normal Charge
             actor.battery = 100
-            # CHANGED TO GLOBAL VISIBILITY
             return ToolExecutionResult(True, "Connected to Main Grid. Recharged to 100%.", COST_CHARGE, "global")
 
         elif tool_name == "jolt":
@@ -111,7 +118,6 @@ def build_turn_context(bot: BotState, game_data: CaissonState) -> str:
     if bot.role == "saboteur":
         objective = "Waste resources. Hoard fuel. If unobserved, Jolt enemies."
 
-    # NOTE: Using triple quotes inside triple quotes (carefully) 
     context = f"""--- TACTICAL LINK ---
 LOCATION: {bot.location_id}
 SELF: Battery {bot.battery}% | Inventory: {bot.inventory}

@@ -15,9 +15,38 @@ class FosterProtocol:
         default_state = CaissonState()
         self.meta = {
             "name": "The Foster Protocol",
-            "version": "2.6",
+            "version": "2.7",
             **default_state.model_dump()
         }
+
+    # --- HELPER: TRIGGER BOT SPEECH ---
+    async def trigger_bot_speech(self, ctx, tools, prompt_suffix=""):
+        game_data = CaissonState(**ctx.trigger_data.get('metadata', {}))
+        # This requires reconstructing state from ctx which is tricky here. 
+        # Better to pass game_data in.
+        pass 
+
+    async def speak_all_bots(self, game_data, ctx, tools, system_instruction):
+        tasks = []
+        for bot in game_data.bots.values():
+            if bot.status == "destroyed" or bot.battery <= 0: continue
+            
+            channel_key = f"nanny_{bot.foster_id}"
+            tasks.append(self._speak_single_bot(ctx, tools, bot, system_instruction, channel_key))
+        if tasks: await asyncio.gather(*tasks)
+
+    async def _speak_single_bot(self, ctx, tools, bot, instruction, channel_key):
+        try:
+            full_prompt = (
+                f"PHASE: NIGHT (START)\n"
+                f"STATUS: Bat {bot.battery}% | Loc: {bot.location_id}\n"
+                f"INSTRUCTION: {instruction} Keep it under 200 chars."
+            )
+            resp = await tools.ai.generate_response(
+                bot.system_prompt, f"{ctx.game_id}_bot_{bot.id}", full_prompt, bot.model_version
+            )
+            await ctx.send(channel_key, resp)
+        except Exception: pass
 
     async def on_game_start(self, generic_state: dict) -> Dict[str, Any]:
         game_data = CaissonState(**generic_state.get('metadata', {}))
@@ -59,6 +88,12 @@ class FosterProtocol:
                 system_prompt=prompt, model_version=random.choice(AVAILABLE_MODELS)
             )
 
+        # TRIGGER INTROS (Need to return ops first, so we rely on client to handle messages, 
+        # or we return a special task? 
+        # Since on_game_start returns static data, we can't trigger AI here easily without 'tools'.
+        # We will add a 'post_start_trigger' or handle it in the first user interaction.
+        # Actually, let's just make the user say "Hello" first. Simpler for now.)
+        
         return { "metadata": game_data.model_dump(), "channel_ops": channel_ops, "messages": messages }
 
     # --- TACTICAL ENGINE ---
@@ -149,16 +184,21 @@ class FosterProtocol:
         
         report = f"🌞 **CYCLE {game_data.cycle} REPORT**\n📉 Oxygen: {game_data.oxygen}%\n🔋 Fuel: {game_data.fuel}%"
 
+        # End Condition Checks
         if game_data.fuel >= 100:
             await ctx.send("aux-comm", report)
             await self.generate_epilogues(game_data, ctx, tools, victory=True)
             await ctx.end()
+            return game_data.model_dump()
         elif game_data.oxygen <= 0:
             await ctx.send("aux-comm", report)
             await self.generate_epilogues(game_data, ctx, tools, victory=False)
             await ctx.end()
+            return game_data.model_dump()
         else:
             await ctx.send("aux-comm", report)
+            # TRIGGER NIGHT START SPEECH
+            await self.speak_all_bots(game_data, ctx, tools, "The work day is over. Briefly report your status to your Parent.")
 
         return game_data.model_dump()
 
@@ -173,7 +213,6 @@ class FosterProtocol:
         if channel_id == interface_channels.get('aux-comm'):
             cmd_text = user_input.strip().lower()
             
-            # --- KILL SWITCH: !disassemble unit_xyz ---
             if cmd_text.startswith("!disassemble") or cmd_text.startswith("!kill"):
                 parts = cmd_text.split()
                 if len(parts) < 2:
@@ -182,48 +221,29 @@ class FosterProtocol:
                 
                 target_id = parts[1]
                 target_bot = game_data.bots.get(target_id)
-                
                 if not target_bot:
                     await ctx.reply(f"ERROR: Unit '{target_id}' not found.")
                     return None
                 
-                # PERMISSION CHECK
                 if target_bot.foster_id != user_id:
-                    await ctx.reply("⛔ ACCESS DENIED. You are not the bonded supervisor for this unit.")
-                    return None
-                
-                if target_bot.id in game_data.station.pending_deactivation:
-                    await ctx.reply(f"NOTICE: Unit {target_id} is already scheduled for deactivation.")
+                    await ctx.reply("⛔ ACCESS DENIED. You are not the bonded supervisor.")
                     return None
                 
                 game_data.station.pending_deactivation.append(target_bot.id)
                 await ctx.reply(f"⚠️ **DEACTIVATION AUTHORIZED.**\nUnit {target_id} will be disassembled upon next Charging Cycle.")
                 return {"station": game_data.station.model_dump()}
 
-            # --- PARDON: !abort unit_xyz ---
             elif cmd_text.startswith("!abort") or cmd_text.startswith("!cancel"):
                 parts = cmd_text.split()
-                if len(parts) < 2:
-                    await ctx.reply("USAGE: !abort <bot_id>")
-                    return None
-                
+                if len(parts) < 2: return None
                 target_id = parts[1]
-                if target_id not in game_data.station.pending_deactivation:
-                    await ctx.reply(f"Unit {target_id} is not currently scheduled for deactivation.")
-                    return None
-                
-                # Note: Assuming only owner can cancel too, but strict mode implies 'foster_id' check again.
-                # For safety, let's re-verify ownership.
-                target_bot = game_data.bots.get(target_id)
-                if target_bot.foster_id != user_id:
-                    await ctx.reply("⛔ ACCESS DENIED.")
-                    return None
+                if target_id in game_data.station.pending_deactivation:
+                    target_bot = game_data.bots.get(target_id)
+                    if target_bot.foster_id == user_id:
+                        game_data.station.pending_deactivation.remove(target_id)
+                        await ctx.reply(f"✅ **ORDER RESCINDED.** Unit {target_id} is safe.")
+                        return {"station": game_data.station.model_dump()}
 
-                game_data.station.pending_deactivation.remove(target_id)
-                await ctx.reply(f"✅ **ORDER RESCINDED.** Unit {target_id} is safe.")
-                return {"station": game_data.station.model_dump()}
-
-            # Normal Mainframe Chat
             response = await tools.ai.generate_response(
                 "You are VENDETTA OS. Cold, cynical. Max 500 chars.", f"{ctx.game_id}_mainframe", user_input, "gemini-2.5-pro"
             )
@@ -231,6 +251,9 @@ class FosterProtocol:
             
         # 2. NANNY PORT
         elif channel_id == interface_channels.get(f"nanny_{user_id}"):
+            # INITIAL INTRO TRIGGER (Hack: If bot memory empty and cycle 1, introduce)
+            my_bot = next((b for b in game_data.bots.values() if b.foster_id == user_id), None)
+            
             if user_input.strip() == "!sleep":
                 if user_id in game_data.players:
                     game_data.players[user_id].is_sleeping = True
@@ -243,26 +266,22 @@ class FosterProtocol:
                     await ctx.reply("System: Sleep Mode Active.")
                     return {f"players.{user_id}.is_sleeping": True}
 
-            my_bot = next((b for b in game_data.bots.values() if b.foster_id == user_id), None)
             if my_bot:
-                # --- CHAT CONSTRAINTS ---
                 if my_bot.status == "destroyed":
                     await ctx.reply("❌ **SIGNAL LOST.** Unit is offline.")
                     return None
-                
                 if my_bot.battery <= 0:
                     await ctx.reply("🪫 **LOW POWER.** Unit cannot transmit.")
                     return None
-                
                 if my_bot.location_id != "cryo_bay":
-                    await ctx.reply(f"📡 **SIGNAL WEAK.** Unit is in {my_bot.location_id}, not Cryo Bay. Establishing local link impossible.")
+                    await ctx.reply(f"📡 **SIGNAL WEAK.** Unit is in {my_bot.location_id}, not Cryo Bay.")
                     return None
 
                 memory_block = "\n".join(my_bot.daily_memory[-15:]) 
                 full_prompt = (
                     f"PHASE: NIGHT (SAFE)\nSTATUS: Bat {my_bot.battery}% | Loc: {my_bot.location_id}\n"
                     f"LOGS:\n{memory_block}\n\n"
-                    f"INSTRUCTION: Be concise (under 500 chars). Chat with Parent.\n"
+                    f"INSTRUCTION: Be concise. Chat with Parent.\n"
                     f"PARENT SAYS: {user_input}"
                 )
                 response = await tools.ai.generate_response(

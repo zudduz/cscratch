@@ -56,21 +56,12 @@ class ChickenBot(commands.Bot):
         except Exception as e: logging.error(f"Announce failed: {e}")
 
     async def send_message(self, channel_id: str, text: str):
-        """Sends a message. Truncates if over 2000 chars to prevent crashes."""
         try:
             channel = self.get_channel(int(channel_id))
-            if not channel:
-                logging.warning(f"Discord: Channel {channel_id} not found.")
-                return
-
-            if len(text) > 2000:
-                logging.warning(f"Message to {channel_id} too long ({len(text)}). Truncating.")
-                text = text[:1990] + "...(truncated)"
-            
+            if not channel: return
+            if len(text) > 2000: text = text[:1990] + "..."
             await channel.send(text)
-
-        except Exception as e:
-            logging.error(f"Discord Send Error {channel_id}: {e}")
+        except Exception as e: logging.error(f"Discord Send Error {channel_id}: {e}")
 
     async def execute_channel_ops(self, game_id: str, ops: list):
         if not ops: return
@@ -127,6 +118,13 @@ async def version_cmd(interaction: discord.Interaction):
 
 cscratch_group = app_commands.Group(name="cscratch", description="Engine Controls")
 
+ADMIN_WARNING_TEXT = (
+    "⚠️ **ADMINISTRATOR DETECTED**\n"
+    "You have permissions to view ALL private channels.\n"
+    "**FOR A FAIR GAME:** Please **MUTE** or **COLLAPSE** the private channels of other players.\n"
+    "*The Protocol relies on trust.*"
+)
+
 @cscratch_group.command(name="start", description="Open Lobby")
 async def start(interaction: discord.Interaction, cartridge: str = "foster-protocol"):
     if not await safe_defer(interaction): return
@@ -149,6 +147,11 @@ async def start(interaction: discord.Interaction, cartridge: str = "foster-proto
         view = LobbyView(game_id=game_id)
         await chan.send(embed=embed, view=view)
         await interaction.followup.send(f"✅ Lobby: {chan.mention}")
+
+        # CHECK ADMIN
+        if isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator:
+            await interaction.followup.send(ADMIN_WARNING_TEXT, ephemeral=True)
+
     except Exception as e: await interaction.followup.send(f"❌ Failed: {e}")
 
 @cscratch_group.command(name="end", description="Cleanup")
@@ -179,6 +182,10 @@ class LobbyView(discord.ui.View):
         try:
             await game_engine.engine.join_game(self.game_id, str(interaction.user.id), interaction.user.name)
             await interaction.followup.send(f"✅ **{interaction.user.name}** joined!")
+            
+            if isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator:
+                await interaction.followup.send(ADMIN_WARNING_TEXT, ephemeral=True)
+
         except Exception as e: await interaction.followup.send(f"❌ Error: {e}", ephemeral=True)
 
     @discord.ui.button(label="Start", style=discord.ButtonStyle.danger, custom_id="start_btn")
@@ -201,8 +208,6 @@ async def on_message(message):
     if message.author == client.user: return
     if str(message.channel.id) not in client.active_game_channels: return
     if not await persistence.db.lock_event(message.id): return
-    
     try:
-        # No typing indicator
         await game_engine.engine.dispatch_input(str(message.channel.id), str(message.author.id), message.author.name, message.content)
     except Exception as e: logging.error(f"Input Error: {e}")

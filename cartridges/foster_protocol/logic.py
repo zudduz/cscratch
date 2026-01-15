@@ -7,7 +7,7 @@ import re
 from .models import CaissonState, BotState, PlayerState
 from .board import SHIP_MAP
 from . import tools as bot_tools 
-from . import prompts # <--- NEW IMPORT
+from . import prompts 
 
 AVAILABLE_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash-001"]
 
@@ -86,8 +86,7 @@ class FosterProtocol:
     async def _speak_single_bot(self, ctx, tools, bot, instruction, channel_key):
         try:
             # Simple context for intro/outro
-            full_prompt = f"STATUS: Bat {bot.battery}%
-INSTRUCTION: {instruction}"
+            full_prompt = f"STATUS: Bat {bot.battery}%\nINSTRUCTION: {instruction}"
             resp = await tools.ai.generate_response(bot.system_prompt, f"{ctx.game_id}_bot_{bot.id}", full_prompt, bot.model_version)
             await ctx.send(channel_key, resp)
         except Exception: pass
@@ -191,7 +190,6 @@ INSTRUCTION: {instruction}"
         if channel_id == interface_channels.get('aux-comm'):
             cmd_text = user_input.strip().lower()
             if cmd_text.startswith("!disassemble") or cmd_text.startswith("!kill"):
-                # ... (Logic identical to previous, just truncated for brevity in this response block) ...
                 parts = cmd_text.split()
                 if len(parts) < 2:
                     await ctx.reply("USAGE: !disassemble <bot_id>")

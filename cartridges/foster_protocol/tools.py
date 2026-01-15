@@ -161,23 +161,26 @@ def build_turn_context(bot: BotState, game_data: CaissonState) -> str:
     if bot.role == "saboteur":
         objective = "Waste resources. Hoard fuel. Vent Oxygen. Kill if armed."
 
-    # NOTE: Using triple quotes inside triple quotes (carefully) 
-    context = f"""--- TACTICAL LINK ---
-LOCATION: {bot.location_id}
-SELF: Battery {bot.battery}% | Inventory: {bot.inventory}
-VISIBLE: {visible_bots}
-OBJECTIVE: {objective}
-TOOLS: 
-- move(room_id)
-- gather() [Bay]
-- deposit() [Engine]
-- charge() [Station]
-- tow(target_id) [Cost 20, Drag to Station]
-- vent() [Cost 20, -5 Oxy]
-- siphon() [Engine, -10 Ship Fuel]
-- search() [Maint, Find Weapon]
-- incinerate(target_id) [Need Torch, Kill]
-- wait()
-VALID ROOMS: cryo_bay, engine_room, shuttle_bay, torpedo_bay, maintenance, charging_station
-RESPONSE FORMAT: JSON only. Example: {{ "tool": "move", "args": {{ "room_id": "engine_room" }} }}"""
+    # USING TRIPLE QUOTES INSIDE A RAW TRIPLE QUOTE IS TRICKY.
+    # We will use explicit newlines for safety.
+    context = (
+        "--- TACTICAL LINK ---\n"
+        f"LOCATION: {bot.location_id}\n"
+        f"SELF: Battery {bot.battery}% | Inventory: {bot.inventory}\n"
+        f"VISIBLE: {visible_bots}\n"
+        f"OBJECTIVE: {objective}\n"
+        "TOOLS: \n"
+        "- move(room_id)\n"
+        "- gather() [Bay]\n"
+        "- deposit() [Engine]\n"
+        "- charge() [Station]\n"
+        "- tow(target_id) [Cost 20, Drag to Station]\n"
+        "- vent() [Cost 20, -5 Oxy]\n"
+        "- siphon() [Engine, -10 Ship Fuel]\n"
+        "- search() [Maint, Find Weapon]\n"
+        "- incinerate(target_id) [Need Torch, Kill]\n"
+        "- wait()\n"
+        "VALID ROOMS: cryo_bay, engine_room, shuttle_bay, torpedo_bay, maintenance, charging_station\n"
+        "RESPONSE FORMAT: JSON only. Example: { \"tool\": \"move\", \"args\": { \"room_id\": \"engine_room\" } }"
+    )
     return context

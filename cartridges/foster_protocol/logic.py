@@ -27,7 +27,7 @@ class FosterProtocol:
         default_state = CaissonState()
         self.meta = {
             "name": "The Foster Protocol",
-            "version": "2.25",
+            "version": "2.26",
             **default_state.model_dump()
         }
 
@@ -171,12 +171,6 @@ class FosterProtocol:
             tasks.append(self._send_epilogue(ctx, tools, bot, sys_prompt, channel_key))
         if tasks: await asyncio.gather(*tasks)
 
-    async def _send_epilogue(self, ctx, tools, bot, prompt, channel_key):
-        try:
-            resp = await tools.ai.generate_response(prompt, f"{ctx.game_id}_bot_{bot.id}", "ENDGAME", bot.model_version)
-            await ctx.send(channel_key, resp)
-        except Exception: pass
-
     # --- BACKGROUND SIMULATION ---
     async def execute_day_simulation(self, game_data: CaissonState, ctx, tools) -> Dict[str, Any]:
         logging.info("--- Phase: REM Sleep (Dreaming) ---")
@@ -227,22 +221,17 @@ class FosterProtocol:
         game_data.last_oxygen_drop = base_drop
         game_data.cycle += 1
         
-        # --- ORBITAL DECAY MATH ---
+        # --- ORBITAL DECAY MATH (BLIND) ---
         base_required = 50
-        # Curve: 50, 60, 72, 86, 103...
         required_fuel = int(base_required * (1.2 ** (game_data.cycle - 1)))
         
-        # Total Potential Calculation
-        fuel_banked = game_data.fuel
-        fuel_inventory = sum(10 for b in game_data.bots.values() for i in b.inventory if i == "fuel_canister")
-        fuel_bays = game_data.shuttle_bay_fuel + game_data.torpedo_bay_fuel
-        total_hope = fuel_banked + fuel_inventory + fuel_bays
+        # WE NO LONGER CALCULATE TOTAL HOPE
+        # The Mainframe only knows the current tank level.
         
         report = (
             f"🌞 **CYCLE {game_data.cycle} REPORT**\n"
             f"📉 Oxygen: {game_data.oxygen}%\n"
-            f"🔋 Fuel: {game_data.fuel}% / {required_fuel}% Required\n"
-            f"☁️ Reserves: {fuel_bays//10} Canisters detected."
+            f"🔋 Fuel: {game_data.fuel}% / {required_fuel}% Required"
         )
 
         channel_ops = []
@@ -268,10 +257,11 @@ class FosterProtocol:
                 await ctx.end()
                 channel_ops.append({"op": "reveal", "key": "black-box"}) 
         
-        # 3. MATH FAILURE (Orbital Decay)
-        elif total_hope < required_fuel:
+        # 3. MATH FAILURE (TANK CAPACITY LIMIT)
+        # Assuming Max Fuel Tank is 100. If Required > 100, it's impossible.
+        elif required_fuel > 100:
             await ctx.send("aux-comm", report)
-            await ctx.send("aux-comm", "💀 **ORBITAL DECAY IRREVERSIBLE. INSUFFICIENT REACTION MASS DETECTED.**")
+            await ctx.send("aux-comm", "💀 **ORBITAL DECAY IRREVERSIBLE. REQUIRED MASS EXCEEDS SHIP CAPACITY.**")
             await self.generate_epilogues(game_data, ctx, tools, victory=False, fail_reason="Gravity Well Victory (Math)")
             await ctx.end()
             channel_ops.append({"op": "reveal", "key": "black-box"})

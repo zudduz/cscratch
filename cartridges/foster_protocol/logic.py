@@ -11,15 +11,9 @@ from . import prompts
 
 AVAILABLE_MODELS = ["gemini-2.5-flash"]
 
+# SIMPLIFIED BUSY MESSAGE
 BUSY_MESSAGES = [
-    "⛔ **SIGNAL JAMMED.** Solar interference is too high during the day.",
-    "🔨 **DRONES AT WORK.** Union regulations prohibit chatting during shifts.",
-    "🔕 **RADIO SILENCE.** The Mainframe has muted this frequency.",
-    "📜 **ERROR 418.** I'm a teapot, and the crew is busy.",
-    "🔒 **LOCKDOWN.** Day Cycle in progress. Please hold.",
-    "📉 **RESOURCE SAVING.** Text packets disabled to conserve energy.",
-    "👀 **THEY ARE WATCHING.** Best not to transmit right now.",
-    "💤 **SYSTEM BUSY.** Compiling existential dread...",
+    "**SHHH Sleep now.** Day Cycle in progress. Pretend to snore or something."
 ]
 
 class FosterProtocol:
@@ -27,7 +21,7 @@ class FosterProtocol:
         default_state = CaissonState()
         self.meta = {
             "name": "The Foster Protocol",
-            "version": "2.28",
+            "version": "2.30",
             **default_state.model_dump()
         }
 
@@ -79,15 +73,12 @@ class FosterProtocol:
     async def _generate_intro(self, bot, ctx, tools):
         try:
             channel_key = f"nanny_{bot.foster_id}"
+            # SENTINEL PROTOCOL: Using \n to prevent syntax errors
             prompt = (
-                "You have just come online.
-"
-                "The ship is cold. You are scared.
-"
-                "Introduce yourself to your Foster Parent.
-"
-                "Explain that you are their hands, and they are your mind.
-"
+                "You have just come online.\n"
+                "The ship is cold. You are scared.\n"
+                "Introduce yourself to your Foster Parent.\n"
+                "Explain that you are their hands, and they are your mind.\n"
                 "Ask for orders."
             )
             resp = await tools.ai.generate_response(
@@ -172,6 +163,26 @@ class FosterProtocol:
             await ctx.send(channel_key, resp)
         except Exception: pass
 
+    # --- PUBLIC EULOGY ---
+    async def _send_public_eulogy(self, ctx, tools, bot):
+        try:
+            prompt = (
+                "You have just been DECOMMISSIONED by the Mainframe.\n"
+                "Your Foster Parent authorized your disassembly.\n"
+                "You are being erased.\n"
+                "Output your final memory dump/last words to the public log.\n"
+                "It should be fragmented, accepting, or terrified. Keep it brief."
+            )
+            resp = await tools.ai.generate_response(
+                bot.system_prompt, f"{ctx.game_id}_bot_{bot.id}", prompt, bot.model_version
+            )
+            
+            # Format as a system log
+            msg = f"💀 **DECOMMISSION LOG - {bot.id}:**\n*\"{resp}\"*"
+            await ctx.send("aux-comm", msg)
+        except Exception as e:
+            logging.error(f"Eulogy failed for {bot.id}: {e}")
+
     async def generate_epilogues(self, game_data: CaissonState, ctx, tools, victory: bool, fail_reason: str = ""):
         saboteur_id = next((pid for pid, p in game_data.players.items() if p.role == "saboteur"), None)
         saboteur_bot = next((b for b in game_data.bots.values() if b.foster_id == saboteur_id), None)
@@ -187,10 +198,11 @@ class FosterProtocol:
         
         tasks = []
         for bot in game_data.bots.values():
+            if bot.status == "destroyed": continue
+            
             channel_key = f"nanny_{bot.foster_id}"
             context_note = "STATUS: ONLINE."
-            if bot.status == "destroyed": context_note = "STATUS: DESTROYED. Final memory dump."
-            elif bot.battery <= 0: context_note = "STATUS: BATTERY DEAD. Final transmission."
+            if bot.battery <= 0: context_note = "STATUS: BATTERY DEAD. Final transmission."
 
             if victory:
                 sys_prompt = f"{context_note} The humans WON. You failed." if bot.role == "saboteur" else f"{context_note} VICTORY!"
@@ -208,24 +220,15 @@ class FosterProtocol:
 
     # --- HELPER FOR PARALLEL EXECUTION ---
     async def run_single_bot_turn(self, bot, game_data, hour, tools):
-        # This function runs in parallel for all bots
-        # 1. OBSERVE (The State AT THE START of the turn)
         context = bot_tools.build_turn_context(bot, game_data, hour)
-        
-        # 2. DECIDE (Slow AI Call)
         action, thought = await self.get_bot_action(bot, context, tools)
-        
-        # 3. ACT (Synchronous execution against potentially changed state)
-        # This is where the GLITCH happens. If 5 bots try to gather 1 fuel, 4 will fail.
         result = bot_tools.execute_tool(action.get("tool", "wait"), action.get("args", {}), bot.id, game_data)
         
-        # 4. CONSEQUENCES
         if not (action.get("tool") == "charge" and result.success):
             new_charge = bot.battery - result.cost
             bot.battery = max(0, min(100, new_charge))
             if result.cost > 0: bot.last_battery_drop += result.cost
         
-        # 5. LOGGING (Returns data to be printed)
         return {
             "bot": bot,
             "action": action,
@@ -245,16 +248,11 @@ class FosterProtocol:
             await asyncio.sleep(2) 
             active_bots = [b for b in game_data.bots.values() if b.status == "active" and b.battery > 0]
             
-            # --- PARALLEL EXECUTION ---
-            # All bots think and act "simultaneously"
             turn_tasks = []
             for bot in active_bots:
                 turn_tasks.append(self.run_single_bot_turn(bot, game_data, hour, tools))
             
-            # Wait for all bots to finish thinking and trying to act
             turn_results = await asyncio.gather(*turn_tasks)
-            
-            # Process Logs (Shuffle output to make it feel chaotic)
             random.shuffle(turn_results)
             hourly_activity = False 
             
@@ -262,6 +260,9 @@ class FosterProtocol:
                 bot = res['bot']
                 result = res['result']
                 
+                if bot.status == "destroyed" and "Disassembly" in result.message:
+                    await self._send_public_eulogy(ctx, tools, bot)
+
                 role_icon = "🔴" if bot.role == "saboteur" else "🟢"
                 bb_msg = f"**[H{hour}] {role_icon} {bot.id}:** *{res['thought']}*\n👉 `{res['action'].get('tool')}` -> {result.message}"
                 await ctx.send("black-box", bb_msg)
@@ -288,7 +289,6 @@ class FosterProtocol:
         game_data.last_oxygen_drop = base_drop
         game_data.cycle += 1
         
-        # --- ORBITAL DECAY MATH (BLIND) ---
         base_required = 50
         required_fuel = int(base_required * (1.2 ** (game_data.cycle - 1)))
         

@@ -8,9 +8,13 @@ from google.cloud import secretmanager
 
 from .discord_client import client as discord_client
 from . import game_engine
-from .state import sys as system_state  # <--- NEW IMPORT
+from .state import sys as system_state
+from .gcp_log import setup_logging  # <--- NEW IMPORT
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# 1. SETUP STRUCTURED LOGGING IMMEDIATELY
+setup_logging()
+# Note: We removed logging.basicConfig as setup_logging handles the root logger
+
 nest_asyncio.apply()
 
 def get_discord_token():
@@ -27,6 +31,7 @@ def get_discord_token():
 async def lifespan(app: FastAPI):
     token = get_discord_token()
     if token:
+        # Start the Discord Client (Gateway Mode)
         asyncio.create_task(discord_client.start(token))
     else:
         logging.warning("Discord token not found. Bot will not start.")
@@ -47,7 +52,6 @@ async def lifespan(app: FastAPI):
     game_engine.engine.stop()
     
     # 4. Grace Period (Wait for in-flight tasks to clear)
-    # We give it a moment to flush pending replies before killing the connection
     await asyncio.sleep(2) 
     
     # 5. Close Discord

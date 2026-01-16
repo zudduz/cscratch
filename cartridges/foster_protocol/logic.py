@@ -9,10 +9,8 @@ from .board import SHIP_MAP
 from . import tools as bot_tools 
 from . import prompts 
 
-# STRICT MODEL LOCK
 AVAILABLE_MODELS = ["gemini-2.5-flash"]
 
-# REJECTION MESSAGES
 BUSY_MESSAGES = [
     "⛔ **SIGNAL JAMMED.** Solar interference is too high during the day.",
     "🔨 **DRONES AT WORK.** Union regulations prohibit chatting during shifts.",
@@ -29,7 +27,7 @@ class FosterProtocol:
         default_state = CaissonState()
         self.meta = {
             "name": "The Foster Protocol",
-            "version": "2.24",
+            "version": "2.25",
             **default_state.model_dump()
         }
 
@@ -145,7 +143,7 @@ class FosterProtocol:
             await ctx.send(channel_key, resp)
         except Exception: pass
 
-    async def generate_epilogues(self, game_data: CaissonState, ctx, tools, victory: bool):
+    async def generate_epilogues(self, game_data: CaissonState, ctx, tools, victory: bool, fail_reason: str = ""):
         saboteur_id = next((pid for pid, p in game_data.players.items() if p.role == "saboteur"), None)
         saboteur_bot = next((b for b in game_data.bots.values() if b.foster_id == saboteur_id), None)
         bot_name = saboteur_bot.id if saboteur_bot else "UNKNOWN"
@@ -155,7 +153,7 @@ class FosterProtocol:
         if victory:
             final_report = f"🚀 **SUBSPACE DRIVE ENGAGED**\nMISSION: SUCCESS\n**SECURITY AUDIT:** Sabotage detected. Traitor: **Unit {bot_name}** (Bonded to <@{saboteur_id}>)."
         else:
-            final_report = f"💀 **CRITICAL SYSTEM FAILURE**\nMISSION: FAILED\n**SECURITY ALERT:** Traitor: **Unit {bot_name}** (Bonded to <@{saboteur_id}>)."
+            final_report = f"💀 **CRITICAL SYSTEM FAILURE**\nREASON: {fail_reason}\n**SECURITY ALERT:** Traitor: **Unit {bot_name}** (Bonded to <@{saboteur_id}>)."
         await ctx.send("aux-comm", final_report)
         
         tasks = []
@@ -173,6 +171,12 @@ class FosterProtocol:
             tasks.append(self._send_epilogue(ctx, tools, bot, sys_prompt, channel_key))
         if tasks: await asyncio.gather(*tasks)
 
+    async def _send_epilogue(self, ctx, tools, bot, prompt, channel_key):
+        try:
+            resp = await tools.ai.generate_response(prompt, f"{ctx.game_id}_bot_{bot.id}", "ENDGAME", bot.model_version)
+            await ctx.send(channel_key, resp)
+        except Exception: pass
+
     # --- BACKGROUND SIMULATION ---
     async def execute_day_simulation(self, game_data: CaissonState, ctx, tools) -> Dict[str, Any]:
         logging.info("--- Phase: REM Sleep (Dreaming) ---")
@@ -183,7 +187,6 @@ class FosterProtocol:
         
         for hour in range(1, 6):
             await asyncio.sleep(2) 
-            logging.info(f"--- Simulating Hour {hour} ---")
             active_bots = [b for b in game_data.bots.values() if b.status == "active" and b.battery > 0]
             random.shuffle(active_bots)
             hourly_activity = False 
@@ -216,7 +219,7 @@ class FosterProtocol:
                     hourly_activity = True
 
             if not hourly_activity:
-                game_data.daily_logs.append(f"[HOUR {hour}] �� Ship systems nominal.")
+                game_data.daily_logs.append(f"[HOUR {hour}] 💤 Ship systems nominal.")
                 await ctx.send("aux-comm", f"[HOUR {hour}] 💤 Ship systems nominal.")
 
         base_drop = 25
@@ -224,17 +227,35 @@ class FosterProtocol:
         game_data.last_oxygen_drop = base_drop
         game_data.cycle += 1
         
-        report = f"🌞 **CYCLE {game_data.cycle} REPORT**\n📉 Oxygen: {game_data.oxygen}%\n🔋 Fuel: {game_data.fuel}%"
+        # --- ORBITAL DECAY MATH ---
+        base_required = 50
+        # Curve: 50, 60, 72, 86, 103...
+        required_fuel = int(base_required * (1.2 ** (game_data.cycle - 1)))
+        
+        # Total Potential Calculation
+        fuel_banked = game_data.fuel
+        fuel_inventory = sum(10 for b in game_data.bots.values() for i in b.inventory if i == "fuel_canister")
+        fuel_bays = game_data.shuttle_bay_fuel + game_data.torpedo_bay_fuel
+        total_hope = fuel_banked + fuel_inventory + fuel_bays
+        
+        report = (
+            f"🌞 **CYCLE {game_data.cycle} REPORT**\n"
+            f"📉 Oxygen: {game_data.oxygen}%\n"
+            f"🔋 Fuel: {game_data.fuel}% / {required_fuel}% Required\n"
+            f"☁️ Reserves: {fuel_bays//10} Canisters detected."
+        )
 
         channel_ops = []
-        if game_data.fuel >= 100:
+        
+        # 1. SUCCESS CHECK
+        if game_data.fuel >= required_fuel:
             await ctx.send("aux-comm", report)
             await self.generate_epilogues(game_data, ctx, tools, victory=True)
             await ctx.end()
             channel_ops.append({"op": "reveal", "key": "black-box"}) 
             
+        # 2. OXYGEN FAILURE
         elif game_data.oxygen == 0:
-            # --- LAST BREATH MECHANIC (Corrected) ---
             if not game_data.emergency_power:
                 game_data.emergency_power = True
                 await ctx.send("aux-comm", report)
@@ -243,10 +264,18 @@ class FosterProtocol:
             else:
                 await ctx.send("aux-comm", report)
                 await ctx.send("aux-comm", "💀 **INTERNAL LIFE SUPPORT DEPLETED.**")
-                await self.generate_epilogues(game_data, ctx, tools, victory=False)
+                await self.generate_epilogues(game_data, ctx, tools, victory=False, fail_reason="Oxygen Depletion")
                 await ctx.end()
                 channel_ops.append({"op": "reveal", "key": "black-box"}) 
-                
+        
+        # 3. MATH FAILURE (Orbital Decay)
+        elif total_hope < required_fuel:
+            await ctx.send("aux-comm", report)
+            await ctx.send("aux-comm", "💀 **ORBITAL DECAY IRREVERSIBLE. INSUFFICIENT REACTION MASS DETECTED.**")
+            await self.generate_epilogues(game_data, ctx, tools, victory=False, fail_reason="Gravity Well Victory (Math)")
+            await ctx.end()
+            channel_ops.append({"op": "reveal", "key": "black-box"})
+            
         else:
             await ctx.send("aux-comm", report)
             await self.speak_all_bots(game_data, ctx, tools, "The work day is over. Briefly report your status to your Parent.")
@@ -281,7 +310,6 @@ class FosterProtocol:
                         await ctx.reply(f"ERROR: Unit '{target_id}' not found.")
                         return None
                     
-                    # --- ORPHAN CHECK ---
                     owner_id = target_bot.foster_id
                     owner_state = game_data.players.get(owner_id)
                     is_orphan = False

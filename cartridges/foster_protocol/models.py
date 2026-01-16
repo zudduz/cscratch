@@ -16,7 +16,6 @@ class BotState(BaseModel):
     id: str                 
     foster_id: Optional[str] = None
     role: Literal["loyal", "saboteur"] = "loyal"
-    # STRICT MODEL LOCK
     model_version: str = "gemini-2.5-flash" 
     
     location_id: str = "cryo_bay"
@@ -33,14 +32,18 @@ class BotState(BaseModel):
     daily_memory: List[str] = Field(default_factory=list)
 
 class CaissonState(BaseModel):
-    version: str = "2.23"
+    version: str = "2.25"
     oxygen: int = 100
     last_oxygen_drop: int = 0
-    # NEW FLAG FOR LAST BREATH
     emergency_power: bool = False 
     
     fuel: int = 0
     last_fuel_gain: int = 0
+    
+    # --- FINITE RESOURCES ---
+    shuttle_bay_fuel: int = 50   # 5 Canisters
+    torpedo_bay_fuel: int = 80   # 8 Canisters
+    
     cycle: int = 1
     phase: Literal["day", "night"] = "night"
     

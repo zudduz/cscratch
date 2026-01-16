@@ -36,8 +36,25 @@ def execute_tool(tool_name: str, args: Dict[str, Any], bot_id: str, game_data: C
             return ToolExecutionResult(True, f"Moved from {old_room} to {target_room}.", COST_MOVE, "room")
 
         elif tool_name == "gather":
-            if actor.location_id not in ["shuttle_bay", "torpedo_bay"]:
+            source_name = ""
+            available = 0
+            
+            if actor.location_id == "shuttle_bay":
+                source_name = "shuttle_bay_fuel"
+                available = game_data.shuttle_bay_fuel
+            elif actor.location_id == "torpedo_bay":
+                source_name = "torpedo_bay_fuel"
+                available = game_data.torpedo_bay_fuel
+            else:
                 return ToolExecutionResult(False, "No fuel source here.", COST_WAIT)
+
+            if available < 10:
+                return ToolExecutionResult(False, "Source Depleted. No fuel left.", COST_WAIT)
+            
+            # Decrement Source
+            if actor.location_id == "shuttle_bay": game_data.shuttle_bay_fuel -= 10
+            else: game_data.torpedo_bay_fuel -= 10
+            
             actor.inventory.append("fuel_canister")
             return ToolExecutionResult(True, "Gathered Fuel.", COST_GATHER, "room")
 
@@ -122,8 +139,6 @@ def execute_tool(tool_name: str, args: Dict[str, Any], bot_id: str, game_data: C
             target.status = "destroyed"
             target.battery = 0
             actor.inventory.remove("plasma_torch")
-            
-            # --- UPDATED: Room visibility for stealth kills ---
             return ToolExecutionResult(True, f"INCINERATED {target_id}. Target Destroyed.", COST_KILL, "room")
 
         elif tool_name == "wait":

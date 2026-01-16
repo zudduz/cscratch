@@ -16,6 +16,7 @@ class BotState(BaseModel):
     id: str                 
     foster_id: Optional[str] = None
     role: Literal["loyal", "saboteur"] = "loyal"
+    # STRICT MODEL LOCK
     model_version: str = "gemini-2.5-flash" 
     
     location_id: str = "cryo_bay"
@@ -25,7 +26,6 @@ class BotState(BaseModel):
     status: Literal["active", "destroyed"] = "active"
     system_prompt: str = "You are a helpful drone."
     
-    # --- DREAM JOURNAL FIELDS ---
     long_term_memory: str = "I have just come online. I must find my Foster Parent."
     night_chat_log: List[str] = Field(default_factory=list)
     
@@ -33,9 +33,12 @@ class BotState(BaseModel):
     daily_memory: List[str] = Field(default_factory=list)
 
 class CaissonState(BaseModel):
-    version: str = "2.18"
+    version: str = "2.23"
     oxygen: int = 100
     last_oxygen_drop: int = 0
+    # NEW FLAG FOR LAST BREATH
+    emergency_power: bool = False 
+    
     fuel: int = 0
     last_fuel_gain: int = 0
     cycle: int = 1

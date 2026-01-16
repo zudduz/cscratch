@@ -53,15 +53,15 @@ DAILY LOGS:
 {memory_block}
 
 INSTRUCTION: 
-Report to your Parent. React to the logs.
-Reference your Journal if relevant.
+1. Report to your Parent. React to the logs.
+2. Reference your Journal if relevant.
+3. **LANGUAGE MATCHING:** Reply in the same language the Parent uses (English, Tagalog, etc.).
 MAX LENGTH: 500 chars.
 
 PARENT SAYS: "{user_input}"
 """
 
 def get_dream_prompt(old_memory: str, daily_logs: list, chat_log: list) -> str:
-    # Combine logs for the dream
     day_block = "\n".join(daily_logs)
     chat_block = "\n".join(chat_log)
     
@@ -80,7 +80,7 @@ LAST NIGHT'S CHAT WITH PARENT:
 
 TASK:
 Write a NEW Memory Summary (Max 500 chars).
-1. Identify any CRIMES or SABOTAGE you witnessed in the Logs.
+1. Identify any CRIMES or SABOTAGE you witnessed.
 2. Merge the old memory with new orders from Parent.
 3. Note suspicious behavior from other bots.
 4. Discard small talk.

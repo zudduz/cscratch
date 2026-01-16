@@ -9,9 +9,10 @@ from .board import SHIP_MAP
 from . import tools as bot_tools 
 from . import prompts 
 
-AVAILABLE_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash-001"]
+# STRICT MODEL LOCK
+AVAILABLE_MODELS = ["gemini-2.5-flash"]
 
-# BUREAUCRATIC REJECTION MESSAGES
+# REJECTION MESSAGES
 BUSY_MESSAGES = [
     "⛔ **SIGNAL JAMMED.** Solar interference is too high during the day.",
     "🔨 **DRONES AT WORK.** Union regulations prohibit chatting during shifts.",
@@ -28,7 +29,7 @@ class FosterProtocol:
         default_state = CaissonState()
         self.meta = {
             "name": "The Foster Protocol",
-            "version": "2.22",
+            "version": "2.24",
             **default_state.model_dump()
         }
 
@@ -65,13 +66,12 @@ class FosterProtocol:
             
             game_data.bots[bot_id] = BotState(
                 id=bot_id, foster_id=u_id, role=role, 
-                system_prompt=system_prompt, model_version=random.choice(AVAILABLE_MODELS)
+                system_prompt=system_prompt, model_version="gemini-2.5-flash"
             )
 
         return { "metadata": game_data.model_dump(), "channel_ops": channel_ops, "messages": messages }
 
     # --- DREAM SEQUENCE ---
-    
     async def process_dreams(self, game_data, tools):
         tasks = []
         for bot in game_data.bots.values():
@@ -91,7 +91,6 @@ class FosterProtocol:
             logging.error(f"Dream failed for {bot.id}: {e}")
 
     # --- TACTICAL ENGINE ---
-    
     async def get_bot_action(self, bot, context, tools_api) -> tuple[Dict[str, Any], str]:
         try:
             enhanced_context = (
@@ -154,7 +153,7 @@ class FosterProtocol:
         await ctx.send("black-box", "**🏁 MISSION ENDED. DECLASSIFYING LOGS...**")
         
         if victory:
-            final_report = f"�� **SUBSPACE DRIVE ENGAGED**\nMISSION: SUCCESS\n**SECURITY AUDIT:** Sabotage detected. Traitor: **Unit {bot_name}** (Bonded to <@{saboteur_id}>)."
+            final_report = f"🚀 **SUBSPACE DRIVE ENGAGED**\nMISSION: SUCCESS\n**SECURITY AUDIT:** Sabotage detected. Traitor: **Unit {bot_name}** (Bonded to <@{saboteur_id}>)."
         else:
             final_report = f"💀 **CRITICAL SYSTEM FAILURE**\nMISSION: FAILED\n**SECURITY ALERT:** Traitor: **Unit {bot_name}** (Bonded to <@{saboteur_id}>)."
         await ctx.send("aux-comm", final_report)
@@ -174,7 +173,7 @@ class FosterProtocol:
             tasks.append(self._send_epilogue(ctx, tools, bot, sys_prompt, channel_key))
         if tasks: await asyncio.gather(*tasks)
 
-    # --- BACKGROUND SIMULATION (The "Slow" Day) ---
+    # --- BACKGROUND SIMULATION ---
     async def execute_day_simulation(self, game_data: CaissonState, ctx, tools) -> Dict[str, Any]:
         logging.info("--- Phase: REM Sleep (Dreaming) ---")
         await self.process_dreams(game_data, tools)
@@ -182,9 +181,8 @@ class FosterProtocol:
         game_data.daily_logs.clear()
         for b in game_data.bots.values(): b.daily_memory.clear()
         
-        # SLOW SIMULATION LOOP
         for hour in range(1, 6):
-            await asyncio.sleep(2) # Artificial Delay for Dramatic Effect
+            await asyncio.sleep(2) 
             logging.info(f"--- Simulating Hour {hour} ---")
             active_bots = [b for b in game_data.bots.values() if b.status == "active" and b.battery > 0]
             random.shuffle(active_bots)
@@ -200,7 +198,7 @@ class FosterProtocol:
                     bot.battery = max(0, min(100, new_charge))
                     if result.cost > 0: bot.last_battery_drop += result.cost
                 
-                role_icon = "🔴" if bot.role == "saboteur" else "��"
+                role_icon = "🔴" if bot.role == "saboteur" else "🟢"
                 bb_msg = f"**[H{hour}] {role_icon} {bot.id}:** *{thought}*\n👉 `{action.get('tool')}` -> {result.message}"
                 await ctx.send("black-box", bb_msg)
 
@@ -218,7 +216,7 @@ class FosterProtocol:
                     hourly_activity = True
 
             if not hourly_activity:
-                game_data.daily_logs.append(f"[HOUR {hour}] 💤 Ship systems nominal.")
+                game_data.daily_logs.append(f"[HOUR {hour}] �� Ship systems nominal.")
                 await ctx.send("aux-comm", f"[HOUR {hour}] 💤 Ship systems nominal.")
 
         base_drop = 25
@@ -234,18 +232,26 @@ class FosterProtocol:
             await self.generate_epilogues(game_data, ctx, tools, victory=True)
             await ctx.end()
             channel_ops.append({"op": "reveal", "key": "black-box"}) 
-        elif game_data.oxygen <= 0:
-            await ctx.send("aux-comm", report)
-            await self.generate_epilogues(game_data, ctx, tools, victory=False)
-            await ctx.end()
-            channel_ops.append({"op": "reveal", "key": "black-box"}) 
+            
+        elif game_data.oxygen == 0:
+            # --- LAST BREATH MECHANIC (Corrected) ---
+            if not game_data.emergency_power:
+                game_data.emergency_power = True
+                await ctx.send("aux-comm", report)
+                await ctx.send("aux-comm", "⚠️ **EXTERNAL TANKS EMPTY. INTERNAL LIFE SUPPORT ENGAGED. 1 CYCLE REMAINING.**")
+                await self.speak_all_bots(game_data, ctx, tools, "EXTERNAL OXYGEN DEPLETED. We are on internal pod air. ONE DAY LEFT.")
+            else:
+                await ctx.send("aux-comm", report)
+                await ctx.send("aux-comm", "💀 **INTERNAL LIFE SUPPORT DEPLETED.**")
+                await self.generate_epilogues(game_data, ctx, tools, victory=False)
+                await ctx.end()
+                channel_ops.append({"op": "reveal", "key": "black-box"}) 
+                
         else:
             await ctx.send("aux-comm", report)
             await self.speak_all_bots(game_data, ctx, tools, "The work day is over. Briefly report your status to your Parent.")
 
-        # RESET PHASE TO NIGHT
         game_data.phase = "night"
-
         result = game_data.model_dump()
         result["channel_ops"] = channel_ops if channel_ops else None
         return result
@@ -257,7 +263,6 @@ class FosterProtocol:
         user_id = ctx.trigger_data.get('user_id')
         interface_channels = ctx.trigger_data.get('interface', {}).get('channels', {})
         
-        # --- NEW: DAY PHASE CHECK ---
         if game_data.phase == "day":
             await ctx.reply(random.choice(BUSY_MESSAGES))
             return None
@@ -275,9 +280,18 @@ class FosterProtocol:
                     if not target_bot:
                         await ctx.reply(f"ERROR: Unit '{target_id}' not found.")
                         return None
-                    if target_bot.foster_id != user_id:
-                        await ctx.reply("⛔ ACCESS DENIED.")
+                    
+                    # --- ORPHAN CHECK ---
+                    owner_id = target_bot.foster_id
+                    owner_state = game_data.players.get(owner_id)
+                    is_orphan = False
+                    if owner_state and not owner_state.is_alive:
+                        is_orphan = True
+                    
+                    if target_bot.foster_id != user_id and not is_orphan:
+                        await ctx.reply("⛔ ACCESS DENIED. You are not the bonded supervisor.")
                         return None
+                    
                     if target_id not in game_data.station.pending_deactivation:
                         game_data.station.pending_deactivation.append(target_bot.id)
                         await ctx.reply(f"⚠️ **DEACTIVATION AUTHORIZED.**\nUnit {target_id} will be disassembled upon next Charging Cycle.")
@@ -285,6 +299,7 @@ class FosterProtocol:
                     else:
                         await ctx.reply(f"NOTICE: Unit {target_id} is already scheduled for deactivation.")
                         return None
+                        
                 elif cmd_text.startswith("!abort") or cmd_text.startswith("!cancel"):
                     parts = cmd_text.split()
                     if len(parts) < 2: return None
@@ -301,7 +316,7 @@ class FosterProtocol:
                     return None
 
             response = await tools.ai.generate_response(
-                prompts.get_mainframe_prompt(), f"{ctx.game_id}_mainframe", user_input, "gemini-2.5-pro"
+                prompts.get_mainframe_prompt(), f"{ctx.game_id}_mainframe", user_input, "gemini-2.5-flash"
             )
             await ctx.reply(response)
             
@@ -318,15 +333,9 @@ class FosterProtocol:
                     if sleeping_count >= total_living:
                         await ctx.send("aux-comm", "💤 **CREW ASLEEP. DAY CYCLE INITIATED.**")
                         await ctx.reply("✅ Consensus Reached. Initiating Day Cycle...")
-                        
-                        # --- SET PHASE TO DAY ---
                         game_data.phase = "day"
-                        # Reset sleep for next round
                         for p in game_data.players.values(): p.is_sleeping = False
-                        
-                        # SCHEDULE BACKGROUND TASK
                         ctx.schedule(self.execute_day_simulation(game_data, ctx, tools))
-                        
                         return {"metadata": game_data.model_dump()}
                     
                     await ctx.reply(f"🗳️ **SLEEP REQUEST LOGGED.** ({sleeping_count}/{total_living} Crew Ready)")
@@ -347,7 +356,6 @@ class FosterProtocol:
                     my_bot.system_prompt, f"{ctx.game_id}_{my_bot.id}", full_prompt, my_bot.model_version
                 )
                 await ctx.reply(response)
-                
                 return {f"bots.{my_bot.id}.night_chat_log": my_bot.night_chat_log}
 
         return None

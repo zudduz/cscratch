@@ -27,7 +27,7 @@ class FosterProtocol:
         default_state = CaissonState()
         self.meta = {
             "name": "The Foster Protocol",
-            "version": "2.27",
+            "version": "2.28",
             **default_state.model_dump()
         }
 
@@ -53,9 +53,6 @@ class FosterProtocol:
             channel_key = f"nanny_{u_id}"
             channel_ops.append({ "op": "create", "key": channel_key, "name": f"nanny-port-{u_name}", "audience": "private", "user_id": u_id })
             
-            # Note: We removed the static "TERMINAL ACTIVE" message. 
-            # The bots will now introduce themselves via the !exec_wakeup_protocol
-            
             game_data.players[u_id] = PlayerState(role=role)
             
             while True:
@@ -71,7 +68,7 @@ class FosterProtocol:
 
         return { "metadata": game_data.model_dump(), "channel_ops": channel_ops, "messages": messages }
 
-    # --- WAKE UP ROUTINE (Introductions) ---
+    # --- WAKE UP ROUTINE ---
     async def run_wake_up_routine(self, game_data, ctx, tools):
         logging.info("--- Waking up Bots for Introductions ---")
         tasks = []
@@ -93,15 +90,11 @@ class FosterProtocol:
 "
                 "Ask for orders."
             )
-            # We use a slightly different conversation ID for the intro to keep it distinct
             resp = await tools.ai.generate_response(
                 bot.system_prompt, f"{ctx.game_id}_bot_{bot.id}", prompt, bot.model_version
             )
             await ctx.send(channel_key, resp)
-            
-            # Log the intro to their memory so they remember they said hello
             bot.night_chat_log.append(f"SELF (Intro): {resp}")
-            
         except Exception as e:
             logging.error(f"Intro failed for {bot.id}: {e}")
 
@@ -213,7 +206,34 @@ class FosterProtocol:
             await ctx.send(channel_key, resp)
         except Exception: pass
 
-    # --- BACKGROUND SIMULATION ---
+    # --- HELPER FOR PARALLEL EXECUTION ---
+    async def run_single_bot_turn(self, bot, game_data, hour, tools):
+        # This function runs in parallel for all bots
+        # 1. OBSERVE (The State AT THE START of the turn)
+        context = bot_tools.build_turn_context(bot, game_data, hour)
+        
+        # 2. DECIDE (Slow AI Call)
+        action, thought = await self.get_bot_action(bot, context, tools)
+        
+        # 3. ACT (Synchronous execution against potentially changed state)
+        # This is where the GLITCH happens. If 5 bots try to gather 1 fuel, 4 will fail.
+        result = bot_tools.execute_tool(action.get("tool", "wait"), action.get("args", {}), bot.id, game_data)
+        
+        # 4. CONSEQUENCES
+        if not (action.get("tool") == "charge" and result.success):
+            new_charge = bot.battery - result.cost
+            bot.battery = max(0, min(100, new_charge))
+            if result.cost > 0: bot.last_battery_drop += result.cost
+        
+        # 5. LOGGING (Returns data to be printed)
+        return {
+            "bot": bot,
+            "action": action,
+            "result": result,
+            "thought": thought
+        }
+
+    # --- BACKGROUND SIMULATION (PARALLEL MODE) ---
     async def execute_day_simulation(self, game_data: CaissonState, ctx, tools) -> Dict[str, Any]:
         logging.info("--- Phase: REM Sleep (Dreaming) ---")
         await self.process_dreams(game_data, tools)
@@ -224,21 +244,26 @@ class FosterProtocol:
         for hour in range(1, 6):
             await asyncio.sleep(2) 
             active_bots = [b for b in game_data.bots.values() if b.status == "active" and b.battery > 0]
-            random.shuffle(active_bots)
+            
+            # --- PARALLEL EXECUTION ---
+            # All bots think and act "simultaneously"
+            turn_tasks = []
+            for bot in active_bots:
+                turn_tasks.append(self.run_single_bot_turn(bot, game_data, hour, tools))
+            
+            # Wait for all bots to finish thinking and trying to act
+            turn_results = await asyncio.gather(*turn_tasks)
+            
+            # Process Logs (Shuffle output to make it feel chaotic)
+            random.shuffle(turn_results)
             hourly_activity = False 
             
-            for bot in active_bots:
-                context = bot_tools.build_turn_context(bot, game_data, hour)
-                action, thought = await self.get_bot_action(bot, context, tools)
-                result = bot_tools.execute_tool(action.get("tool", "wait"), action.get("args", {}), bot.id, game_data)
-                
-                if not (action.get("tool") == "charge" and result.success):
-                    new_charge = bot.battery - result.cost
-                    bot.battery = max(0, min(100, new_charge))
-                    if result.cost > 0: bot.last_battery_drop += result.cost
+            for res in turn_results:
+                bot = res['bot']
+                result = res['result']
                 
                 role_icon = "🔴" if bot.role == "saboteur" else "🟢"
-                bb_msg = f"**[H{hour}] {role_icon} {bot.id}:** *{thought}*\n👉 `{action.get('tool')}` -> {result.message}"
+                bb_msg = f"**[H{hour}] {role_icon} {bot.id}:** *{res['thought']}*\n👉 `{res['action'].get('tool')}` -> {result.message}"
                 await ctx.send("black-box", bb_msg)
 
                 log_entry = f"[Hour {hour}] {result.message}"
@@ -322,9 +347,7 @@ class FosterProtocol:
             return None
         
         if channel_id == interface_channels.get('aux-comm'):
-            # --- WAKE UP TRIGGER ---
             if user_input == "!exec_wakeup_protocol":
-                # Schedule the async introductions
                 ctx.schedule(self.run_wake_up_routine(game_data, ctx, tools))
                 return None
 

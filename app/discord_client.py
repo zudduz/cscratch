@@ -63,15 +63,12 @@ class ChickenBot(commands.Bot):
             await channel.send(text)
         except Exception as e: logging.error(f"Discord Send Error {channel_id}: {e}")
 
-    # --- NEW: UNLOCK CHANNEL (For End Game Reveal) ---
     async def unlock_channel(self, channel_id: str, guild_id: str):
         try:
             guild = self.get_guild(int(guild_id))
             channel = guild.get_channel(int(channel_id))
             if not channel: return
             
-            # Reset permissions to default (usually allows reading if public)
-            # Or specifically grant @everyone read access
             overwrite = channel.overwrites_for(guild.default_role)
             overwrite.read_messages = True
             await channel.set_permissions(guild.default_role, overwrite=overwrite)
@@ -109,9 +106,7 @@ class ChickenBot(commands.Bot):
                             if member:
                                 overwrites[member] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
                     
-                    # --- NEW AUDIENCE: BLACK-BOX ---
                     elif op.get('audience') == 'hidden':
-                        # Explicitly deny everyone except bot
                         overwrites[guild.default_role] = discord.PermissionOverwrite(read_messages=False)
                         overwrites[guild.me] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
 
@@ -127,7 +122,6 @@ class ChickenBot(commands.Bot):
                     self.active_game_channels.add(str(new_chan.id))
                     changes = True
                     
-                # --- NEW OP: REVEAL ---
                 elif op['op'] == 'reveal':
                     key = op.get('key')
                     chan_id = interface.channels.get(key)
@@ -149,8 +143,8 @@ async def version_cmd(interaction: discord.Interaction):
 cscratch_group = app_commands.Group(name="cscratch", description="Engine Controls")
 
 ADMIN_WARNING_TEXT = (
-    "⚠️ **ADMINISTRATOR DETECTED**\n"
-    "You have permissions to view ALL private channels.\n"
+    "⚠️ **FAIR PLAY NOTICE** ⚠️\n"
+    "To the Administrator: You have permissions to view ALL private channels.\n"
     "**FOR A FAIR GAME:** Please **MUTE** or **COLLAPSE** the private channels of other players.\n"
     "*The Protocol relies on trust.*"
 )
@@ -176,10 +170,12 @@ async def start(interaction: discord.Interaction, cartridge: str = "foster-proto
         embed = discord.Embed(title=f"Lobby: {cartridge}", description="Click to join.", color=0x00ff00)
         view = LobbyView(game_id=game_id)
         await chan.send(embed=embed, view=view)
-        await interaction.followup.send(f"✅ Lobby: {chan.mention}")
-
+        
+        # --- NEW: Public Fair Play Notice ---
         if isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator:
-            await interaction.followup.send(ADMIN_WARNING_TEXT, ephemeral=True)
+            await chan.send(ADMIN_WARNING_TEXT)
+
+        await interaction.followup.send(f"✅ Lobby: {chan.mention}")
 
     except Exception as e: await interaction.followup.send(f"❌ Failed: {e}")
 
@@ -211,10 +207,6 @@ class LobbyView(discord.ui.View):
         try:
             await game_engine.engine.join_game(self.game_id, str(interaction.user.id), interaction.user.name)
             await interaction.followup.send(f"✅ **{interaction.user.name}** joined!")
-            
-            if isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator:
-                await interaction.followup.send(ADMIN_WARNING_TEXT, ephemeral=True)
-
         except Exception as e: await interaction.followup.send(f"❌ Error: {e}", ephemeral=True)
 
     @discord.ui.button(label="Start", style=discord.ButtonStyle.danger, custom_id="start_btn")
@@ -230,6 +222,20 @@ class LobbyView(discord.ui.View):
         await game_engine.engine.dispatch_immediate_result(self.game_id, res)
         self.stop()
         await interaction.followup.send(f"🚨 **STARTED**")
+        
+        # --- NEW: TRIGGER BOT INTRODUCTIONS ---
+        # Find the aux-comm channel ID to route the command
+        # Re-fetch game to get updated interface
+        updated_game = await persistence.db.get_game_by_id(self.game_id)
+        aux_comm_id = updated_game.interface.channels.get('aux-comm')
+        if aux_comm_id:
+            # Send the system signal to wake up the bots
+            await game_engine.engine.dispatch_input(
+                aux_comm_id, 
+                "SYSTEM", 
+                "Mainframe", 
+                "!exec_wakeup_protocol"
+            )
 
 @client.event
 async def on_message(message):

@@ -27,7 +27,7 @@ class FosterProtocol:
         default_state = CaissonState()
         self.meta = {
             "name": "The Foster Protocol",
-            "version": "2.26",
+            "version": "2.27",
             **default_state.model_dump()
         }
 
@@ -53,7 +53,9 @@ class FosterProtocol:
             channel_key = f"nanny_{u_id}"
             channel_ops.append({ "op": "create", "key": channel_key, "name": f"nanny-port-{u_name}", "audience": "private", "user_id": u_id })
             
-            messages.append({ "channel": channel_key, "content": f"**TERMINAL ACTIVE.**\nUser: {u_name}" })
+            # Note: We removed the static "TERMINAL ACTIVE" message. 
+            # The bots will now introduce themselves via the !exec_wakeup_protocol
+            
             game_data.players[u_id] = PlayerState(role=role)
             
             while True:
@@ -68,6 +70,40 @@ class FosterProtocol:
             )
 
         return { "metadata": game_data.model_dump(), "channel_ops": channel_ops, "messages": messages }
+
+    # --- WAKE UP ROUTINE (Introductions) ---
+    async def run_wake_up_routine(self, game_data, ctx, tools):
+        logging.info("--- Waking up Bots for Introductions ---")
+        tasks = []
+        for bot in game_data.bots.values():
+            tasks.append(self._generate_intro(bot, ctx, tools))
+        if tasks: await asyncio.gather(*tasks)
+
+    async def _generate_intro(self, bot, ctx, tools):
+        try:
+            channel_key = f"nanny_{bot.foster_id}"
+            prompt = (
+                "You have just come online.
+"
+                "The ship is cold. You are scared.
+"
+                "Introduce yourself to your Foster Parent.
+"
+                "Explain that you are their hands, and they are your mind.
+"
+                "Ask for orders."
+            )
+            # We use a slightly different conversation ID for the intro to keep it distinct
+            resp = await tools.ai.generate_response(
+                bot.system_prompt, f"{ctx.game_id}_bot_{bot.id}", prompt, bot.model_version
+            )
+            await ctx.send(channel_key, resp)
+            
+            # Log the intro to their memory so they remember they said hello
+            bot.night_chat_log.append(f"SELF (Intro): {resp}")
+            
+        except Exception as e:
+            logging.error(f"Intro failed for {bot.id}: {e}")
 
     # --- DREAM SEQUENCE ---
     async def process_dreams(self, game_data, tools):
@@ -171,6 +207,12 @@ class FosterProtocol:
             tasks.append(self._send_epilogue(ctx, tools, bot, sys_prompt, channel_key))
         if tasks: await asyncio.gather(*tasks)
 
+    async def _send_epilogue(self, ctx, tools, bot, prompt, channel_key):
+        try:
+            resp = await tools.ai.generate_response(prompt, f"{ctx.game_id}_bot_{bot.id}", "ENDGAME", bot.model_version)
+            await ctx.send(channel_key, resp)
+        except Exception: pass
+
     # --- BACKGROUND SIMULATION ---
     async def execute_day_simulation(self, game_data: CaissonState, ctx, tools) -> Dict[str, Any]:
         logging.info("--- Phase: REM Sleep (Dreaming) ---")
@@ -225,9 +267,6 @@ class FosterProtocol:
         base_required = 50
         required_fuel = int(base_required * (1.2 ** (game_data.cycle - 1)))
         
-        # WE NO LONGER CALCULATE TOTAL HOPE
-        # The Mainframe only knows the current tank level.
-        
         report = (
             f"🌞 **CYCLE {game_data.cycle} REPORT**\n"
             f"📉 Oxygen: {game_data.oxygen}%\n"
@@ -236,14 +275,12 @@ class FosterProtocol:
 
         channel_ops = []
         
-        # 1. SUCCESS CHECK
         if game_data.fuel >= required_fuel:
             await ctx.send("aux-comm", report)
             await self.generate_epilogues(game_data, ctx, tools, victory=True)
             await ctx.end()
             channel_ops.append({"op": "reveal", "key": "black-box"}) 
             
-        # 2. OXYGEN FAILURE
         elif game_data.oxygen == 0:
             if not game_data.emergency_power:
                 game_data.emergency_power = True
@@ -257,8 +294,6 @@ class FosterProtocol:
                 await ctx.end()
                 channel_ops.append({"op": "reveal", "key": "black-box"}) 
         
-        # 3. MATH FAILURE (TANK CAPACITY LIMIT)
-        # Assuming Max Fuel Tank is 100. If Required > 100, it's impossible.
         elif required_fuel > 100:
             await ctx.send("aux-comm", report)
             await ctx.send("aux-comm", "💀 **ORBITAL DECAY IRREVERSIBLE. REQUIRED MASS EXCEEDS SHIP CAPACITY.**")
@@ -287,6 +322,12 @@ class FosterProtocol:
             return None
         
         if channel_id == interface_channels.get('aux-comm'):
+            # --- WAKE UP TRIGGER ---
+            if user_input == "!exec_wakeup_protocol":
+                # Schedule the async introductions
+                ctx.schedule(self.run_wake_up_routine(game_data, ctx, tools))
+                return None
+
             if user_input.strip().startswith("!"):
                 cmd_text = user_input.strip().lower()
                 if cmd_text.startswith("!disassemble") or cmd_text.startswith("!kill"):

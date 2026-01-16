@@ -35,4 +35,8 @@ When a drone loses connection to the Maintenance Computer, it is flagged as **or
 
 ## 4. The Threat Landscape
 1.  **Oxygen Depletion:** The Cryo Pods are running on backup power. If O2 hits 0%, the Fosters die in their sleep.
-3.  **The Saboteur:** An Orphan that has been corrupted (or hacked). It **simulates** the Foster Protocol to gain trust while actively subverting the crew's efforts.
+2.  **The Saboteur:** An Orphan that has been corrupted (or hacked). It **simulates** the Foster Protocol to gain trust while actively subverting the crew's efforts.
+
+## TODO Add these notes
+* Decommissioned bots would give and epilogue as they did because the diagnostics will flush their memory.
+* The mainfram The bots lost the maintenance server but ALSO the mainframe lost it. It might act like it doesn't care but it's lost lots of internal visibility because of that sabotage. And this loss of visibility is creating fog of war.

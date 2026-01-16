@@ -45,7 +45,7 @@ class ChickenBot(commands.Bot):
 
     async def on_ready(self):
         logging.info(f"Logged in as {self.user} (ID: {self.user.id})")
-        await self.announce_state("🟢 **System Online**")
+        await self.announce_state("[ONLINE] **System Online**")
 
     async def announce_state(self, message: str):
         if not DEBUG_CHANNEL_ID: return
@@ -72,7 +72,7 @@ class ChickenBot(commands.Bot):
             overwrite = channel.overwrites_for(guild.default_role)
             overwrite.read_messages = True
             await channel.set_permissions(guild.default_role, overwrite=overwrite)
-            await channel.send("🔓 **BLACK BOX DECLASSIFIED. LOGS AVAILABLE.**")
+            await channel.send("[OPEN] **BLACK BOX DECLASSIFIED. LOGS AVAILABLE.**")
         except Exception as e:
             logging.error(f"Unlock Failed: {e}")
 
@@ -138,12 +138,12 @@ client = ChickenBot()
 @app_commands.command(name="version", description="Check container")
 async def version_cmd(interaction: discord.Interaction):
     rev = os.environ.get('K_REVISION', 'Local-Dev')
-    await interaction.response.send_message(f"🤖 **Active Node:** `{rev}`")
+    await interaction.response.send_message(f"[NODE] **Active Node:** `{rev}`")
 
 cscratch_group = app_commands.Group(name="cscratch", description="Engine Controls")
 
 ADMIN_WARNING_TEXT = (
-    "⚠️ **FAIR PLAY NOTICE** ⚠️\n"
+    "[WARNING] **FAIR PLAY NOTICE** [WARNING]\n"
     "To the Administrator: You have permissions to view ALL private channels.\n"
     "**FOR A FAIR GAME:** Please **MUTE** or **COLLAPSE** the private channels of other players.\n"
     "*The Protocol relies on trust.*"
@@ -171,22 +171,21 @@ async def start(interaction: discord.Interaction, cartridge: str = "foster-proto
         view = LobbyView(game_id=game_id)
         await chan.send(embed=embed, view=view)
         
-        # --- NEW: Public Fair Play Notice ---
         if isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator:
             await chan.send(ADMIN_WARNING_TEXT)
 
-        await interaction.followup.send(f"✅ Lobby: {chan.mention}")
+        await interaction.followup.send(f"[OK] Lobby: {chan.mention}")
 
-    except Exception as e: await interaction.followup.send(f"❌ Failed: {e}")
+    except Exception as e: await interaction.followup.send(f"[ERROR] Failed: {e}")
 
 @cscratch_group.command(name="end", description="Cleanup")
 async def end(interaction: discord.Interaction):
     if not await safe_defer(interaction): return
     game = await game_engine.engine.find_game_by_channel(interaction.channel_id)
-    if not game: return await interaction.followup.send("⚠️ No game.")
-    if str(interaction.user.id) != game.host_id: return await interaction.followup.send("⛔ Host only.")
+    if not game: return await interaction.followup.send("[WARN] No game.")
+    if str(interaction.user.id) != game.host_id: return await interaction.followup.send("[DENIED] Host only.")
     
-    await interaction.followup.send("🛑 **Teardown.**")
+    await interaction.followup.send("[STOP] **Teardown.**")
     if game.interface.category_id:
         try:
             cat = interaction.guild.get_channel(int(game.interface.category_id))
@@ -206,14 +205,14 @@ class LobbyView(discord.ui.View):
         if not await safe_defer(interaction): return
         try:
             await game_engine.engine.join_game(self.game_id, str(interaction.user.id), interaction.user.name)
-            await interaction.followup.send(f"✅ **{interaction.user.name}** joined!")
-        except Exception as e: await interaction.followup.send(f"❌ Error: {e}", ephemeral=True)
+            await interaction.followup.send(f"[OK] **{interaction.user.name}** joined!")
+        except Exception as e: await interaction.followup.send(f"[ERROR] {e}", ephemeral=True)
 
     @discord.ui.button(label="Start", style=discord.ButtonStyle.danger, custom_id="start_btn")
     async def start_button(self, interaction, button):
         if not await safe_defer(interaction): return
         game = await persistence.db.get_game_by_id(self.game_id)
-        if not game or str(interaction.user.id) != game.host_id: return await interaction.followup.send("⛔ Host only.")
+        if not game or str(interaction.user.id) != game.host_id: return await interaction.followup.send("[DENIED] Host only.")
         
         res = await game_engine.engine.launch_match(self.game_id)
         if not res: return await interaction.followup.send("Error.")
@@ -221,15 +220,11 @@ class LobbyView(discord.ui.View):
         if res.get('channel_ops'): await client.execute_channel_ops(self.game_id, res['channel_ops'])
         await game_engine.engine.dispatch_immediate_result(self.game_id, res)
         self.stop()
-        await interaction.followup.send(f"🚨 **STARTED**")
+        await interaction.followup.send(f"[STARTED] **SEQUENCE INITIATED**")
         
-        # --- NEW: TRIGGER BOT INTRODUCTIONS ---
-        # Find the aux-comm channel ID to route the command
-        # Re-fetch game to get updated interface
         updated_game = await persistence.db.get_game_by_id(self.game_id)
         aux_comm_id = updated_game.interface.channels.get('aux-comm')
         if aux_comm_id:
-            # Send the system signal to wake up the bots
             await game_engine.engine.dispatch_input(
                 aux_comm_id, 
                 "SYSTEM", 

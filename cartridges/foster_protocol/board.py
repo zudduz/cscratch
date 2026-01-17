@@ -1,12 +1,34 @@
-# STATIC CONFIGURATION - DO NOT STORE IN DB
+# STATIC CONFIGURATION - THE RULE BOOK
+
+class GameConfig:
+    # --- RESOURCES ---
+    INITIAL_OXYGEN = 100
+    OXYGEN_BASE_LOSS = 20  # Base daily drop (scaled by crew size)
+    
+    INITIAL_FUEL = 0
+    MAX_FUEL = 100
+    FUEL_PER_CANISTER = 10
+    
+    # --- ROOM CAPACITIES (Total Fuel available to gather) ---
+    CAPACITY_SHUTTLE_BAY = 50  # 5 Canisters
+    CAPACITY_TORPEDO_BAY = 80  # 8 Canisters
+    
+    # --- ORBITAL MECHANICS ---
+    FUEL_REQ_BASE = 50
+    FUEL_REQ_GROWTH = 1.2  # Exponential difficulty curve
+    MAX_POSSIBLE_FUEL_REQ = 100 # If req exceeds this, game is lost mathematically
 
 class ActionCosts:
     # Legacy costs (reference only, actual costs in tools.py)
+    # Ideally, tools.py should import these too, but we'll start here.
     MOVE = 12
-    SIPHON = 20
+    GATHER = 15
     DEPOSIT = 15
-    TOW = 20
-    SABOTAGE_O2 = 20
+    CHARGE = 0    
+    TOW = 20      
+    DRAIN = -15   
+    SABOTAGE = 20 
+    KILL = 50     
 
 class RoomDef:
     def __init__(self, name: str, description: str, can_nanny: bool = False):

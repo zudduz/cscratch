@@ -5,7 +5,7 @@ import logging
 import json
 import re
 from .models import CaissonState, BotState, PlayerState
-from .board import SHIP_MAP
+from .board import SHIP_MAP, GameConfig
 from . import tools as bot_tools 
 from . import prompts 
 
@@ -20,7 +20,7 @@ class FosterProtocol:
         default_state = CaissonState()
         self.meta = {
             "name": "The Foster Protocol",
-            "version": "2.35",
+            "version": "2.36",
             **default_state.model_dump()
         }
 
@@ -29,7 +29,6 @@ class FosterProtocol:
         discord_players = generic_state.get('players', [])
         if not discord_players: return { "metadata": game_data.model_dump() }
 
-        # Set Initial Crew Size for O2 Math
         game_data.initial_crew_size = len(discord_players)
         if game_data.initial_crew_size == 0: game_data.initial_crew_size = 1
 
@@ -261,7 +260,6 @@ class FosterProtocol:
 
                 role_icon = "[SABOTEUR]" if bot.role == "saboteur" else "[LOYAL]"
                 
-                # --- BLACK BOX DISPLAY (ID + Alias) ---
                 display_id = f"{bot.name} ({bot.id})" if bot.name else bot.id
                 inv_str = str(bot.inventory) if bot.inventory else "[]"
                 status_str = f"[Bat:{bot.battery}% | Loc:{bot.location_id} | Inv:{inv_str}]"
@@ -277,7 +275,7 @@ class FosterProtocol:
                     for w in witnesses: w.daily_memory.append(f"[Hour {hour}] I saw {bot.id}: {result.message}")
                         
                 if result.visibility == "global":
-                    public_msg = f"[HOUR {hour}] [AUDIO] {bot.id}: {result.message}" # Public keeps ID only
+                    public_msg = f"[HOUR {hour}] [AUDIO] {bot.id}: {result.message}"
                     game_data.daily_logs.append(public_msg)
                     await ctx.send("aux-comm", public_msg) 
                     hourly_activity = True
@@ -288,20 +286,17 @@ class FosterProtocol:
 
         # --- DYNAMIC OXYGEN CONSUMPTION ---
         living_crew = sum(1 for p in game_data.players.values() if p.is_alive)
-        if game_data.initial_crew_size < 1: game_data.initial_crew_size = 1 # Safety
+        if game_data.initial_crew_size < 1: game_data.initial_crew_size = 1
         
-        # Formula: 20% Total Target. 
-        # Drop = 20 * (Living / Initial)
-        # 5/5 Alive -> 20% drop
-        # 2/5 Alive -> 8% drop
-        drop_calc = int(20 * (living_crew / game_data.initial_crew_size))
+        # Pull constants from GameConfig
+        drop_calc = int(GameConfig.OXYGEN_BASE_LOSS * (living_crew / game_data.initial_crew_size))
         
         game_data.consume_oxygen(drop_calc)
         game_data.last_oxygen_drop = drop_calc
         game_data.cycle += 1
         
-        base_required = 50
-        required_fuel = int(base_required * (1.2 ** (game_data.cycle - 1)))
+        base_required = GameConfig.FUEL_REQ_BASE
+        required_fuel = int(base_required * (GameConfig.FUEL_REQ_GROWTH ** (game_data.cycle - 1)))
         
         report = (
             f"[REPORT] **CYCLE {game_data.cycle} REPORT**\n"
@@ -317,7 +312,7 @@ class FosterProtocol:
             await ctx.end()
             channel_ops.append({"op": "reveal", "key": "black-box"}) 
             
-        elif required_fuel > 100:
+        elif required_fuel > GameConfig.MAX_POSSIBLE_FUEL_REQ:
             await ctx.send("aux-comm", report)
             await ctx.send("aux-comm", "[FATAL] ORBITAL DECAY IRREVERSIBLE. REQUIRED MASS EXCEEDS SHIP CAPACITY.")
             await self.generate_epilogues(game_data, ctx, tools, victory=False, fail_reason="Gravity Well Victory (Math)")
@@ -413,12 +408,10 @@ class FosterProtocol:
                 if len(parts) < 2:
                     await ctx.reply("[ERROR] USAGE: !name <new_name>")
                     return None
-                new_name = parts[1][:20] # Limit length
+                new_name = parts[1][:20]
                 my_bot.name = new_name
                 
-                # Update System Prompt to Reflect Identity
                 base_prompt = prompts.get_bot_system_prompt(my_bot.id, game_data.players[user_id].role, my_bot.role == "saboteur")
-                # Append identity Override
                 identity_patch = f"\n\nUPDATE: You have been named **{new_name}**. Use this name."
                 my_bot.system_prompt = base_prompt + identity_patch
                 
@@ -444,7 +437,6 @@ class FosterProtocol:
                     return {f"players.{user_id}.is_sleeping": True}
 
             if my_bot:
-                # --- RESTORED FOG OF WAR ---
                 if (my_bot.status == "destroyed" or 
                     my_bot.battery <= 0 or 
                     my_bot.location_id != "cryo_bay"):
@@ -454,7 +446,6 @@ class FosterProtocol:
                 log_line = f"PARENT: {user_input}"
                 my_bot.night_chat_log.append(log_line)
                 
-                # Inject Name into Context
                 current_identity = f"NAME: {my_bot.name}" if my_bot.name else f"ID: {my_bot.id}"
                 
                 full_prompt = prompts.get_night_context(my_bot.daily_memory, my_bot.battery, my_bot.location_id, my_bot.long_term_memory, user_input)

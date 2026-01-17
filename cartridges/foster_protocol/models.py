@@ -1,5 +1,7 @@
+from datetime import datetime
+from typing import List, Dict, Optional, Any, Literal
 from pydantic import BaseModel, Field
-from typing import List, Dict, Literal, Optional
+from .board import GameConfig
 
 class ChargingStation(BaseModel):
     pending_deactivation: List[str] = Field(default_factory=list)
@@ -13,13 +15,14 @@ class PlayerState(BaseModel):
     nanny_channel_id: Optional[str] = None
 
 class BotState(BaseModel):
-    id: str                 
+    id: str                  
+    name: Optional[str] = None
     foster_id: Optional[str] = None
     role: Literal["loyal", "saboteur"] = "loyal"
     model_version: str = "gemini-2.5-flash" 
     
     location_id: str = "cryo_bay"
-    battery: int = 100      
+    battery: int = 100       
     last_battery_drop: int = 0
     
     status: Literal["active", "destroyed"] = "active"
@@ -32,17 +35,19 @@ class BotState(BaseModel):
     daily_memory: List[str] = Field(default_factory=list)
 
 class CaissonState(BaseModel):
-    version: str = "2.25"
-    oxygen: int = 100
+    version: str = "2.36"
+    oxygen: int = GameConfig.INITIAL_OXYGEN
     last_oxygen_drop: int = 0
     emergency_power: bool = False 
     
-    fuel: int = 0
+    initial_crew_size: int = 1
+    
+    fuel: int = GameConfig.INITIAL_FUEL
     last_fuel_gain: int = 0
     
-    # --- FINITE RESOURCES ---
-    shuttle_bay_fuel: int = 50   # 5 Canisters
-    torpedo_bay_fuel: int = 80   # 8 Canisters
+    # --- FINITE RESOURCES (Initialized from Board Config) ---
+    shuttle_bay_fuel: int = GameConfig.CAPACITY_SHUTTLE_BAY
+    torpedo_bay_fuel: int = GameConfig.CAPACITY_TORPEDO_BAY
     
     cycle: int = 1
     phase: Literal["day", "night"] = "night"
@@ -56,4 +61,37 @@ class CaissonState(BaseModel):
         self.oxygen = max(0, self.oxygen - amount)
 
     def add_fuel(self, amount: int):
-        self.fuel = min(100, self.fuel + amount)
+        self.fuel = min(GameConfig.MAX_FUEL, self.fuel + amount)
+
+# --- Discord Models ---
+class Player(BaseModel):
+    id: str
+    name: str
+    joined_at: str
+
+class GameInterface(BaseModel):
+    type: str = "discord"
+    guild_id: Optional[str] = None
+    category_id: Optional[str] = None
+    
+    main_channel_id: Optional[str] = None 
+    channels: Dict[str, str] = Field(default_factory=dict)
+    listener_ids: List[str] = Field(default_factory=list)
+    
+    channel_id: Optional[str] = None
+
+class GameState(BaseModel):
+    id: str
+    story_id: str
+    host_id: str
+    status: str 
+    created_at: datetime
+    started_at: Optional[datetime] = None
+    ended_at: Optional[datetime] = None
+    metadata: Dict[str, Any] = {}
+    players: List[Player] = []
+    interface: GameInterface = Field(default_factory=GameInterface)
+    schema_version: int = 2
+
+    class Config:
+        populate_by_name = True

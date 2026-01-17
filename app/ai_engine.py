@@ -6,14 +6,14 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from . import persistence
 
 # PRICING (Gemini 3 Flash Preview)
-# Input: $0.50 per 1M
-# Output: $3.00 per 1M
+# Input: $0.30 per 1M
+# Output: $2.50 per 1M
 
 class AIEngine:
     def __init__(self):
         self.project_id = os.environ.get("GCP_PROJECT_ID")
         self.location = "us-central1"
-        self.default_model_name = "gemini-3-flash-preview"
+        self.default_model_name = "gemini-2.5-flash"
         
         self.base_config = {
             "project": self.project_id,
@@ -24,7 +24,7 @@ class AIEngine:
         
         self.model = ChatVertexAI(model_name=self.default_model_name, **self.base_config)
 
-    async def generate_response(self, system_prompt: str, conversation_id: str, user_input: str, model_version: str = "gemini-3-flash-preview", game_id: str = None) -> str:
+    async def generate_response(self, system_prompt: str, conversation_id: str, user_input: str, model_version: str = "gemini-2.5-flash", game_id: str = None) -> str:
         try:
             logging.info(f"AI Request: {model_version} (Game: {game_id})")
             messages = [

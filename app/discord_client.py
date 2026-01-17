@@ -11,9 +11,9 @@ from .state import sys as system_state
 
 DEBUG_CHANNEL_ID = 1460557810545856725
 
-# --- PRICING CONSTANTS (Gemini 2.5 Flash) ---
-COST_PER_1M_INPUT = 0.075
-COST_PER_1M_OUTPUT = 0.30
+# --- PRICING CONSTANTS (Gemini 3 Flash) ---
+COST_PER_1M_INPUT = 0.50
+COST_PER_1M_OUTPUT = 3.00
 
 async def safe_defer(interaction: discord.Interaction, ephemeral: bool = False) -> bool:
     if system_state.shutting_down: return False

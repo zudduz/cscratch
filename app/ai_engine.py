@@ -5,16 +5,16 @@ from langchain_google_vertexai import ChatVertexAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from . import persistence
 
-# PRICING (Gemini 2.5 Flash - Estimated)
-# Input: $0.075 per 1M
-# Output: $0.30 per 1M
+# PRICING (Gemini 3 Flash Preview)
+# Input: $0.50 per 1M
+# Output: $3.00 per 1M
 
 class AIEngine:
     def __init__(self):
         self.project_id = os.environ.get("GCP_PROJECT_ID")
         self.location = "us-central1"
-        # Default fallback model
-        self.default_model_name = "gemini-2.5-flash"
+        # Default to the bleeding edge
+        self.default_model_name = "gemini-3-flash-preview"
         
         self.base_config = {
             "project": self.project_id,
@@ -26,7 +26,7 @@ class AIEngine:
         # Initialize default client
         self.model = ChatVertexAI(model_name=self.default_model_name, **self.base_config)
 
-    async def generate_response(self, system_prompt: str, conversation_id: str, user_input: str, model_version: str = "gemini-2.5-flash") -> str:
+    async def generate_response(self, system_prompt: str, conversation_id: str, user_input: str, model_version: str = "gemini-3-flash-preview") -> str:
         try:
             # Construct Messages
             messages = [
@@ -35,10 +35,11 @@ class AIEngine:
             ]
             
             # Dynamic Model Selection
-            # If the requested version matches our default, use self.model.
-            # If not, create a ephemeral client for this request.
+            # If the cartridge asks for an older model, we try to honor it, 
+            # but default to Gemini 3 if unspecified or matching default.
             client = self.model
-            if model_version != self.model.model_name:
+            if model_version and model_version != self.model.model_name:
+                # Fallback or specific override
                 client = ChatVertexAI(model_name=model_version, **self.base_config)
             
             # Invoke
@@ -55,7 +56,7 @@ class AIEngine:
 
     async def _track_usage(self, conversation_id: str, metadata: dict):
         try:
-            # Extract Game ID (Format: "{game_id}_{actor_id}")
+            # Extract Game ID
             if "_" not in conversation_id: return
             game_id = conversation_id.split("_")[0]
             

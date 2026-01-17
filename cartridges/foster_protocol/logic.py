@@ -9,7 +9,7 @@ from .board import SHIP_MAP, GameConfig
 from . import tools as bot_tools 
 from . import prompts 
 
-AVAILABLE_MODELS = ["gemini-2.5-flash"]
+AVAILABLE_MODELS = ["gemini-3-flash-preview"]
 
 BUSY_MESSAGES = [
     "[SLEEP] Day Cycle in progress. Pretend to snore or something."
@@ -59,7 +59,7 @@ class FosterProtocol:
             
             game_data.bots[bot_id] = BotState(
                 id=bot_id, foster_id=u_id, role=role, 
-                system_prompt=system_prompt, model_version="gemini-2.5-flash"
+                system_prompt=system_prompt, model_version="gemini-3-flash-preview"
             )
 
         return { "metadata": game_data.model_dump(), "channel_ops": channel_ops, "messages": messages }
@@ -102,7 +102,7 @@ class FosterProtocol:
         try:
             dream_prompt = prompts.get_dream_prompt(bot.long_term_memory, bot.daily_memory, bot.night_chat_log)
             new_memory = await tools.ai.generate_response(
-                "You are an archival system.", f"dream_{bot.id}", dream_prompt, "gemini-2.5-flash"
+                "You are an archival system.", f"dream_{bot.id}", dream_prompt, "gemini-3-flash-preview"
             )
             bot.long_term_memory = new_memory.replace("\n", " ").strip()
             bot.night_chat_log = [] 
@@ -404,7 +404,7 @@ class FosterProtocol:
                     return None
 
             response = await tools.ai.generate_response(
-                prompts.get_mainframe_prompt(), f"{ctx.game_id}_mainframe", user_input, "gemini-2.5-flash"
+                prompts.get_mainframe_prompt(), f"{ctx.game_id}_mainframe", user_input, "gemini-3-flash-preview"
             )
             await ctx.reply(response)
             

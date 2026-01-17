@@ -20,7 +20,7 @@ class BotState(BaseModel):
     name: Optional[str] = None
     foster_id: Optional[str] = None
     role: Literal["loyal", "saboteur"] = "loyal"
-    model_version: str = "gemini-2.5-flash" 
+    model_version: str = "gemini-3-flash-preview" 
     
     location_id: str = "cryo_bay"
     battery: int = 100       

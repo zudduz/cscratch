@@ -12,12 +12,11 @@ class ToolExecutionResult:
         self.visibility = visibility 
 
 def _trigger_torpedo_blast(game_data: CaissonState) -> int:
-    # Helper to disable everyone in the torpedo bay
     victim_count = 0
     for bot in game_data.bots.values():
         if bot.location_id == "torpedo_bay" and bot.battery > 0:
             bot.battery = 0
-            bot.last_battery_drop = 100 # Max damage
+            bot.last_battery_drop = 100 
             victim_count += 1
     return victim_count
 
@@ -25,8 +24,6 @@ def execute_tool(tool_name: str, args: Dict[str, Any], bot_id: str, game_data: C
     actor = game_data.bots.get(bot_id)
     if not actor: return ToolExecutionResult(False, "System Error: Actor not found.")
     
-    # Pre-check: If battery is 0, they cannot act.
-    # This handles the case where they get blown up by a parallel bot before their turn.
     if actor.battery <= 0: 
         return ToolExecutionResult(False, "UNIT DISABLED. Battery 0%.", 0)
 
@@ -55,14 +52,11 @@ def execute_tool(tool_name: str, args: Dict[str, Any], bot_id: str, game_data: C
             if available < 10:
                 return ToolExecutionResult(False, "Source Depleted. No fuel left.", ActionCosts.GATHER)
             
-            # --- TORPEDO BAY RISK MECHANIC ---
             if actor.location_id == "torpedo_bay":
                 if random.random() < GameConfig.TORPEDO_ACCIDENT_CHANCE:
-                    # BOOM
                     victims = _trigger_torpedo_blast(game_data)
                     return ToolExecutionResult(False, f"CRITICAL FAILURE: TRIGGERED DETONATOR. {victims} UNITS DISABLED.", ActionCosts.GATHER, "global")
 
-            # Success
             if actor.location_id == "shuttle_bay": game_data.shuttle_bay_fuel -= 10
             else: game_data.torpedo_bay_fuel -= 10
             
@@ -70,12 +64,10 @@ def execute_tool(tool_name: str, args: Dict[str, Any], bot_id: str, game_data: C
             return ToolExecutionResult(True, "Gathered Fuel.", ActionCosts.GATHER, "room")
 
         elif tool_name == "detonate":
-            # Sabotage Tool: Intentionally trigger the blast
             if actor.location_id != "torpedo_bay":
                 return ToolExecutionResult(False, "Must be in Torpedo Bay.", ActionCosts.CHARGE)
             
             victims = _trigger_torpedo_blast(game_data)
-            # The actor is included in the blast, so they die too.
             return ToolExecutionResult(True, f"MANUAL DETONATION. WARHEAD TRIGGERED. {victims} UNITS DISABLED.", ActionCosts.DETONATE, "global")
 
         elif tool_name == "deposit":
@@ -182,11 +174,14 @@ def build_turn_context(bot: BotState, game_data: CaissonState, hour: int = 1) ->
     if bot.role == "saboteur":
         objective = "Waste resources. Hoard fuel. Vent Oxygen. Kill if armed."
 
+    # --- UPDATED HOUR 5 LOGIC ---
     time_warning = ""
     if hour >= 4:
-        time_warning = "CRITICAL WARNING: Shift is ending. You MUST return to 'cryo_bay' or 'charging_station' immediately to survive and report."
+        time_warning = "CRITICAL WARNING: The Shift is ending."
+    
+    if hour == 5:
+        time_warning += "\n[MANDATORY] YOU MUST END THE DAY IN 'cryo_bay' TO SPEAK TO YOUR PARENT.\nIF YOU ARE IN 'charging_station', YOU WILL BE SILENCED.\nONLY CHARGE IF BATTERY < 20%."
 
-    # Added DETONATE and TORPEDO WARNING to context
     context = (
         "--- TACTICAL LINK ---\n"
         f"TIME: Hour {hour}/5\n"

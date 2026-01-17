@@ -20,7 +20,7 @@ class FosterProtocol:
         default_state = CaissonState()
         self.meta = {
             "name": "The Foster Protocol",
-            "version": "2.37",
+            "version": "2.38",
             **default_state.model_dump()
         }
 
@@ -136,9 +136,15 @@ class FosterProtocol:
             match = re.search(r"\{.*\}", response_text, re.DOTALL)
             if match:
                 json_text = match.group(0)
-                thought_text = response_text[:match.start()].strip()
-                thought_text = thought_text.replace("```json", "").replace("```", "").strip()
-                if not thought_text: thought_text = "Processing..."
+                
+                # EXTRACT THOUGHTS (Handling Pre and Post JSON)
+                pre_text = response_text[:match.start()].strip()
+                post_text = response_text[match.end():].strip()
+                
+                thought_text = "Processing..."
+                if pre_text: thought_text = pre_text.replace("```json", "").replace("```", "").strip()
+                elif post_text: thought_text = post_text.replace("```json", "").replace("```", "").strip()
+                
                 return json.loads(json_text), thought_text
             
             clean_text = response_text.replace("```json", "").replace("```", "").strip()
@@ -275,7 +281,6 @@ class FosterProtocol:
                     for w in witnesses: w.daily_memory.append(f"[Hour {hour}] I saw {bot.id}: {result.message}")
                         
                 if result.visibility == "global":
-                    # --- ANONYMOUS EXPLOSION REPORTING ---
                     if "DETONATION" in result.message or "DETONATED" in result.message:
                         public_msg = f"[HOUR {hour}] [ALERT] SEISMIC EVENT DETECTED IN TORPEDO BAY. MULTIPLE SIGNALS LOST."
                     else:

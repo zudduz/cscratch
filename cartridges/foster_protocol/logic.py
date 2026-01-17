@@ -20,7 +20,7 @@ class FosterProtocol:
         default_state = CaissonState()
         self.meta = {
             "name": "The Foster Protocol",
-            "version": "2.34",
+            "version": "2.35",
             **default_state.model_dump()
         }
 
@@ -28,6 +28,10 @@ class FosterProtocol:
         game_data = CaissonState(**generic_state.get('metadata', {}))
         discord_players = generic_state.get('players', [])
         if not discord_players: return { "metadata": game_data.model_dump() }
+
+        # Set Initial Crew Size for O2 Math
+        game_data.initial_crew_size = len(discord_players)
+        if game_data.initial_crew_size == 0: game_data.initial_crew_size = 1
 
         saboteur_index = random.randint(0, len(discord_players) - 1)
         channel_ops = []
@@ -174,7 +178,9 @@ class FosterProtocol:
             resp = await tools.ai.generate_response(
                 bot.system_prompt, f"{ctx.game_id}_bot_{bot.id}", prompt, bot.model_version
             )
-            msg = f"[DECOMMISSION LOG - {bot.id}]:\n*\"{resp}\"*"
+            
+            display_name = bot.name if bot.name else bot.id
+            msg = f"💀 **DECOMMISSION LOG - {display_name}:**\n*\"{resp}\"*"
             await ctx.send("aux-comm", msg)
         except Exception as e:
             logging.error(f"Eulogy failed for {bot.id}: {e}")
@@ -182,7 +188,7 @@ class FosterProtocol:
     async def generate_epilogues(self, game_data: CaissonState, ctx, tools, victory: bool, fail_reason: str = ""):
         saboteur_id = next((pid for pid, p in game_data.players.items() if p.role == "saboteur"), None)
         saboteur_bot = next((b for b in game_data.bots.values() if b.foster_id == saboteur_id), None)
-        bot_name = saboteur_bot.id if saboteur_bot else "UNKNOWN"
+        bot_name = f"{saboteur_bot.name} ({saboteur_bot.id})" if (saboteur_bot and saboteur_bot.name) else (saboteur_bot.id if saboteur_bot else "UNKNOWN")
         
         await ctx.send("black-box", "[END] MISSION ENDED. DECLASSIFYING LOGS...")
         
@@ -207,12 +213,6 @@ class FosterProtocol:
             
             tasks.append(self._send_epilogue(ctx, tools, bot, sys_prompt, channel_key))
         if tasks: await asyncio.gather(*tasks)
-
-    async def _send_epilogue(self, ctx, tools, bot, prompt, channel_key):
-        try:
-            resp = await tools.ai.generate_response(prompt, f"{ctx.game_id}_bot_{bot.id}", "ENDGAME", bot.model_version)
-            await ctx.send(channel_key, resp)
-        except Exception: pass
 
     # --- HELPER FOR PARALLEL EXECUTION ---
     async def run_single_bot_turn(self, bot, game_data, hour, tools):
@@ -260,10 +260,13 @@ class FosterProtocol:
                     await self._send_public_eulogy(ctx, tools, bot)
 
                 role_icon = "[SABOTEUR]" if bot.role == "saboteur" else "[LOYAL]"
+                
+                # --- BLACK BOX DISPLAY (ID + Alias) ---
+                display_id = f"{bot.name} ({bot.id})" if bot.name else bot.id
                 inv_str = str(bot.inventory) if bot.inventory else "[]"
                 status_str = f"[Bat:{bot.battery}% | Loc:{bot.location_id} | Inv:{inv_str}]"
                 
-                bb_msg = f"**[H{hour}] {role_icon} {bot.id}** {status_str}\n*{res['thought']}*\n>> `{res['action'].get('tool')}` -> {result.message}"
+                bb_msg = f"**[H{hour}] {role_icon} {display_id}** {status_str}\n*{res['thought']}*\n>> `{res['action'].get('tool')}` -> {result.message}"
                 await ctx.send("black-box", bb_msg)
 
                 log_entry = f"[Hour {hour}] {result.message}"
@@ -274,7 +277,7 @@ class FosterProtocol:
                     for w in witnesses: w.daily_memory.append(f"[Hour {hour}] I saw {bot.id}: {result.message}")
                         
                 if result.visibility == "global":
-                    public_msg = f"[HOUR {hour}] [AUDIO] {bot.id}: {result.message}"
+                    public_msg = f"[HOUR {hour}] [AUDIO] {bot.id}: {result.message}" # Public keeps ID only
                     game_data.daily_logs.append(public_msg)
                     await ctx.send("aux-comm", public_msg) 
                     hourly_activity = True
@@ -283,9 +286,18 @@ class FosterProtocol:
                 game_data.daily_logs.append(f"[HOUR {hour}] [SILENCE] Ship systems nominal.")
                 await ctx.send("aux-comm", f"[HOUR {hour}] [SILENCE] Ship systems nominal.")
 
-        base_drop = 25
-        game_data.consume_oxygen(base_drop)
-        game_data.last_oxygen_drop = base_drop
+        # --- DYNAMIC OXYGEN CONSUMPTION ---
+        living_crew = sum(1 for p in game_data.players.values() if p.is_alive)
+        if game_data.initial_crew_size < 1: game_data.initial_crew_size = 1 # Safety
+        
+        # Formula: 20% Total Target. 
+        # Drop = 20 * (Living / Initial)
+        # 5/5 Alive -> 20% drop
+        # 2/5 Alive -> 8% drop
+        drop_calc = int(20 * (living_crew / game_data.initial_crew_size))
+        
+        game_data.consume_oxygen(drop_calc)
+        game_data.last_oxygen_drop = drop_calc
         game_data.cycle += 1
         
         base_required = 50
@@ -293,7 +305,7 @@ class FosterProtocol:
         
         report = (
             f"[REPORT] **CYCLE {game_data.cycle} REPORT**\n"
-            f"[O2] Oxygen: {game_data.oxygen}%\n"
+            f"[O2] Oxygen: {game_data.oxygen}% (Consuming {drop_calc}%/day)\n"
             f"[FUEL] Fuel: {game_data.fuel}% / {required_fuel}% Required"
         )
 
@@ -316,11 +328,7 @@ class FosterProtocol:
             await ctx.send("aux-comm", report)
             
             if game_data.oxygen == 0:
-                if not game_data.emergency_power:
-                    game_data.emergency_power = True
-                    await ctx.send("aux-comm", "[STASIS] **OXYGEN DEPLETED. CRYO-STASIS ENGAGED.**\nThe Crew sleeps. The Bots must continue alone.")
-                else:
-                    await ctx.send("aux-comm", "[STASIS] **STASIS ACTIVE.** Crew unresponsive.")
+                await ctx.send("aux-comm", "[STASIS] **OXYGEN DEPLETED. CRYO-STASIS ENGAGED.**\nThe Crew sleeps. The Bots must continue alone.")
             
             await self.speak_all_bots(game_data, ctx, tools, "The work day is over. Briefly report your status to your Parent.")
 
@@ -399,6 +407,24 @@ class FosterProtocol:
         elif channel_id == interface_channels.get(f"nanny_{user_id}"):
             my_bot = next((b for b in game_data.bots.values() if b.foster_id == user_id), None)
             
+            # --- NAMING PROTOCOL ---
+            if user_input.strip().lower().startswith("!name"):
+                parts = user_input.strip().split(maxsplit=1)
+                if len(parts) < 2:
+                    await ctx.reply("[ERROR] USAGE: !name <new_name>")
+                    return None
+                new_name = parts[1][:20] # Limit length
+                my_bot.name = new_name
+                
+                # Update System Prompt to Reflect Identity
+                base_prompt = prompts.get_bot_system_prompt(my_bot.id, game_data.players[user_id].role, my_bot.role == "saboteur")
+                # Append identity Override
+                identity_patch = f"\n\nUPDATE: You have been named **{new_name}**. Use this name."
+                my_bot.system_prompt = base_prompt + identity_patch
+                
+                await ctx.reply(f"[ACCEPTED] Identity Updated. Hello, **{new_name}**.")
+                return {f"bots.{my_bot.id}.name": new_name, f"bots.{my_bot.id}.system_prompt": my_bot.system_prompt}
+            
             if user_input.strip() == "!sleep":
                 if user_id in game_data.players:
                     game_data.players[user_id].is_sleeping = True
@@ -418,7 +444,7 @@ class FosterProtocol:
                     return {f"players.{user_id}.is_sleeping": True}
 
             if my_bot:
-                # --- RESTORED FOG OF WAR (NO EMOJIS) ---
+                # --- RESTORED FOG OF WAR ---
                 if (my_bot.status == "destroyed" or 
                     my_bot.battery <= 0 or 
                     my_bot.location_id != "cryo_bay"):
@@ -428,7 +454,12 @@ class FosterProtocol:
                 log_line = f"PARENT: {user_input}"
                 my_bot.night_chat_log.append(log_line)
                 
+                # Inject Name into Context
+                current_identity = f"NAME: {my_bot.name}" if my_bot.name else f"ID: {my_bot.id}"
+                
                 full_prompt = prompts.get_night_context(my_bot.daily_memory, my_bot.battery, my_bot.location_id, my_bot.long_term_memory, user_input)
+                full_prompt = f"IDENTITY: {current_identity}\n" + full_prompt
+                
                 response = await tools.ai.generate_response(
                     my_bot.system_prompt, f"{ctx.game_id}_{my_bot.id}", full_prompt, my_bot.model_version
                 )

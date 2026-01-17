@@ -3,24 +3,25 @@
 class GameConfig:
     # --- RESOURCES ---
     INITIAL_OXYGEN = 100
-    OXYGEN_BASE_LOSS = 20  # Base daily drop (scaled by crew size)
+    OXYGEN_BASE_LOSS = 20
     
     INITIAL_FUEL = 0
     MAX_FUEL = 100
     FUEL_PER_CANISTER = 10
     
-    # --- ROOM CAPACITIES (Total Fuel available to gather) ---
-    CAPACITY_SHUTTLE_BAY = 50  # 5 Canisters
-    CAPACITY_TORPEDO_BAY = 80  # 8 Canisters
+    # --- ROOM CAPACITIES ---
+    CAPACITY_SHUTTLE_BAY = 50
+    CAPACITY_TORPEDO_BAY = 80
+    
+    # --- RISKS ---
+    TORPEDO_ACCIDENT_CHANCE = 0.05  # 5% chance per gather attempt
     
     # --- ORBITAL MECHANICS ---
     FUEL_REQ_BASE = 50
-    FUEL_REQ_GROWTH = 1.2  # Exponential difficulty curve
-    MAX_POSSIBLE_FUEL_REQ = 100 # If req exceeds this, game is lost mathematically
+    FUEL_REQ_GROWTH = 1.2
+    MAX_POSSIBLE_FUEL_REQ = 100 
 
 class ActionCosts:
-    # Legacy costs (reference only, actual costs in tools.py)
-    # Ideally, tools.py should import these too, but we'll start here.
     MOVE = 12
     GATHER = 15
     DEPOSIT = 15
@@ -28,7 +29,8 @@ class ActionCosts:
     TOW = 20      
     DRAIN = -15   
     SABOTAGE = 20 
-    KILL = 50     
+    KILL = 50
+    DETONATE = 10 # Cost to trigger the warhead manually
 
 class RoomDef:
     def __init__(self, name: str, description: str, can_nanny: bool = False):
@@ -36,7 +38,6 @@ class RoomDef:
         self.description = description
         self.can_nanny = can_nanny
 
-# The Map Definitions
 SHIP_MAP = {
     "cryo_bay": RoomDef(
         name="Cryo Bay", 
@@ -49,11 +50,11 @@ SHIP_MAP = {
     ),
     "shuttle_bay": RoomDef(
         name="Shuttle Bay", 
-        description="Cargo crates and a docked shuttle. Good source of fuel.",
+        description="Cargo crates and a docked shuttle. Safe fuel source.",
     ),
     "torpedo_bay": RoomDef(
         name="Torpedo Bay", 
-        description="Volatile munitions storage. Cold and dark. High Fuel Yield.",
+        description="Volatile munitions. HIGH YIELD. HIGH RISK. 5% Explosion Chance per Gather.",
     ),
     "maintenance": RoomDef(
         name="Maintenance Station",

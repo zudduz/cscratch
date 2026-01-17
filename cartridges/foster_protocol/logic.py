@@ -20,7 +20,7 @@ class FosterProtocol:
         default_state = CaissonState()
         self.meta = {
             "name": "The Foster Protocol",
-            "version": "2.36",
+            "version": "2.37",
             **default_state.model_dump()
         }
 
@@ -275,7 +275,12 @@ class FosterProtocol:
                     for w in witnesses: w.daily_memory.append(f"[Hour {hour}] I saw {bot.id}: {result.message}")
                         
                 if result.visibility == "global":
-                    public_msg = f"[HOUR {hour}] [AUDIO] {bot.id}: {result.message}"
+                    # --- ANONYMOUS EXPLOSION REPORTING ---
+                    if "DETONATION" in result.message or "DETONATED" in result.message:
+                        public_msg = f"[HOUR {hour}] [ALERT] SEISMIC EVENT DETECTED IN TORPEDO BAY. MULTIPLE SIGNALS LOST."
+                    else:
+                        public_msg = f"[HOUR {hour}] [AUDIO] {bot.id}: {result.message}"
+                    
                     game_data.daily_logs.append(public_msg)
                     await ctx.send("aux-comm", public_msg) 
                     hourly_activity = True
@@ -288,7 +293,6 @@ class FosterProtocol:
         living_crew = sum(1 for p in game_data.players.values() if p.is_alive)
         if game_data.initial_crew_size < 1: game_data.initial_crew_size = 1
         
-        # Pull constants from GameConfig
         drop_calc = int(GameConfig.OXYGEN_BASE_LOSS * (living_crew / game_data.initial_crew_size))
         
         game_data.consume_oxygen(drop_calc)
@@ -402,7 +406,6 @@ class FosterProtocol:
         elif channel_id == interface_channels.get(f"nanny_{user_id}"):
             my_bot = next((b for b in game_data.bots.values() if b.foster_id == user_id), None)
             
-            # --- NAMING PROTOCOL ---
             if user_input.strip().lower().startswith("!name"):
                 parts = user_input.strip().split(maxsplit=1)
                 if len(parts) < 2:

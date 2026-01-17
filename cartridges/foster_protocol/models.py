@@ -1,7 +1,8 @@
-from datetime import datetime
 from typing import List, Dict, Optional, Any, Literal
 from pydantic import BaseModel, Field
 from .board import GameConfig
+
+# --- GAME SPECIFIC STATE ---
 
 class ChargingStation(BaseModel):
     pending_deactivation: List[str] = Field(default_factory=list)
@@ -45,7 +46,7 @@ class CaissonState(BaseModel):
     fuel: int = GameConfig.INITIAL_FUEL
     last_fuel_gain: int = 0
     
-    # --- FINITE RESOURCES (Initialized from Board Config) ---
+    # --- FINITE RESOURCES ---
     shuttle_bay_fuel: int = GameConfig.CAPACITY_SHUTTLE_BAY
     torpedo_bay_fuel: int = GameConfig.CAPACITY_TORPEDO_BAY
     
@@ -62,36 +63,3 @@ class CaissonState(BaseModel):
 
     def add_fuel(self, amount: int):
         self.fuel = min(GameConfig.MAX_FUEL, self.fuel + amount)
-
-# --- Discord Models ---
-class Player(BaseModel):
-    id: str
-    name: str
-    joined_at: str
-
-class GameInterface(BaseModel):
-    type: str = "discord"
-    guild_id: Optional[str] = None
-    category_id: Optional[str] = None
-    
-    main_channel_id: Optional[str] = None 
-    channels: Dict[str, str] = Field(default_factory=dict)
-    listener_ids: List[str] = Field(default_factory=list)
-    
-    channel_id: Optional[str] = None
-
-class GameState(BaseModel):
-    id: str
-    story_id: str
-    host_id: str
-    status: str 
-    created_at: datetime
-    started_at: Optional[datetime] = None
-    ended_at: Optional[datetime] = None
-    metadata: Dict[str, Any] = {}
-    players: List[Player] = []
-    interface: GameInterface = Field(default_factory=GameInterface)
-    schema_version: int = 2
-
-    class Config:
-        populate_by_name = True

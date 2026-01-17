@@ -11,7 +11,7 @@ from .state import sys as system_state
 
 DEBUG_CHANNEL_ID = 1460557810545856725
 
-# --- PRICING CONSTANTS (Gemini 1.5 Flash) ---
+# --- PRICING CONSTANTS (Gemini 2.5 Flash) ---
 COST_PER_1M_INPUT = 0.075
 COST_PER_1M_OUTPUT = 0.30
 

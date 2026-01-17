@@ -11,6 +11,10 @@ from .state import sys as system_state
 
 DEBUG_CHANNEL_ID = 1460557810545856725
 
+# --- PRICING CONSTANTS (Gemini 1.5 Flash) ---
+COST_PER_1M_INPUT = 0.075
+COST_PER_1M_OUTPUT = 0.30
+
 async def safe_defer(interaction: discord.Interaction, ephemeral: bool = False) -> bool:
     if system_state.shutting_down: return False
     try:
@@ -186,6 +190,20 @@ async def end(interaction: discord.Interaction):
     if str(interaction.user.id) != game.host_id: return await interaction.followup.send("[DENIED] Host only.")
     
     await interaction.followup.send("[STOP] **Teardown.**")
+    
+    # --- REPORT COST ---
+    input_cost = (game.usage_input_tokens / 1_000_000) * COST_PER_1M_INPUT
+    output_cost = (game.usage_output_tokens / 1_000_000) * COST_PER_1M_OUTPUT
+    total_cost = input_cost + output_cost
+    
+    report = (
+        f"[COST] **GAME {game.id} COST REPORT**\n"
+        f"Input: {game.usage_input_tokens} tok (${input_cost:.4f})\n"
+        f"Output: {game.usage_output_tokens} tok (${output_cost:.4f})\n"
+        f"**TOTAL: ${total_cost:.4f}**"
+    )
+    await client.announce_state(report)
+    
     if game.interface.category_id:
         try:
             cat = interaction.guild.get_channel(int(game.interface.category_id))

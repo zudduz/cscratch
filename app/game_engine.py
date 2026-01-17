@@ -8,7 +8,7 @@ from collections import defaultdict
 from . import persistence
 from .models import GameState, Player, GameInterface
 from .engine_context import EngineContext
-from .ai_engine import AITool
+from .ai_engine import AIEngine
 
 CARTRIDGE_MAP = {
     "foster-protocol": "cartridges.foster_protocol.logic"
@@ -16,7 +16,7 @@ CARTRIDGE_MAP = {
 
 class GameEngine:
     def __init__(self):
-        self.ai = AITool()
+        self.ai = AIEngine()
         self.locks = defaultdict(asyncio.Lock)
         self.interfaces = []
         self.running = False

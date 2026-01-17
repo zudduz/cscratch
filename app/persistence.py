@@ -6,7 +6,7 @@ from .models import GameState
 
 class PersistenceLayer:
     def __init__(self):
-        self.db = firestore.AsyncClient()
+        self.db = firestore.AsyncClient(database="sandbox")
         self.games_collection = self.db.collection('games')
 
     async def get_game_by_id(self, game_id: str) -> GameState:

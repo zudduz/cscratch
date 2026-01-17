@@ -20,7 +20,7 @@ class FosterProtocol:
         default_state = CaissonState()
         self.meta = {
             "name": "The Foster Protocol",
-            "version": "2.38",
+            "version": "2.40",
             **default_state.model_dump()
         }
 
@@ -82,8 +82,9 @@ class FosterProtocol:
                 "Explain that you are their hands, and they are your mind.\n"
                 "Ask for orders."
             )
+            # Pass game_id to fix tracking
             resp = await tools.ai.generate_response(
-                bot.system_prompt, f"{ctx.game_id}_bot_{bot.id}", prompt, bot.model_version
+                bot.system_prompt, f"{ctx.game_id}_bot_{bot.id}", prompt, bot.model_version, game_id=ctx.game_id
             )
             await ctx.send(channel_key, resp)
             bot.night_chat_log.append(f"SELF (Intro): {resp}")
@@ -92,6 +93,11 @@ class FosterProtocol:
 
     # --- DREAM SEQUENCE ---
     async def process_dreams(self, game_data, tools):
+        # We need a game ID for tracking, but process_dreams isn't passed 'ctx' directly in the loop.
+        # We'll rely on the calling context to manage state, or skip tracking for dreams if needed.
+        # However, generate_response usually needs an ID. 
+        # The current design passes 'tools', but not 'ctx' to this specific loop.
+        # We will assume tracking relies on the fallback heuristic for now, or update the signature later.
         tasks = []
         for bot in game_data.bots.values():
             if bot.status == "active" and (bot.night_chat_log or bot.daily_memory):
@@ -101,6 +107,7 @@ class FosterProtocol:
     async def _process_single_dream(self, bot, tools):
         try:
             dream_prompt = prompts.get_dream_prompt(bot.long_term_memory, bot.daily_memory, bot.night_chat_log)
+            # This relies on heuristics in ai_engine since we don't have game_id here
             new_memory = await tools.ai.generate_response(
                 "You are an archival system.", f"dream_{bot.id}", dream_prompt, "gemini-3-flash-preview"
             )
@@ -110,7 +117,7 @@ class FosterProtocol:
             logging.error(f"Dream failed for {bot.id}: {e}")
 
     # --- TACTICAL ENGINE ---
-    async def get_bot_action(self, bot, context, tools_api) -> tuple[Dict[str, Any], str]:
+    async def get_bot_action(self, bot, context, tools_api, game_id: str) -> tuple[Dict[str, Any], str]:
         try:
             enhanced_context = (
                 context + 
@@ -126,18 +133,20 @@ class FosterProtocol:
                 "```"
             )
             
+            # Pass game_id for tracking
             response_text = await tools_api.ai.generate_response(
                 system_prompt="You are a tactical drone. THINK BEFORE ACTING.",
                 conversation_id=f"tactical_{bot.id}",
                 user_input=enhanced_context,
-                model_version=bot.model_version
+                model_version=bot.model_version,
+                game_id=game_id
             )
             
             match = re.search(r"\{.*\}", response_text, re.DOTALL)
             if match:
                 json_text = match.group(0)
                 
-                # EXTRACT THOUGHTS (Handling Pre and Post JSON)
+                # EXTRACT THOUGHTS
                 pre_text = response_text[:match.start()].strip()
                 post_text = response_text[match.end():].strip()
                 
@@ -147,8 +156,9 @@ class FosterProtocol:
                 
                 return json.loads(json_text), thought_text
             
-            clean_text = response_text.replace("```json", "").replace("```", "").strip()
-            return json.loads(clean_text), "Error parsing thoughts."
+            # Fallback for Malformed Response
+            logging.warning(f"Bot {bot.id} BRAIN FREEZE. Full Response:\n{response_text}")
+            return {"tool": "wait", "args": {}}, "System Error: Neural Link Unstable (No JSON)."
             
         except Exception as e:
             logging.error(f"Bot {bot.id} brain freeze: {e}")
@@ -166,7 +176,9 @@ class FosterProtocol:
     async def _speak_single_bot(self, ctx, tools, bot, instruction, channel_key):
         try:
             full_prompt = f"INSTRUCTION: {instruction}\nCURRENT STATUS: Bat {bot.battery}%"
-            resp = await tools.ai.generate_response(bot.system_prompt, f"{ctx.game_id}_bot_{bot.id}", full_prompt, bot.model_version)
+            resp = await tools.ai.generate_response(
+                bot.system_prompt, f"{ctx.game_id}_bot_{bot.id}", full_prompt, bot.model_version, game_id=ctx.game_id
+            )
             await ctx.send(channel_key, resp)
         except Exception: pass
 
@@ -181,7 +193,7 @@ class FosterProtocol:
                 "It should be fragmented, accepting, or terrified. Keep it brief."
             )
             resp = await tools.ai.generate_response(
-                bot.system_prompt, f"{ctx.game_id}_bot_{bot.id}", prompt, bot.model_version
+                bot.system_prompt, f"{ctx.game_id}_bot_{bot.id}", prompt, bot.model_version, game_id=ctx.game_id
             )
             
             display_name = bot.name if bot.name else bot.id
@@ -220,9 +232,9 @@ class FosterProtocol:
         if tasks: await asyncio.gather(*tasks)
 
     # --- HELPER FOR PARALLEL EXECUTION ---
-    async def run_single_bot_turn(self, bot, game_data, hour, tools):
+    async def run_single_bot_turn(self, bot, game_data, hour, tools, game_id):
         context = bot_tools.build_turn_context(bot, game_data, hour)
-        action, thought = await self.get_bot_action(bot, context, tools)
+        action, thought = await self.get_bot_action(bot, context, tools, game_id)
         result = bot_tools.execute_tool(action.get("tool", "wait"), action.get("args", {}), bot.id, game_data)
         
         if not (action.get("tool") == "charge" and result.success):
@@ -251,7 +263,8 @@ class FosterProtocol:
             
             turn_tasks = []
             for bot in active_bots:
-                turn_tasks.append(self.run_single_bot_turn(bot, game_data, hour, tools))
+                # Pass ctx.game_id to the helper
+                turn_tasks.append(self.run_single_bot_turn(bot, game_data, hour, tools, ctx.game_id))
             
             turn_results = await asyncio.gather(*turn_tasks)
             random.shuffle(turn_results)
@@ -404,7 +417,7 @@ class FosterProtocol:
                     return None
 
             response = await tools.ai.generate_response(
-                prompts.get_mainframe_prompt(), f"{ctx.game_id}_mainframe", user_input, "gemini-3-flash-preview"
+                prompts.get_mainframe_prompt(), f"{ctx.game_id}_mainframe", user_input, "gemini-3-flash-preview", game_id=ctx.game_id
             )
             await ctx.reply(response)
             
@@ -460,7 +473,7 @@ class FosterProtocol:
                 full_prompt = f"IDENTITY: {current_identity}\n" + full_prompt
                 
                 response = await tools.ai.generate_response(
-                    my_bot.system_prompt, f"{ctx.game_id}_{my_bot.id}", full_prompt, my_bot.model_version
+                    my_bot.system_prompt, f"{ctx.game_id}_{my_bot.id}", full_prompt, my_bot.model_version, game_id=ctx.game_id
                 )
                 await ctx.reply(response)
                 return {f"bots.{my_bot.id}.night_chat_log": my_bot.night_chat_log}

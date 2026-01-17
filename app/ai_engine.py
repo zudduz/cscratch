@@ -13,7 +13,6 @@ class AIEngine:
     def __init__(self):
         self.project_id = os.environ.get("GCP_PROJECT_ID")
         self.location = "us-central1"
-        # Default to the bleeding edge
         self.default_model_name = "gemini-3-flash-preview"
         
         self.base_config = {
@@ -23,30 +22,35 @@ class AIEngine:
             "max_output_tokens": 1024,
         }
         
-        # Initialize default client
         self.model = ChatVertexAI(model_name=self.default_model_name, **self.base_config)
 
-    async def generate_response(self, system_prompt: str, conversation_id: str, user_input: str, model_version: str = "gemini-3-flash-preview") -> str:
+    async def generate_response(self, system_prompt: str, conversation_id: str, user_input: str, model_version: str = "gemini-3-flash-preview", game_id: str = None) -> str:
         try:
-            # Construct Messages
+            logging.info(f"AI Request: {model_version} (Game: {game_id})")
             messages = [
                 SystemMessage(content=system_prompt),
                 HumanMessage(content=user_input)
             ]
             
-            # Dynamic Model Selection
-            # If the cartridge asks for an older model, we try to honor it, 
-            # but default to Gemini 3 if unspecified or matching default.
             client = self.model
             if model_version and model_version != self.model.model_name:
-                # Fallback or specific override
                 client = ChatVertexAI(model_name=model_version, **self.base_config)
             
-            # Invoke
             result = await client.ainvoke(messages)
             
             # --- COST TRACKING ---
-            asyncio.create_task(self._track_usage(conversation_id, result.response_metadata))
+            # Use explicitly passed game_id first
+            target_id = game_id
+            
+            # Fallback: Try to extract from conversation_id if valid
+            if not target_id and "_" in conversation_id:
+                 parts = conversation_id.split("_")
+                 # Heuristic: Game IDs are usually longer than 'dream' or 'tactical'
+                 if len(parts[0]) > 7: 
+                     target_id = parts[0]
+
+            if target_id:
+                asyncio.create_task(self._track_usage(target_id, result.response_metadata))
             
             return result.content
             
@@ -54,12 +58,8 @@ class AIEngine:
             logging.error(f"AI Generation Error: {e}")
             return f"[SYSTEM ERROR] Neural Link Severed: {e}"
 
-    async def _track_usage(self, conversation_id: str, metadata: dict):
+    async def _track_usage(self, game_id: str, metadata: dict):
         try:
-            # Extract Game ID
-            if "_" not in conversation_id: return
-            game_id = conversation_id.split("_")[0]
-            
             usage = metadata.get('usage_metadata', {})
             in_tokens = usage.get('prompt_token_count', 0)
             out_tokens = usage.get('candidates_token_count', 0) 
@@ -71,6 +71,6 @@ class AIEngine:
                 await persistence.db.increment_token_usage(game_id, in_tokens, out_tokens)
                 
         except Exception as e:
-            logging.warning(f"Failed to track usage: {e}")
+            logging.warning(f"Failed to track usage for {game_id}: {e}")
 
 ai = AIEngine()

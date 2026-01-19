@@ -224,6 +224,8 @@ class LobbyView(discord.ui.View):
         try:
             await game_engine.engine.join_game(self.game_id, str(interaction.user.id), interaction.user.name)
             await interaction.followup.send(f"[OK] **{interaction.user.name}** joined!")
+            if isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator:
+                await interaction.channel.send(ADMIN_WARNING_TEXT)
         except Exception as e: await interaction.followup.send(f"[ERROR] {e}", ephemeral=True)
 
     @discord.ui.button(label="Start", style=discord.ButtonStyle.danger, custom_id="start_btn")

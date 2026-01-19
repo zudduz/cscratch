@@ -1,5 +1,6 @@
 ai-reference-hide/
-repo_context/
+repo_context.xml
+prompt.py
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

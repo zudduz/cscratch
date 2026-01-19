@@ -1,16 +1,15 @@
 import os
 import fnmatch
-from datetime import datetime
 
-# CONFIGURE OUTPUT DIRECTORY
-OUTPUT_DIR = "repo_context"
+# CONFIGURE OUTPUT FILENAME
+OUTPUT_FILENAME = "repo_context.xml"
 
 # DEFAULT IGNORE LIST
 ALWAYS_IGNORE = [
     ".git", ".idea", ".vscode", "__pycache__", "node_modules", 
     "venv", ".env", "dist", "build", "*.pyc", "*.lock", 
     "package-lock.json", "yarn.lock", "ai-reference", 
-    OUTPUT_DIR,  # Ignore the output directory
+    OUTPUT_FILENAME,
     __file__
 ]
 
@@ -53,12 +52,7 @@ def is_binary(file_path):
         return True
 
 def pack_repo():
-    # --- Create the output directory ---
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-    
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_filename = f"repo_context_{timestamp}.xml"
-    OUTPUT_FILE = os.path.join(OUTPUT_DIR, output_filename)
+    OUTPUT_FILE = OUTPUT_FILENAME
 
     root_dir = os.getcwd()
     ignore_patterns = load_gitignore(root_dir)

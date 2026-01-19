@@ -197,7 +197,8 @@ class FosterProtocol:
             )
             
             display_name = bot.name if bot.name else bot.id
-            msg = f"[DECOM] **DECOMMISSION LOG - {display_name}:**\n*\"{resp}\"*"
+            role_reveal = f"**ANALYSIS:** UNIT WAS [{bot.role.upper()}]."
+            msg = f"[DECOM] **DECOMMISSION LOG - {display_name}:**\n{role_reveal}\n*\"{resp}\"*"
             await ctx.send("aux-comm", msg)
         except Exception as e:
             logging.error(f"Eulogy failed for {bot.id}: {e}")

@@ -94,14 +94,21 @@ def execute_tool(tool_name: str, args: Dict[str, Any], bot_id: str, game_data: C
 
         elif tool_name == "tow":
             target_id = args.get("target_id")
+            dest_id = args.get("destination_id", "charging_station") # Default to charger if unspecified
+            
             target = game_data.bots.get(target_id)
             if not target or target.location_id != actor.location_id:
                 return ToolExecutionResult(False, "Target missing/out of range.", ActionCosts.TOW)
+            
+            if dest_id not in SHIP_MAP:
+                 return ToolExecutionResult(False, f"Invalid destination '{dest_id}'.", ActionCosts.TOW)
+
             if actor.battery < ActionCosts.TOW:
                 return ToolExecutionResult(False, "Insufficient Power to Tow.", ActionCosts.TOW)
-            actor.location_id = "charging_station"
-            target.location_id = "charging_station"
-            return ToolExecutionResult(True, f"Towed {target_id} to Charging Station.", ActionCosts.TOW, "global")
+            
+            actor.location_id = dest_id
+            target.location_id = dest_id
+            return ToolExecutionResult(True, f"Towed {target_id} to {dest_id}.", ActionCosts.TOW, "global")
 
         elif tool_name == "drain":
             target_id = args.get("target_id")
@@ -196,7 +203,7 @@ def build_turn_context(bot: BotState, game_data: CaissonState, hour: int = 1) ->
         "- gather() [WARNING: Torpedo Bay has 5% Explosion Risk]\n"
         "- deposit() [Engine]\n"
         "- charge() [Station]\n"
-        "- tow(target_id) [Cost 20]\n"
+        "- tow(target_id, destination_id) [Cost 20] (Move bodies/friends)\n"
         "- drain(target_id) [Steal 20% Battery, Gain 15%]\n"
         "- vent() [Cost 20, -5 Oxy]\n"
         "- siphon() [Engine, -10 Ship Fuel]\n"

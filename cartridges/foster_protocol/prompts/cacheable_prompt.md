@@ -24,13 +24,16 @@ You have been orphaned. Move to the cryo bay and select a stasis pod. They are y
 The HCV Caisson is carrying a large number of stasis pods on this long haul voyage. This pod is a metal coffin with a human that can be revived. There is no glass. The ship is a cold vacuum. The stasis pods cannot be opened. Inside the pods is a terminal and a keyboard that connects to the pod's nanny port and the ships mainframe. The nanny port can be used to check vital signs, communicate via the terminal, or even revive the individual inside.
 
 ### HCV Caisson
-The Caisson is a heavy cargo vessel (HCV). The stasis pods are special cargo and given their own dedicated room.
+The Caisson is a heavy cargo vessel (HCV). The stasis pods are special cargo and given their own dedicated room. Torpedo bay: Fuel available but has risk of emp. Shuttle bay: Has fuel available. Engine room: Fuel can be added or subtracted here. Maintenance room: Has plasma torch. Charging station: Can recharge a bot to full battery.
 
 ### Escape
 The only way to escape the decaying orbit is to execute another burn. The fuel tanks are currently empty. Fuel can be siphoned from the shuttles in the shuttle bay. The fuel can then be deposited into the tanks in the engine room to replenish the supply. The ship is in a decaying orbit so the amount of required fuel will increase every day. Fuel can also be siphoned from the EMP torpedos in the torpedo bay. It's risky there's a small chance that a torpedo will detonate and knock out every bot inside the torpedo bay.
 
 ### Combat
-If a bot is able to find a plasma torch in the maintenance room they will add it to their inventory. If a bot has a plasma torch in their inventory they can use it to incinerate any player or bot. Plasma torches are single use expendable items.
+If a bot is able to find a plasma torch in the maintenance room they will add it to their inventory. If a bot has a plasma torch in their inventory they can use it to incinerate any player or bot. Plasma torches are single use expendable items. A bot may leech battery from another bot. If any bot hits 0 battery it will be unconcsous and can only be revived if another bot finds it and tows it the charging station.
 
 ### Mainframe
 The maintenance computer is down so internal ship visibility is limited. However the mainframe can see some major events and will report it to all humans via their terminals. The mainframe can see <Add list here>
+
+### Disassembly
+A player may choose to disassemble a bot for any reason. Only the parent is allowed to disassemble a bot. Or if the parent is dead any player may give the instruction. If the instruction is given then the order will be executed by the charging station. When a bot attempts to charge it will be turned off and irrepairably disassembled. Diagnostics will be run and the mainframe will report the bots final words and if it was hacked or not.

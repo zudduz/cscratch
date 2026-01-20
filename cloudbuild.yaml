@@ -1,13 +1,25 @@
 steps:
-# Build the container image
+# --- 1. RUN UNIT TESTS ---
+# We use a standard python container to run tests before packaging.
+# If this fails, the build stops and we don't deploy broken code.
+- name: 'python:3.11-slim'
+  entrypoint: 'bash'
+  args:
+  - '-c'
+  - |
+    pip install -r requirements.txt &&
+    python compile_prompts.py &&
+    pytest tests/
+
+# --- 2. BUILD CONTAINER ---
 - name: 'gcr.io/cloud-builders/docker'
   args: ['build', '-t', 'gcr.io/$PROJECT_ID/cscratch', '.']
 
-# Push the container image to Container Registry
+# --- 3. PUSH CONTAINER ---
 - name: 'gcr.io/cloud-builders/docker'
   args: ['push', 'gcr.io/$PROJECT_ID/cscratch']
 
-# Deploy container image to Cloud Run
+# --- 4. DEPLOY TO CLOUD RUN ---
 - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
   entrypoint: gcloud
   args:

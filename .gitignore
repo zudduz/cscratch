@@ -1,6 +1,8 @@
 ai-reference-hide/
 repo_context.xml
 prompt.py
+cartridges/foster_protocol/prompts/final_system_prompt.md
+test_results.log
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

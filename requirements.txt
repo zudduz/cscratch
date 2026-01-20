@@ -1,6 +1,7 @@
 fastapi
 uvicorn
-langchain-google-vertexai
+langchain-google-vertexai>=2.0.0
+langchain-google-genai
 langgraph
 google-cloud-firestore
 langchain-core>=1.0.0
@@ -9,3 +10,5 @@ mcp[cli]
 discord.py
 google-cloud-secret-manager
 nest_asyncio
+pytest
+pytest-asyncio

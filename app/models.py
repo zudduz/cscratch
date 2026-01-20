@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import List, Dict, Optional, Any, Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 # --- Discord Models ---
 class Player(BaseModel):
@@ -36,5 +36,5 @@ class GameState(BaseModel):
     usage_input_tokens: int = 0
     usage_output_tokens: int = 0
 
-    class Config:
-        populate_by_name = True
+    # Pydantic V2 Config
+    model_config = ConfigDict(populate_by_name=True)

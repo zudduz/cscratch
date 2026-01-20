@@ -1,6 +1,14 @@
 import os
 import logging
 import asyncio
+import warnings
+from langchain_core._api.deprecation import LangChainDeprecationWarning
+
+# SUPPRESS FALSE POSITIVE WARNING:
+# LangChain recommends switching to ChatGoogleGenerativeAI, but that requires an API Key.
+# We are on Cloud Run (Vertex AI) using Service Account Auth, so we MUST use ChatVertexAI.
+warnings.filterwarnings("ignore", category=LangChainDeprecationWarning)
+
 from langchain_google_vertexai import ChatVertexAI, HarmBlockThreshold, HarmCategory
 from langchain_core.messages import HumanMessage, SystemMessage
 from . import persistence

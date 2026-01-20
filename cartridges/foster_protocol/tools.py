@@ -20,12 +20,12 @@ def _trigger_torpedo_blast(game_data: CaissonState) -> int:
             victim_count += 1
     return victim_count
 
-def execute_tool(tool_name: str, args: Dict[str, Any], bot_id: str, game_data: CaissonState) -> ToolExecutionResult:
-    actor = game_data.bots.get(bot_id)
+def execute_tool(tool_name: str, args: Dict[str, Any], drone_id: str, game_data: CaissonState) -> ToolExecutionResult:
+    actor = game_data.bots.get(drone_id)
     if not actor: return ToolExecutionResult(False, "System Error: Actor not found.")
     
     if actor.battery <= 0: 
-        return ToolExecutionResult(False, "UNIT DISABLED. Battery 0%.", 0)
+        return ToolExecutionResult(False, "UNIT OFFLINE. Battery 0%.", 0)
 
     try:
         if tool_name == "move":
@@ -153,7 +153,7 @@ def execute_tool(tool_name: str, args: Dict[str, Any], bot_id: str, game_data: C
             target_id = args.get("target_id")
             target = game_data.bots.get(target_id)
             if not target or target.location_id != actor.location_id:
-                return ToolExecutionResult(False, "Target missing.", ActionCosts.KILL)
+                return ToolExecutionResult(False, "Target drone missing.", ActionCosts.KILL)
             if actor.battery < ActionCosts.KILL: return ToolExecutionResult(False, "Insufficient Power for torch.", ActionCosts.KILL)
             target.status = "destroyed"
             target.battery = 0
@@ -203,7 +203,7 @@ def build_turn_context(bot: BotState, game_data: CaissonState, hour: int = 1) ->
         "- gather() [WARNING: Torpedo Bay has 5% Explosion Risk]\n"
         "- deposit() [Engine]\n"
         "- charge() [Station]\n"
-        "- tow(target_id, destination_id) [Cost 20] (Move bodies/friends)\n"
+        "- tow(target_id, destination_id) [Cost 20] (Move OFFLINE drones/friends)\n"
         "- drain(target_id) [Steal 20% Battery, Gain 15%]\n"
         "- vent() [Cost 20, -5 Oxy]\n"
         "- siphon() [Engine, -10 Ship Fuel]\n"

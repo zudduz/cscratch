@@ -52,13 +52,13 @@ class FosterProtocol:
             game_data.players[u_id] = PlayerState(role=role)
             
             while True:
-                bot_id = f"unit_{random.randint(0, 999):03d}"
-                if bot_id not in game_data.bots: break
+                drone_id = f"unit_{random.randint(0, 999):03d}"
+                if drone_id not in game_data.bots: break
             
-            system_prompt = prompts.get_bot_system_prompt(bot_id, u_name, is_saboteur)
+            system_prompt = prompts.get_bot_system_prompt(drone_id, u_name, is_saboteur)
             
-            game_data.bots[bot_id] = BotState(
-                id=bot_id, foster_id=u_id, role=role, 
+            game_data.bots[drone_id] = BotState(
+                id=drone_id, foster_id=u_id, role=role, 
                 system_prompt=system_prompt, model_version="gemini-2.5-flash"
             )
 
@@ -157,11 +157,11 @@ class FosterProtocol:
                 return json.loads(json_text), thought_text
             
             # Fallback for Malformed Response
-            logging.warning(f"Bot {bot.id} BRAIN FREEZE. Full Response:\n{response_text}")
+            logging.warning(f"Drone {bot.id} BRAIN FREEZE. Full Response:\n{response_text}")
             return {"tool": "wait", "args": {}}, "System Error: Neural Link Unstable (No JSON)."
             
         except Exception as e:
-            logging.error(f"Bot {bot.id} brain freeze: {e}")
+            logging.error(f"Drone {bot.id} brain freeze: {e}")
             return {"tool": "wait", "args": {}}, f"Brain Freeze: {str(e)}"
 
     async def speak_all_bots(self, game_data, ctx, tools, instruction):
@@ -197,7 +197,7 @@ class FosterProtocol:
             )
             
             display_name = bot.name if bot.name else bot.id
-            role_reveal = f"**ANALYSIS:** UNIT WAS [{bot.role.upper()}]."
+            role_reveal = f"**ANALYSIS:** DRONE WAS [{bot.role.upper()}]."
             msg = f"[DECOM] **DECOMMISSION LOG - {display_name}:**\n{role_reveal}\n*\"{resp}\"*"
             await ctx.send("aux-comm", msg)
         except Exception as e:
@@ -211,9 +211,9 @@ class FosterProtocol:
         await ctx.send("black-box", "[END] MISSION ENDED. DECLASSIFYING LOGS...")
         
         if victory:
-            final_report = f"[WIN] SUBSPACE DRIVE ENGAGED\nMISSION: SUCCESS\nSECURITY AUDIT: Sabotage detected. Traitor: {bot_name} (Bonded to <@{saboteur_id}>)."
+            final_report = f"[WIN] SUBSPACE DRIVE ENGAGED\nMISSION: SUCCESS\nSECURITY AUDIT: Sabotage detected. Traitor: Drone {bot_name} (Bonded to <@{saboteur_id}>)."
         else:
-            final_report = f"[FAIL] CRITICAL SYSTEM FAILURE\nREASON: {fail_reason}\nSECURITY ALERT: Traitor: {bot_name} (Bonded to <@{saboteur_id}>)."
+            final_report = f"[FAIL] CRITICAL SYSTEM FAILURE\nREASON: {fail_reason}\nSECURITY ALERT: Traitor: Drone {bot_name} (Bonded to <@{saboteur_id}>)."
         await ctx.send("aux-comm", final_report)
         
         tasks = []
@@ -346,7 +346,7 @@ class FosterProtocol:
             await ctx.send("aux-comm", report)
             
             if game_data.oxygen == 0:
-                await ctx.send("aux-comm", "[STASIS] **OXYGEN DEPLETED. CRYO-STASIS ENGAGED.**\nThe Crew sleeps. The Bots must continue alone.")
+                await ctx.send("aux-comm", "[STASIS] **OXYGEN DEPLETED. STASIS ENGAGED.**\nThe Crew sleeps. The Drones must continue alone.")
             
             await self.speak_all_bots(game_data, ctx, tools, "The work day is over. Briefly report your status to your Parent.")
 
@@ -376,7 +376,7 @@ class FosterProtocol:
                 if cmd_text.startswith("!disassemble") or cmd_text.startswith("!kill"):
                     parts = cmd_text.split()
                     if len(parts) < 2:
-                        await ctx.reply("USAGE: !disassemble <bot_id>")
+                        await ctx.reply("USAGE: !disassemble <drone_id>")
                         return None
                     target_id = parts[1]
                     target_bot = game_data.bots.get(target_id)
@@ -396,10 +396,10 @@ class FosterProtocol:
                     
                     if target_id not in game_data.station.pending_deactivation:
                         game_data.station.pending_deactivation.append(target_bot.id)
-                        await ctx.reply(f"[WARNING] **DEACTIVATION AUTHORIZED.**\nUnit {target_id} will be disassembled upon next Charging Cycle.")
+                        await ctx.reply(f"[WARNING] **DEACTIVATION AUTHORIZED.**\nDrone {target_id} will be disassembled upon next Charging Cycle.")
                         return {"station": game_data.station.model_dump()}
                     else:
-                        await ctx.reply(f"[NOTICE] Unit {target_id} is already scheduled for deactivation.")
+                        await ctx.reply(f"[NOTICE] Drone {target_id} is already scheduled for deactivation.")
                         return None
                         
                 elif cmd_text.startswith("!abort") or cmd_text.startswith("!cancel"):
@@ -410,7 +410,7 @@ class FosterProtocol:
                         target_bot = game_data.bots.get(target_id)
                         if target_bot.foster_id == user_id:
                             game_data.station.pending_deactivation.remove(target_id)
-                            await ctx.reply(f"[OK] **ORDER RESCINDED.** Unit {target_id} is safe.")
+                            await ctx.reply(f"[OK] **ORDER RESCINDED.** Drone {target_id} is safe.")
                             return {"station": game_data.station.model_dump()}
                     return None
                 else:
@@ -462,7 +462,7 @@ class FosterProtocol:
                 if (my_bot.status == "destroyed" or 
                     my_bot.battery <= 0 or 
                     my_bot.location_id != "cryo_bay"):
-                    await ctx.reply("[ERROR] **NO BOT PRESENT.**")
+                    await ctx.reply("[ERROR] **NO DRONE PRESENT.**")
                     return None
 
                 log_line = f"PARENT: {user_input}"

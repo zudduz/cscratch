@@ -40,8 +40,8 @@ class RoomDef:
 
 SHIP_MAP = {
     "cryo_bay": RoomDef(
-        name="Cryo Bay", 
-        description="Rows of frosted pods. The air is breathable here.",
+        name="Stasis Bay", 
+        description="Rows of sealed stasis pods. The air is breathable here.",
         can_nanny=True
     ),
     "engine_room": RoomDef(

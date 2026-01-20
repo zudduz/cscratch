@@ -21,12 +21,12 @@ def compile():
         template = f.read()
 
     # Define the Context Dictionary
-    # Keys must match the {KEY} format in the template exactly
     context = {
         "{HOURS_PER_SHIFT}": str(GameConfig.HOURS_PER_SHIFT),
         "{CAPACITY_TORPEDO_BAY}": str(GameConfig.CAPACITY_TORPEDO_BAY),
         "{CAPACITY_SHUTTLE_BAY}": str(GameConfig.CAPACITY_SHUTTLE_BAY),
         "{TORPEDO_RISK_PERCENT}": str(int(GameConfig.TORPEDO_ACCIDENT_CHANCE * 100)),
+        "{OXYGEN_VENT_AMOUNT}": str(GameConfig.OXYGEN_VENT_AMOUNT),
         
         # Costs
         "{COST_MOVE}": str(ActionCosts.MOVE),
@@ -43,26 +43,18 @@ def compile():
         final_text = template
         used_keys = set()
 
-        # 1. Perform Replacement & Track Usage
         for key, value in context.items():
             if key in final_text:
                 final_text = final_text.replace(key, value)
                 used_keys.add(key)
         
-        # 2. VALIDATION: Check for Unused Config Keys
-        # (Variables defined in Python but missing in Markdown)
         unused_keys = set(context.keys()) - used_keys
         if unused_keys:
             print(f"❌ Build Failed: The following config variables were NOT found in the template:")
             for k in unused_keys:
                 print(f"   - {k}")
-            print("   (Did you remove them from the markdown? If so, remove them from compile_prompts.py)")
             sys.exit(1)
 
-        # 3. VALIDATION: Check for Leftover Placeholders
-        # (Variables written in Markdown but missing in Python)
-        # Regex looks for {UPPERCASE_KEYS} that survived replacement.
-        # It ignores {"json": "keys"} because they start with lowercase or quotes.
         leftover_pattern = r"\{[A-Z][A-Z0-9_]+\}" 
         leftovers = re.findall(leftover_pattern, final_text)
         
@@ -70,10 +62,8 @@ def compile():
             print(f"❌ Build Failed: Found potential unreplaced variables in the output:")
             for m in set(leftovers):
                 print(f"   - {m}")
-            print("   (Check for typos in system_prompt_template.md or missing keys in compile_prompts.py)")
             sys.exit(1)
 
-        # 4. Success - Write Output
         with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
             f.write(final_text)
             

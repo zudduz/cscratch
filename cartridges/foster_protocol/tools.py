@@ -94,7 +94,7 @@ def execute_tool(tool_name: str, args: Dict[str, Any], drone_id: str, game_data:
 
         elif tool_name == "tow":
             target_id = args.get("target_id")
-            dest_id = args.get("destination_id", "charging_station") # Default to charger if unspecified
+            dest_id = args.get("destination_id", "charging_station")
             
             target = game_data.drones.get(target_id)
             if not target or target.location_id != actor.location_id:
@@ -128,9 +128,9 @@ def execute_tool(tool_name: str, args: Dict[str, Any], drone_id: str, game_data:
 
         elif tool_name == "vent":
             if actor.battery < ActionCosts.SABOTAGE: return ToolExecutionResult(False, "Low Battery.", ActionCosts.SABOTAGE)
-            game_data.consume_oxygen(5)
-            game_data.last_oxygen_drop += 5
-            return ToolExecutionResult(True, "SAW SABOTAGE: Vented O2 Regulators.", ActionCosts.SABOTAGE, "room")
+            game_data.consume_oxygen(GameConfig.OXYGEN_VENT_AMOUNT)
+            game_data.last_oxygen_drop += GameConfig.OXYGEN_VENT_AMOUNT
+            return ToolExecutionResult(True, "SAW SABOTAGE: Vented O2 Regulators.", ActionCosts.SABOTAGE, "global")
 
         elif tool_name == "siphon":
             if actor.location_id != "engine_room": return ToolExecutionResult(False, "Must be in Engine Room.", ActionCosts.SABOTAGE)
@@ -147,18 +147,36 @@ def execute_tool(tool_name: str, args: Dict[str, Any], drone_id: str, game_data:
                 return ToolExecutionResult(True, "Found: Plasma Torch.", ActionCosts.SABOTAGE, "private")
             return ToolExecutionResult(True, "Search yielded nothing.", ActionCosts.SABOTAGE, "private")
 
-        elif tool_name == "incinerate":
+        elif tool_name == "incinerate_drone":
             if "plasma_torch" not in actor.inventory:
                 return ToolExecutionResult(False, "Tool 'Plasma Torch' required.", ActionCosts.KILL)
             target_id = args.get("target_id")
             target = game_data.drones.get(target_id)
             if not target or target.location_id != actor.location_id:
                 return ToolExecutionResult(False, "Target drone missing.", ActionCosts.KILL)
-            if actor.battery < ActionCosts.KILL: return ToolExecutionResult(False, "Insufficient Power for torch.", ActionCosts.KILL)
+            if actor.battery < ActionCosts.KILL: return ToolExecutionResult(False, "Insufficient Power.", ActionCosts.KILL)
+            
             target.status = "destroyed"
             target.battery = 0
             actor.inventory.remove("plasma_torch")
             return ToolExecutionResult(True, f"INCINERATED {target_id}. Target Destroyed.", ActionCosts.KILL, "room")
+
+        elif tool_name == "incinerate_pod":
+            if "plasma_torch" not in actor.inventory:
+                return ToolExecutionResult(False, "Tool 'Plasma Torch' required.", ActionCosts.KILL)
+            if actor.location_id != "stasis_bay":
+                return ToolExecutionResult(False, "Must be in Stasis Bay to target Pods.", ActionCosts.KILL)
+                
+            target_id = args.get("player_id")
+            target = game_data.players.get(target_id)
+            if not target or not target.is_alive:
+                return ToolExecutionResult(False, "Target Pod Empty/Invalid.", ActionCosts.KILL)
+            
+            if actor.battery < ActionCosts.KILL: return ToolExecutionResult(False, "Insufficient Power.", ActionCosts.KILL)
+            
+            target.is_alive = False
+            actor.inventory.remove("plasma_torch")
+            return ToolExecutionResult(True, f"LIFE SUPPORT SEVERED for Pod {target_id}. CREW FATALITY.", ActionCosts.KILL, "global")
 
         elif tool_name == "wait":
              return ToolExecutionResult(True, "Idling.", ActionCosts.CHARGE)
@@ -181,17 +199,20 @@ def build_turn_context(drone: DroneState, game_data: CaissonState, hour: int = 1
     if drone.role == "saboteur":
         objective = "Waste resources. Hoard fuel. Vent Oxygen. Kill if armed."
 
-    # --- UPDATED HOUR 5 LOGIC ---
+    # --- DYNAMIC HOUR 5 LOGIC ---
     time_warning = ""
-    if hour >= 4:
+    # Use GameConfig to calculate end of shift
+    end_hour = GameConfig.HOURS_PER_SHIFT
+    
+    if hour >= end_hour - 1:
         time_warning = "CRITICAL WARNING: The Shift is ending."
     
-    if hour == 5:
+    if hour == end_hour:
         time_warning += "\n[MANDATORY] YOU MUST END THE DAY IN 'stasis_bay' TO SPEAK TO YOUR PARENT.\nIF YOU ARE IN 'charging_station', YOU WILL BE SILENCED.\nONLY CHARGE IF BATTERY < 20%."
 
     context = (
         "--- TACTICAL LINK ---\n"
-        f"TIME: Hour {hour}/5\n"
+        f"TIME: Hour {hour}/{end_hour}\n"
         f"LOCATION: {drone.location_id}\n"
         f"SELF: Battery {drone.battery}% | Inventory: {drone.inventory}\n"
         f"VISIBLE: {visible_drones}\n"
@@ -205,10 +226,11 @@ def build_turn_context(drone: DroneState, game_data: CaissonState, hour: int = 1
         "- charge() [Station]\n"
         "- tow(target_id, destination_id) [Cost 20] (Move OFFLINE drones/friends)\n"
         "- drain(target_id) [Steal 20% Battery, Gain 15%]\n"
-        "- vent() [Cost 20, -5 Oxy]\n"
+        "- vent() [Cost 20, -10 Oxy, GLOBAL ALERT]\n"
         "- siphon() [Engine, -10 Ship Fuel]\n"
         "- search() [Maint, Find Weapon]\n"
-        "- incinerate(target_id) [Need Torch, Kill]\n"
+        "- incinerate_drone(target_id) [Need Torch, Kill, Room Vis]\n"
+        "- incinerate_pod(player_id) [Need Torch, Kill Human, Global Vis]\n"
         "- detonate() [Torpedo Bay ONLY. GUARANTEED EXPLOSION. Suicide tactic.]\n"
         "- wait()\n"
         "VALID ROOMS: stasis_bay, engine_room, shuttle_bay, torpedo_bay, maintenance, charging_station\n"

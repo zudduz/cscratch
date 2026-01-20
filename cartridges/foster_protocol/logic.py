@@ -22,7 +22,7 @@ class FosterProtocol:
         default_state = CaissonState()
         self.meta = {
             "name": "The Foster Protocol",
-            "version": "2.43",
+            "version": "2.44",
             **default_state.model_dump()
         }
         if not self._verify_prompt_exists():
@@ -248,7 +248,6 @@ class FosterProtocol:
             drone.battery = max(0, min(100, new_charge))
             if result.cost > 0: drone.last_battery_drop += result.cost
         
-        # KEY CHANGE: Return 'drone' instead of 'bot'
         return {
             "drone": drone,
             "action": action,
@@ -263,7 +262,8 @@ class FosterProtocol:
         game_data.daily_logs.clear()
         for b in game_data.drones.values(): b.daily_memory.clear()
         
-        for hour in range(1, 6):
+        # DYNAMIC LOOP LENGTH based on GameConfig
+        for hour in range(1, GameConfig.HOURS_PER_SHIFT + 1):
             await asyncio.sleep(2) 
             active_drones = [b for b in game_data.drones.values() if b.status == "active" and b.battery > 0]
             
@@ -276,7 +276,6 @@ class FosterProtocol:
             hourly_activity = False 
             
             for res in turn_results:
-                # KEY CHANGE: Unpack 'drone'
                 drone = res['drone']
                 result = res['result']
                 

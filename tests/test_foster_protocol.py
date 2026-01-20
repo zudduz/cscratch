@@ -72,9 +72,8 @@ async def test_oxygen_depletion_math(cartridge, mock_ctx, mock_tools):
         game_data.players[f"p{i}"] = PlayerState(is_alive=True)
     
     # Run the day loop (mocking the time.sleep and drone turns)
-    with patch("asyncio.sleep", AsyncMock()), \
-         patch.object(cartridge, "run_single_drone_turn", AsyncMock(return_value={
-             "bot": MagicMock(), "action": {}, "result": MagicMock(message="ok", visibility="private"), "thought": "x"
+    with patch("asyncio.sleep", AsyncMock()),          patch.object(cartridge, "run_single_drone_turn", AsyncMock(return_value={
+             "drone": MagicMock(), "action": {}, "result": MagicMock(message="ok", visibility="private"), "thought": "x"
          })):
         
         result_state = await cartridge.execute_day_simulation(game_data, mock_ctx, mock_tools)
@@ -91,9 +90,8 @@ async def test_lifeboat_dilemma(cartridge, mock_ctx, mock_tools):
     game_data.players["p1"] = PlayerState(is_alive=True) 
     # Others missing/dead
     
-    with patch("asyncio.sleep", AsyncMock()), \
-         patch.object(cartridge, "run_single_drone_turn", AsyncMock(return_value={
-             "bot": MagicMock(), "action": {}, "result": MagicMock(message="ok", visibility="private"), "thought": "x"
+    with patch("asyncio.sleep", AsyncMock()),          patch.object(cartridge, "run_single_drone_turn", AsyncMock(return_value={
+             "drone": MagicMock(), "action": {}, "result": MagicMock(message="ok", visibility="private"), "thought": "x"
          })):
         
         result_state = await cartridge.execute_day_simulation(game_data, mock_ctx, mock_tools)

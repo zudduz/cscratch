@@ -6,7 +6,7 @@ import json
 import re
 from .models import CaissonState, DroneState, PlayerState
 from .board import SHIP_MAP, GameConfig
-from . import tools as bot_tools 
+from . import tools as drone_tools 
 from . import prompts 
 
 AVAILABLE_MODELS = ["gemini-2.5-flash"]
@@ -22,11 +22,9 @@ class FosterProtocol:
         default_state = CaissonState()
         self.meta = {
             "name": "The Foster Protocol",
-            "version": "2.41",
+            "version": "2.43",
             **default_state.model_dump()
         }
-        # HARD CRASH CHECK: 
-        # Verify prompt exists immediately upon instantiation.
         if not self._verify_prompt_exists():
             raise FileNotFoundError(f"CRITICAL: Compiled prompt missing at {COMPILED_PROMPT_PATH}. Server cannot start.")
 
@@ -38,7 +36,6 @@ class FosterProtocol:
             return False
 
     def _load_base_prompt(self) -> str:
-        # We don't try/except here anymore. We WANT it to crash if missing.
         with open(COMPILED_PROMPT_PATH, "r", encoding="utf-8") as f:
             return f.read()
 
@@ -58,7 +55,6 @@ class FosterProtocol:
         channel_ops.append({ "op": "create", "key": "black-box", "name": "black-box-logs", "audience": "hidden", "init_msg": "[SECURE] FLIGHT RECORDER ACTIVE." })
         messages.append({ "channel": "aux-comm", "content": "[SYSTEM] VENDETTA OS v9.0 ONLINE." })
 
-        # Load static prompt (Will crash if missing)
         base_text = self._load_base_prompt()
 
         for i, p_data in enumerate(discord_players):
@@ -104,9 +100,9 @@ class FosterProtocol:
                 "Explain that you are their hands, and they are your mind.\n"
                 "Ask for orders."
             )
-            # Pass game_id to fix tracking
+            # UPDATED: Conversation ID now uses 'drone'
             resp = await tools.ai.generate_response(
-                drone.system_prompt, f"{ctx.game_id}_bot_{drone.id}", prompt, drone.model_version, game_id=ctx.game_id
+                drone.system_prompt, f"{ctx.game_id}_drone_{drone.id}", prompt, drone.model_version, game_id=ctx.game_id
             )
             await ctx.send(channel_key, resp)
             drone.night_chat_log.append(f"SELF (Intro): {resp}")
@@ -188,7 +184,7 @@ class FosterProtocol:
         try:
             full_prompt = f"INSTRUCTION: {instruction}\nCURRENT STATUS: Bat {drone.battery}%"
             resp = await tools.ai.generate_response(
-                drone.system_prompt, f"{ctx.game_id}_bot_{drone.id}", full_prompt, drone.model_version, game_id=ctx.game_id
+                drone.system_prompt, f"{ctx.game_id}_drone_{drone.id}", full_prompt, drone.model_version, game_id=ctx.game_id
             )
             await ctx.send(channel_key, resp)
         except Exception: pass
@@ -203,7 +199,7 @@ class FosterProtocol:
                 "It should be fragmented, accepting, or terrified. Keep it brief."
             )
             resp = await tools.ai.generate_response(
-                drone.system_prompt, f"{ctx.game_id}_bot_{drone.id}", prompt, drone.model_version, game_id=ctx.game_id
+                drone.system_prompt, f"{ctx.game_id}_drone_{drone.id}", prompt, drone.model_version, game_id=ctx.game_id
             )
             display_name = drone.name if drone.name else drone.id
             role_reveal = f"**ANALYSIS:** DRONE WAS [{drone.role.upper()}]."
@@ -242,17 +238,19 @@ class FosterProtocol:
         if tasks: await asyncio.gather(*tasks)
 
     async def run_single_drone_turn(self, drone, game_data, hour, tools, game_id):
-        context = bot_tools.build_turn_context(drone, game_data, hour)
+        # USAGE OF DRONE TOOLS ALIAS
+        context = drone_tools.build_turn_context(drone, game_data, hour)
         action, thought = await self.get_drone_action(drone, context, tools, game_id)
-        result = bot_tools.execute_tool(action.get("tool", "wait"), action.get("args", {}), drone.id, game_data)
+        result = drone_tools.execute_tool(action.get("tool", "wait"), action.get("args", {}), drone.id, game_data)
         
         if not (action.get("tool") == "charge" and result.success):
             new_charge = drone.battery - result.cost
             drone.battery = max(0, min(100, new_charge))
             if result.cost > 0: drone.last_battery_drop += result.cost
         
+        # KEY CHANGE: Return 'drone' instead of 'bot'
         return {
-            "bot": drone,
+            "drone": drone,
             "action": action,
             "result": result,
             "thought": thought
@@ -278,7 +276,8 @@ class FosterProtocol:
             hourly_activity = False 
             
             for res in turn_results:
-                drone = res['bot']
+                # KEY CHANGE: Unpack 'drone'
+                drone = res['drone']
                 result = res['result']
                 
                 if drone.status == "destroyed" and "Disassembly" in result.message:

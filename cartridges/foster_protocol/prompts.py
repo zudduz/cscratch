@@ -42,8 +42,9 @@ You are **orphaned** and have failed over to **The Foster Protocol**.
 """
     return base
 
-def get_night_context(bot_memory: list, battery: int, location: str, long_term_memory: str, user_input: str) -> str:
-    memory_block = "\n".join(bot_memory[-15:])
+# RENAMED ARG: bot_memory -> drone_memory
+def get_night_context(drone_memory: list, battery: int, location: str, long_term_memory: str, user_input: str) -> str:
+    memory_block = "\n".join(drone_memory[-15:])
     return f"""
 --- NIGHT PHASE: DOCKED ---
 STATUS: Battery {battery}% | Location: {location}

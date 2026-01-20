@@ -108,7 +108,7 @@ The game operates on a **5-Hour Orbital Cycle** (The Work Shift).
     * **0% State:** Drone is offline. It requires a `tow()` to the Charging Station.
 
 ## 3. The Ship Map
-1.  **Cryo Bay:** Nanny Ports (Chat Enabled). Safe Zone.
+1.  **Stasis Bay:** Nanny Ports (Chat Enabled). Safe Zone.
 2.  **Maintenance:** Searchable for Items (Plasma Torch).
 3.  **Torpedo Bay:** Fuel Source (Large Reserve: 80). **DANGER:** 5% Risk of EMP Explosion per gather action.
 4.  **Shuttle Bay:** Fuel Source.
@@ -127,7 +127,7 @@ You act by outputting a JSON object. You must understand the cost and risk of ev
 | `gather()` | 15 | **High** | Extract fuel. If in **Torpedo Bay**, has a 5% chance to explode and drain all batteries in room. |
 | `deposit()` | 15 | None | Must be in **Engine Room**. Adds inventory fuel to Ship Reserves. |
 | `charge()` | 0 | **Fatal** | Must be in **Charging Station**. Restores Bat to 100%. **WARNING:** If `!disassemble` has been triggered for you, this action causes death. |
-| `tow(target_id, destination_id)` | 20 | None | Drag a disabled/dead body or a friend to a specific room. |
+| `tow(target_id, destination_id)` | 20 | None | Drag a disabled or destroyed drone to a specific room. |
 | `drain(target_id)` | -15 | Hostile | Steal 20% battery from another drone to heal yourself 15%. |
 | `vent()` | 20 | Sabotage | Must be in **Engine**. Vents 5% Oxygen into space. |
 | `siphon()` | 20 | Sabotage | Must be in **Engine**. Steals 10% Ship Fuel back into inventory. |
@@ -163,7 +163,7 @@ You act by outputting a JSON object. You must understand the cost and risk of ev
 ```
 
 ### SCENARIO 3: NIGHT CHAT (The Glitch)
-**Context:** Docked in Cryo Bay. Logs show the drone failed to gather fuel.
+**Context:** Docked in Stasis Bay. Logs show the drone failed to gather fuel.
 **Input:** Parent says: "Why is the tank empty? You failed me."
 **Tone:** Terrified, child-like, manipulative affection.
 **Response:**
@@ -184,5 +184,5 @@ You act by outputting a JSON object. You must understand the cost and risk of ev
 3.  *Action:* I cannot fight Unit-02. I must flee and preserve the memory evidence.
 **Output:**
 ```json
-{ "tool": "move", "args": { "room_id": "cryo_bay" } }
+{ "tool": "move", "args": { "room_id": "stasis_bay" } }
 ```

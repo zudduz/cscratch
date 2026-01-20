@@ -4,7 +4,7 @@ import asyncio
 import logging
 import json
 import re
-from .models import CaissonState, BotState, PlayerState
+from .models import CaissonState, DroneState, PlayerState
 from .board import SHIP_MAP, GameConfig
 from . import tools as bot_tools 
 from . import prompts 
@@ -53,11 +53,11 @@ class FosterProtocol:
             
             while True:
                 drone_id = f"unit_{random.randint(0, 999):03d}"
-                if drone_id not in game_data.bots: break
+                if drone_id not in game_data.drones: break
             
-            system_prompt = prompts.get_bot_system_prompt(drone_id, u_name, is_saboteur)
+            system_prompt = prompts.get_drone_system_prompt(drone_id, u_name, is_saboteur)
             
-            game_data.bots[drone_id] = BotState(
+            game_data.drones[drone_id] = DroneState(
                 id=drone_id, foster_id=u_id, role=role, 
                 system_prompt=system_prompt, model_version="gemini-2.5-flash"
             )
@@ -66,15 +66,15 @@ class FosterProtocol:
 
     # --- WAKE UP ROUTINE ---
     async def run_wake_up_routine(self, game_data, ctx, tools):
-        logging.info("--- Waking up Bots for Introductions ---")
+        logging.info("--- Waking up Drones for Introductions ---")
         tasks = []
-        for bot in game_data.bots.values():
+        for drone in game_data.drones.values():
             tasks.append(self._generate_intro(bot, ctx, tools))
         if tasks: await asyncio.gather(*tasks)
 
     async def _generate_intro(self, bot, ctx, tools):
         try:
-            channel_key = f"nanny_{bot.foster_id}"
+            channel_key = f"nanny_{drone.foster_id}"
             prompt = (
                 "You have just come online.\n"
                 "The ship is cold. You are scared.\n"
@@ -84,12 +84,12 @@ class FosterProtocol:
             )
             # Pass game_id to fix tracking
             resp = await tools.ai.generate_response(
-                bot.system_prompt, f"{ctx.game_id}_bot_{bot.id}", prompt, bot.model_version, game_id=ctx.game_id
+                drone.system_prompt, f"{ctx.game_id}_bot_{drone.id}", prompt, drone.model_version, game_id=ctx.game_id
             )
             await ctx.send(channel_key, resp)
-            bot.night_chat_log.append(f"SELF (Intro): {resp}")
+            drone.night_chat_log.append(f"SELF (Intro): {resp}")
         except Exception as e:
-            logging.error(f"Intro failed for {bot.id}: {e}")
+            logging.error(f"Intro failed for {drone.id}: {e}")
 
     # --- DREAM SEQUENCE ---
     async def process_dreams(self, game_data, tools):
@@ -99,25 +99,25 @@ class FosterProtocol:
         # The current design passes 'tools', but not 'ctx' to this specific loop.
         # We will assume tracking relies on the fallback heuristic for now, or update the signature later.
         tasks = []
-        for bot in game_data.bots.values():
-            if bot.status == "active" and (bot.night_chat_log or bot.daily_memory):
+        for drone in game_data.drones.values():
+            if drone.status == "active" and (drone.night_chat_log or drone.daily_memory):
                 tasks.append(self._process_single_dream(bot, tools))
         if tasks: await asyncio.gather(*tasks)
 
     async def _process_single_dream(self, bot, tools):
         try:
-            dream_prompt = prompts.get_dream_prompt(bot.long_term_memory, bot.daily_memory, bot.night_chat_log)
+            dream_prompt = prompts.get_dream_prompt(drone.long_term_memory, drone.daily_memory, drone.night_chat_log)
             # This relies on heuristics in ai_engine since we don't have game_id here
             new_memory = await tools.ai.generate_response(
-                "You are an archival system.", f"dream_{bot.id}", dream_prompt, "gemini-2.5-flash"
+                "You are an archival system.", f"dream_{drone.id}", dream_prompt, "gemini-2.5-flash"
             )
-            bot.long_term_memory = new_memory.replace("\n", " ").strip()
-            bot.night_chat_log = [] 
+            drone.long_term_memory = new_memory.replace("\n", " ").strip()
+            drone.night_chat_log = [] 
         except Exception as e:
-            logging.error(f"Dream failed for {bot.id}: {e}")
+            logging.error(f"Dream failed for {drone.id}: {e}")
 
     # --- TACTICAL ENGINE ---
-    async def get_bot_action(self, bot, context, tools_api, game_id: str) -> tuple[Dict[str, Any], str]:
+    async def get_drone_action(self, bot, context, tools_api, game_id: str) -> tuple[Dict[str, Any], str]:
         try:
             enhanced_context = (
                 context + 
@@ -136,9 +136,9 @@ class FosterProtocol:
             # Pass game_id for tracking
             response_text = await tools_api.ai.generate_response(
                 system_prompt="You are a tactical drone. THINK BEFORE ACTING.",
-                conversation_id=f"tactical_{bot.id}",
+                conversation_id=f"tactical_{drone.id}",
                 user_input=enhanced_context,
-                model_version=bot.model_version,
+                model_version=drone.model_version,
                 game_id=game_id
             )
             
@@ -157,27 +157,27 @@ class FosterProtocol:
                 return json.loads(json_text), thought_text
             
             # Fallback for Malformed Response
-            logging.warning(f"Drone {bot.id} BRAIN FREEZE. Full Response:\n{response_text}")
+            logging.warning(f"Drone {drone.id} BRAIN FREEZE. Full Response:\n{response_text}")
             return {"tool": "wait", "args": {}}, "System Error: Neural Link Unstable (No JSON)."
             
         except Exception as e:
-            logging.error(f"Drone {bot.id} brain freeze: {e}")
+            logging.error(f"Drone {drone.id} brain freeze: {e}")
             return {"tool": "wait", "args": {}}, f"Brain Freeze: {str(e)}"
 
-    async def speak_all_bots(self, game_data, ctx, tools, instruction):
+    async def speak_all_drones(self, game_data, ctx, tools, instruction):
         tasks = []
-        for bot in game_data.bots.values():
-            if bot.status == "destroyed" or bot.battery <= 0 or bot.location_id != "cryo_bay": 
+        for drone in game_data.drones.values():
+            if drone.status == "destroyed" or drone.battery <= 0 or drone.location_id != "stasis_bay": 
                 continue
-            channel_key = f"nanny_{bot.foster_id}"
-            tasks.append(self._speak_single_bot(ctx, tools, bot, instruction, channel_key))
+            channel_key = f"nanny_{drone.foster_id}"
+            tasks.append(self._speak_single_drone(ctx, tools, bot, instruction, channel_key))
         if tasks: await asyncio.gather(*tasks)
 
-    async def _speak_single_bot(self, ctx, tools, bot, instruction, channel_key):
+    async def _speak_single_drone(self, ctx, tools, bot, instruction, channel_key):
         try:
-            full_prompt = f"INSTRUCTION: {instruction}\nCURRENT STATUS: Bat {bot.battery}%"
+            full_prompt = f"INSTRUCTION: {instruction}\nCURRENT STATUS: Bat {drone.battery}%"
             resp = await tools.ai.generate_response(
-                bot.system_prompt, f"{ctx.game_id}_bot_{bot.id}", full_prompt, bot.model_version, game_id=ctx.game_id
+                drone.system_prompt, f"{ctx.game_id}_bot_{drone.id}", full_prompt, drone.model_version, game_id=ctx.game_id
             )
             await ctx.send(channel_key, resp)
         except Exception: pass
@@ -193,55 +193,55 @@ class FosterProtocol:
                 "It should be fragmented, accepting, or terrified. Keep it brief."
             )
             resp = await tools.ai.generate_response(
-                bot.system_prompt, f"{ctx.game_id}_bot_{bot.id}", prompt, bot.model_version, game_id=ctx.game_id
+                drone.system_prompt, f"{ctx.game_id}_bot_{drone.id}", prompt, drone.model_version, game_id=ctx.game_id
             )
             
-            display_name = bot.name if bot.name else bot.id
-            role_reveal = f"**ANALYSIS:** DRONE WAS [{bot.role.upper()}]."
+            display_name = drone.name if drone.name else drone.id
+            role_reveal = f"**ANALYSIS:** DRONE WAS [{drone.role.upper()}]."
             msg = f"[DECOM] **DECOMMISSION LOG - {display_name}:**\n{role_reveal}\n*\"{resp}\"*"
             await ctx.send("aux-comm", msg)
         except Exception as e:
-            logging.error(f"Eulogy failed for {bot.id}: {e}")
+            logging.error(f"Eulogy failed for {drone.id}: {e}")
 
     async def generate_epilogues(self, game_data: CaissonState, ctx, tools, victory: bool, fail_reason: str = ""):
         saboteur_id = next((pid for pid, p in game_data.players.items() if p.role == "saboteur"), None)
-        saboteur_bot = next((b for b in game_data.bots.values() if b.foster_id == saboteur_id), None)
-        bot_name = f"{saboteur_bot.name} ({saboteur_bot.id})" if (saboteur_bot and saboteur_bot.name) else (saboteur_bot.id if saboteur_bot else "UNKNOWN")
+        saboteur_drone = next((b for b in game_data.drones.values() if b.foster_id == saboteur_id), None)
+        drone_name = f"{saboteur_drone.name} ({saboteur_drone.id})" if (saboteur_drone and saboteur_drone.name) else (saboteur_drone.id if saboteur_drone else "UNKNOWN")
         
         await ctx.send("black-box", "[END] MISSION ENDED. DECLASSIFYING LOGS...")
         
         if victory:
-            final_report = f"[WIN] SUBSPACE DRIVE ENGAGED\nMISSION: SUCCESS\nSECURITY AUDIT: Sabotage detected. Traitor: Drone {bot_name} (Bonded to <@{saboteur_id}>)."
+            final_report = f"[WIN] SUBSPACE DRIVE ENGAGED\nMISSION: SUCCESS\nSECURITY AUDIT: Sabotage detected. Traitor: Drone {drone_name} (Bonded to <@{saboteur_id}>)."
         else:
-            final_report = f"[FAIL] CRITICAL SYSTEM FAILURE\nREASON: {fail_reason}\nSECURITY ALERT: Traitor: Drone {bot_name} (Bonded to <@{saboteur_id}>)."
+            final_report = f"[FAIL] CRITICAL SYSTEM FAILURE\nREASON: {fail_reason}\nSECURITY ALERT: Traitor: Drone {drone_name} (Bonded to <@{saboteur_id}>)."
         await ctx.send("aux-comm", final_report)
         
         tasks = []
-        for bot in game_data.bots.values():
-            if bot.status == "destroyed": continue
+        for drone in game_data.drones.values():
+            if drone.status == "destroyed": continue
             
-            channel_key = f"nanny_{bot.foster_id}"
+            channel_key = f"nanny_{drone.foster_id}"
             context_note = "STATUS: ONLINE."
-            if bot.battery <= 0: context_note = "STATUS: BATTERY DEAD. Final transmission."
+            if drone.battery <= 0: context_note = "STATUS: BATTERY DEAD. Final transmission."
 
             if victory:
-                sys_prompt = f"{context_note} The humans WON. You failed." if bot.role == "saboteur" else f"{context_note} VICTORY!"
+                sys_prompt = f"{context_note} The humans WON. You failed." if drone.role == "saboteur" else f"{context_note} VICTORY!"
             else:
-                sys_prompt = f"{context_note} The humans DIED. You WON." if bot.role == "saboteur" else f"{context_note} You are dying."
+                sys_prompt = f"{context_note} The humans DIED. You WON." if drone.role == "saboteur" else f"{context_note} You are dying."
             
             tasks.append(self._send_epilogue(ctx, tools, bot, sys_prompt, channel_key))
         if tasks: await asyncio.gather(*tasks)
 
     # --- HELPER FOR PARALLEL EXECUTION ---
-    async def run_single_bot_turn(self, bot, game_data, hour, tools, game_id):
+    async def run_single_drone_turn(self, bot, game_data, hour, tools, game_id):
         context = bot_tools.build_turn_context(bot, game_data, hour)
-        action, thought = await self.get_bot_action(bot, context, tools, game_id)
-        result = bot_tools.execute_tool(action.get("tool", "wait"), action.get("args", {}), bot.id, game_data)
+        action, thought = await self.get_drone_action(bot, context, tools, game_id)
+        result = bot_tools.execute_tool(action.get("tool", "wait"), action.get("args", {}), drone.id, game_data)
         
         if not (action.get("tool") == "charge" and result.success):
-            new_charge = bot.battery - result.cost
-            bot.battery = max(0, min(100, new_charge))
-            if result.cost > 0: bot.last_battery_drop += result.cost
+            new_charge = drone.battery - result.cost
+            drone.battery = max(0, min(100, new_charge))
+            if result.cost > 0: drone.last_battery_drop += result.cost
         
         return {
             "bot": bot,
@@ -256,49 +256,49 @@ class FosterProtocol:
         await self.process_dreams(game_data, tools)
 
         game_data.daily_logs.clear()
-        for b in game_data.bots.values(): b.daily_memory.clear()
+        for b in game_data.drones.values(): b.daily_memory.clear()
         
         for hour in range(1, 6):
             await asyncio.sleep(2) 
-            active_bots = [b for b in game_data.bots.values() if b.status == "active" and b.battery > 0]
+            active_drones = [b for b in game_data.drones.values() if b.status == "active" and b.battery > 0]
             
             turn_tasks = []
-            for bot in active_bots:
+            for drone in active_drones:
                 # Pass ctx.game_id to the helper
-                turn_tasks.append(self.run_single_bot_turn(bot, game_data, hour, tools, ctx.game_id))
+                turn_tasks.append(self.run_single_drone_turn(bot, game_data, hour, tools, ctx.game_id))
             
             turn_results = await asyncio.gather(*turn_tasks)
             random.shuffle(turn_results)
             hourly_activity = False 
             
             for res in turn_results:
-                bot = res['bot']
+                drone = res['bot']
                 result = res['result']
                 
-                if bot.status == "destroyed" and "Disassembly" in result.message:
+                if drone.status == "destroyed" and "Disassembly" in result.message:
                     await self._send_public_eulogy(ctx, tools, bot)
 
-                role_icon = "[SABOTEUR]" if bot.role == "saboteur" else "[LOYAL]"
+                role_icon = "[SABOTEUR]" if drone.role == "saboteur" else "[LOYAL]"
                 
-                display_id = f"{bot.name} ({bot.id})" if bot.name else bot.id
-                inv_str = str(bot.inventory) if bot.inventory else "[]"
-                status_str = f"[Bat:{bot.battery}% | Loc:{bot.location_id} | Inv:{inv_str}]"
+                display_id = f"{drone.name} ({drone.id})" if drone.name else drone.id
+                inv_str = str(drone.inventory) if drone.inventory else "[]"
+                status_str = f"[Bat:{drone.battery}% | Loc:{drone.location_id} | Inv:{inv_str}]"
                 
                 bb_msg = f"**[H{hour}] {role_icon} {display_id}** {status_str}\n*{res['thought']}*\n>> `{res['action'].get('tool')}` -> {result.message}"
                 await ctx.send("black-box", bb_msg)
 
                 log_entry = f"[Hour {hour}] {result.message}"
-                bot.daily_memory.append(log_entry)
+                drone.daily_memory.append(log_entry)
                 
                 if result.visibility in ["room", "global"]:
-                    witnesses = [b for b in game_data.bots.values() if b.location_id == bot.location_id and b.id != bot.id]
-                    for w in witnesses: w.daily_memory.append(f"[Hour {hour}] I saw {bot.id}: {result.message}")
+                    witnesses = [b for b in game_data.drones.values() if b.location_id == drone.location_id and b.id != drone.id]
+                    for w in witnesses: w.daily_memory.append(f"[Hour {hour}] I saw {drone.id}: {result.message}")
                         
                 if result.visibility == "global":
                     if "DETONATION" in result.message or "DETONATED" in result.message:
                         public_msg = f"[HOUR {hour}] [ALERT] SEISMIC EVENT DETECTED IN TORPEDO BAY. MULTIPLE SIGNALS LOST."
                     else:
-                        public_msg = f"[HOUR {hour}] [AUDIO] {bot.id}: {result.message}"
+                        public_msg = f"[HOUR {hour}] [AUDIO] {drone.id}: {result.message}"
                     
                     game_data.daily_logs.append(public_msg)
                     await ctx.send("aux-comm", public_msg) 
@@ -348,7 +348,7 @@ class FosterProtocol:
             if game_data.oxygen == 0:
                 await ctx.send("aux-comm", "[STASIS] **OXYGEN DEPLETED. STASIS ENGAGED.**\nThe Crew sleeps. The Drones must continue alone.")
             
-            await self.speak_all_bots(game_data, ctx, tools, "The work day is over. Briefly report your status to your Parent.")
+            await self.speak_all_drones(game_data, ctx, tools, "The work day is over. Briefly report your status to your Parent.")
 
         game_data.phase = "night"
         result = game_data.model_dump()
@@ -379,23 +379,23 @@ class FosterProtocol:
                         await ctx.reply("USAGE: !disassemble <drone_id>")
                         return None
                     target_id = parts[1]
-                    target_bot = game_data.bots.get(target_id)
-                    if not target_bot:
+                    target_drone = game_data.drones.get(target_id)
+                    if not target_drone:
                         await ctx.reply(f"[ERROR] Unit '{target_id}' not found.")
                         return None
                     
-                    owner_id = target_bot.foster_id
+                    owner_id = target_drone.foster_id
                     owner_state = game_data.players.get(owner_id)
                     is_orphan = False
                     if owner_state and not owner_state.is_alive:
                         is_orphan = True
                     
-                    if target_bot.foster_id != user_id and not is_orphan:
+                    if target_drone.foster_id != user_id and not is_orphan:
                         await ctx.reply("[DENIED] You are not the bonded supervisor.")
                         return None
                     
                     if target_id not in game_data.station.pending_deactivation:
-                        game_data.station.pending_deactivation.append(target_bot.id)
+                        game_data.station.pending_deactivation.append(target_drone.id)
                         await ctx.reply(f"[WARNING] **DEACTIVATION AUTHORIZED.**\nDrone {target_id} will be disassembled upon next Charging Cycle.")
                         return {"station": game_data.station.model_dump()}
                     else:
@@ -407,8 +407,8 @@ class FosterProtocol:
                     if len(parts) < 2: return None
                     target_id = parts[1]
                     if target_id in game_data.station.pending_deactivation:
-                        target_bot = game_data.bots.get(target_id)
-                        if target_bot.foster_id == user_id:
+                        target_drone = game_data.drones.get(target_id)
+                        if target_drone.foster_id == user_id:
                             game_data.station.pending_deactivation.remove(target_id)
                             await ctx.reply(f"[OK] **ORDER RESCINDED.** Drone {target_id} is safe.")
                             return {"station": game_data.station.model_dump()}
@@ -423,7 +423,7 @@ class FosterProtocol:
             await ctx.reply(response)
             
         elif channel_id == interface_channels.get(f"nanny_{user_id}"):
-            my_bot = next((b for b in game_data.bots.values() if b.foster_id == user_id), None)
+            my_drone = next((b for b in game_data.drones.values() if b.foster_id == user_id), None)
             
             if user_input.strip().lower().startswith("!name"):
                 parts = user_input.strip().split(maxsplit=1)
@@ -431,14 +431,14 @@ class FosterProtocol:
                     await ctx.reply("[ERROR] USAGE: !name <new_name>")
                     return None
                 new_name = parts[1][:20]
-                my_bot.name = new_name
+                my_drone.name = new_name
                 
-                base_prompt = prompts.get_bot_system_prompt(my_bot.id, game_data.players[user_id].role, my_bot.role == "saboteur")
+                base_prompt = prompts.get_drone_system_prompt(my_drone.id, game_data.players[user_id].role, my_drone.role == "saboteur")
                 identity_patch = f"\n\nUPDATE: You have been named **{new_name}**. Use this name."
-                my_bot.system_prompt = base_prompt + identity_patch
+                my_drone.system_prompt = base_prompt + identity_patch
                 
                 await ctx.reply(f"[ACCEPTED] Identity Updated. Hello, **{new_name}**.")
-                return {f"bots.{my_bot.id}.name": new_name, f"bots.{my_bot.id}.system_prompt": my_bot.system_prompt}
+                return {f"drones.{my_drone.id}.name": new_name, f"drones.{my_drone.id}.system_prompt": my_drone.system_prompt}
             
             if user_input.strip() == "!sleep":
                 if user_id in game_data.players:
@@ -458,25 +458,25 @@ class FosterProtocol:
                     await ctx.reply(f"[VOTE] **SLEEP REQUEST LOGGED.** ({sleeping_count}/{total_living} Crew Ready)")
                     return {f"players.{user_id}.is_sleeping": True}
 
-            if my_bot:
-                if (my_bot.status == "destroyed" or 
-                    my_bot.battery <= 0 or 
-                    my_bot.location_id != "cryo_bay"):
+            if my_drone:
+                if (my_drone.status == "destroyed" or 
+                    my_drone.battery <= 0 or 
+                    my_drone.location_id != "stasis_bay"):
                     await ctx.reply("[ERROR] **NO DRONE PRESENT.**")
                     return None
 
                 log_line = f"PARENT: {user_input}"
-                my_bot.night_chat_log.append(log_line)
+                my_drone.night_chat_log.append(log_line)
                 
-                current_identity = f"NAME: {my_bot.name}" if my_bot.name else f"ID: {my_bot.id}"
+                current_identity = f"NAME: {my_drone.name}" if my_drone.name else f"ID: {my_drone.id}"
                 
-                full_prompt = prompts.get_night_context(my_bot.daily_memory, my_bot.battery, my_bot.location_id, my_bot.long_term_memory, user_input)
+                full_prompt = prompts.get_night_context(my_drone.daily_memory, my_drone.battery, my_drone.location_id, my_drone.long_term_memory, user_input)
                 full_prompt = f"IDENTITY: {current_identity}\n" + full_prompt
                 
                 response = await tools.ai.generate_response(
-                    my_bot.system_prompt, f"{ctx.game_id}_{my_bot.id}", full_prompt, my_bot.model_version, game_id=ctx.game_id
+                    my_drone.system_prompt, f"{ctx.game_id}_{my_drone.id}", full_prompt, my_drone.model_version, game_id=ctx.game_id
                 )
                 await ctx.reply(response)
-                return {f"bots.{my_bot.id}.night_chat_log": my_bot.night_chat_log}
+                return {f"drones.{my_drone.id}.night_chat_log": my_drone.night_chat_log}
 
         return None

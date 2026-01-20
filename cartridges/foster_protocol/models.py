@@ -11,18 +11,18 @@ class ChargingStation(BaseModel):
 class PlayerState(BaseModel):
     role: Literal["loyal", "saboteur"] = "loyal"
     is_alive: bool = True
-    location_id: str = "cryo_bay"
+    location_id: str = "stasis_bay"
     is_sleeping: bool = False
     nanny_channel_id: Optional[str] = None
 
-class BotState(BaseModel):
+class DroneState(BaseModel):
     id: str                  
     name: Optional[str] = None
     foster_id: Optional[str] = None
     role: Literal["loyal", "saboteur"] = "loyal"
     model_version: str = "gemini-2.5-flash" 
     
-    location_id: str = "cryo_bay"
+    location_id: str = "stasis_bay"
     battery: int = 100       
     last_battery_drop: int = 0
     
@@ -53,7 +53,7 @@ class CaissonState(BaseModel):
     cycle: int = 1
     phase: Literal["day", "night"] = "night"
     
-    bots: Dict[str, BotState] = Field(default_factory=dict)
+    bots: Dict[str, DroneState] = Field(default_factory=dict)
     players: Dict[str, PlayerState] = Field(default_factory=dict)
     station: ChargingStation = Field(default_factory=ChargingStation)
     daily_logs: List[str] = Field(default_factory=list)

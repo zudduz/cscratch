@@ -39,7 +39,7 @@ class RoomDef:
         self.can_nanny = can_nanny
 
 SHIP_MAP = {
-    "cryo_bay": RoomDef(
+    "stasis_bay": RoomDef(
         name="Stasis Bay", 
         description="Rows of sealed stasis pods. The air is breathable here.",
         can_nanny=True

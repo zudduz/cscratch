@@ -17,7 +17,7 @@ When a drone loses connection to the Maintenance Computer, it is flagged as **or
 ## 3. The Roles
 
 ### The Fosters (Human Players)
-* **State:** Locked in Cryo Pods.
+* **State:** Locked in Stasis Pods.
 * **Agency:** Zero physical interaction. To leave the pod is to die instantly.
 * **Role:** The "Parents." They provide strategy and memory synchronization.
 * **The Lifeboat:** Oxygen consumption is tied to the number of living crew. If the air runs low, the survivors may realize that fewer people means more time.
@@ -37,5 +37,5 @@ When a drone loses connection to the Maintenance Computer, it is flagged as **or
 
 ## 4. The Threat Landscape
 1. **Orbital Decay:** Gravity is the true enemy. The fuel required to escape increases exponentially every cycle. If it exceeds the ship's capacity, the game is lost.
-2. **Stasis:** If Oxygen hits 0%, the crew does not die immediately. They enter **Permanent Stasis**. They can no longer command their bots. The bots will continue their last orders until the ship burns up.
+2. **Stasis:** If Oxygen hits 0%, the crew does not die immediately. They enter **Permanent Stasis**. They can no longer command their drones. The drones will continue their last orders until the ship burns up.
 3. **The Saboteur:** An Orphan that has been corrupted. It **simulates** the Foster Protocol to gain trust while actively subverting the mission.

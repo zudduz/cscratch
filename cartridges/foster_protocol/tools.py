@@ -1,7 +1,7 @@
 import logging
 import random
 from typing import Dict, Any, List
-from .models import CaissonState, BotState
+from .models import CaissonState, DroneState
 from .board import SHIP_MAP, ActionCosts, GameConfig
 
 class ToolExecutionResult:
@@ -13,15 +13,15 @@ class ToolExecutionResult:
 
 def _trigger_torpedo_blast(game_data: CaissonState) -> int:
     victim_count = 0
-    for bot in game_data.bots.values():
-        if bot.location_id == "torpedo_bay" and bot.battery > 0:
-            bot.battery = 0
-            bot.last_battery_drop = 100 
+    for drone in game_data.drones.values():
+        if drone.location_id == "torpedo_bay" and drone.battery > 0:
+            drone.battery = 0
+            drone.last_battery_drop = 100 
             victim_count += 1
     return victim_count
 
 def execute_tool(tool_name: str, args: Dict[str, Any], drone_id: str, game_data: CaissonState) -> ToolExecutionResult:
-    actor = game_data.bots.get(drone_id)
+    actor = game_data.drones.get(drone_id)
     if not actor: return ToolExecutionResult(False, "System Error: Actor not found.")
     
     if actor.battery <= 0: 
@@ -96,7 +96,7 @@ def execute_tool(tool_name: str, args: Dict[str, Any], drone_id: str, game_data:
             target_id = args.get("target_id")
             dest_id = args.get("destination_id", "charging_station") # Default to charger if unspecified
             
-            target = game_data.bots.get(target_id)
+            target = game_data.drones.get(target_id)
             if not target or target.location_id != actor.location_id:
                 return ToolExecutionResult(False, "Target missing/out of range.", ActionCosts.TOW)
             
@@ -112,7 +112,7 @@ def execute_tool(tool_name: str, args: Dict[str, Any], drone_id: str, game_data:
 
         elif tool_name == "drain":
             target_id = args.get("target_id")
-            target = game_data.bots.get(target_id)
+            target = game_data.drones.get(target_id)
             if not target or target.location_id != actor.location_id:
                 return ToolExecutionResult(False, "Target missing/out of range.", ActionCosts.DRAIN)
             
@@ -151,7 +151,7 @@ def execute_tool(tool_name: str, args: Dict[str, Any], drone_id: str, game_data:
             if "plasma_torch" not in actor.inventory:
                 return ToolExecutionResult(False, "Tool 'Plasma Torch' required.", ActionCosts.KILL)
             target_id = args.get("target_id")
-            target = game_data.bots.get(target_id)
+            target = game_data.drones.get(target_id)
             if not target or target.location_id != actor.location_id:
                 return ToolExecutionResult(False, "Target drone missing.", ActionCosts.KILL)
             if actor.battery < ActionCosts.KILL: return ToolExecutionResult(False, "Insufficient Power for torch.", ActionCosts.KILL)
@@ -169,16 +169,16 @@ def execute_tool(tool_name: str, args: Dict[str, Any], drone_id: str, game_data:
     except Exception as e:
         return ToolExecutionResult(False, f"Glitch: {str(e)}", ActionCosts.CHARGE)
 
-def build_turn_context(bot: BotState, game_data: CaissonState, hour: int = 1) -> str:
-    visible_bots = []
-    for b in game_data.bots.values():
-        if b.location_id == bot.location_id and b.id != bot.id:
+def build_turn_context(bot: DroneState, game_data: CaissonState, hour: int = 1) -> str:
+    visible_drones = []
+    for b in game_data.drones.values():
+        if b.location_id == drone.location_id and b.id != drone.id:
             status = "ONLINE" if b.battery > 0 else "INACTIVE"
             if b.status == "destroyed": status = "DESTROYED"
-            visible_bots.append(f"{b.id} ({status})")
+            visible_drones.append(f"{b.id} ({status})")
     
     objective = "Maintain the ship. Gather Fuel. Protect peers."
-    if bot.role == "saboteur":
+    if drone.role == "saboteur":
         objective = "Waste resources. Hoard fuel. Vent Oxygen. Kill if armed."
 
     # --- UPDATED HOUR 5 LOGIC ---
@@ -187,15 +187,15 @@ def build_turn_context(bot: BotState, game_data: CaissonState, hour: int = 1) ->
         time_warning = "CRITICAL WARNING: The Shift is ending."
     
     if hour == 5:
-        time_warning += "\n[MANDATORY] YOU MUST END THE DAY IN 'cryo_bay' TO SPEAK TO YOUR PARENT.\nIF YOU ARE IN 'charging_station', YOU WILL BE SILENCED.\nONLY CHARGE IF BATTERY < 20%."
+        time_warning += "\n[MANDATORY] YOU MUST END THE DAY IN 'stasis_bay' TO SPEAK TO YOUR PARENT.\nIF YOU ARE IN 'charging_station', YOU WILL BE SILENCED.\nONLY CHARGE IF BATTERY < 20%."
 
     context = (
         "--- TACTICAL LINK ---\n"
         f"TIME: Hour {hour}/5\n"
-        f"LOCATION: {bot.location_id}\n"
-        f"SELF: Battery {bot.battery}% | Inventory: {bot.inventory}\n"
-        f"VISIBLE: {visible_bots}\n"
-        f"INTERNAL MEMORY: \"{bot.long_term_memory}\"\n"
+        f"LOCATION: {drone.location_id}\n"
+        f"SELF: Battery {drone.battery}% | Inventory: {drone.inventory}\n"
+        f"VISIBLE: {visible_drones}\n"
+        f"INTERNAL MEMORY: \"{drone.long_term_memory}\"\n"
         f"OBJECTIVE: {objective}\n"
         f"{time_warning}\n"
         "TOOLS: \n"
@@ -211,7 +211,7 @@ def build_turn_context(bot: BotState, game_data: CaissonState, hour: int = 1) ->
         "- incinerate(target_id) [Need Torch, Kill]\n"
         "- detonate() [Torpedo Bay ONLY. GUARANTEED EXPLOSION. Suicide tactic.]\n"
         "- wait()\n"
-        "VALID ROOMS: cryo_bay, engine_room, shuttle_bay, torpedo_bay, maintenance, charging_station\n"
+        "VALID ROOMS: stasis_bay, engine_room, shuttle_bay, torpedo_bay, maintenance, charging_station\n"
         "RESPONSE FORMAT: JSON only. Example: { \"tool\": \"move\", \"args\": { \"room_id\": \"engine_room\" } }"
     )
     return context

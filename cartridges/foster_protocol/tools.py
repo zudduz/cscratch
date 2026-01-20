@@ -169,7 +169,7 @@ def execute_tool(tool_name: str, args: Dict[str, Any], drone_id: str, game_data:
     except Exception as e:
         return ToolExecutionResult(False, f"Glitch: {str(e)}", ActionCosts.CHARGE)
 
-def build_turn_context(bot: DroneState, game_data: CaissonState, hour: int = 1) -> str:
+def build_turn_context(drone: DroneState, game_data: CaissonState, hour: int = 1) -> str:
     visible_drones = []
     for b in game_data.drones.values():
         if b.location_id == drone.location_id and b.id != drone.id:

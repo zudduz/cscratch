@@ -22,17 +22,25 @@ class FosterProtocol:
         default_state = CaissonState()
         self.meta = {
             "name": "The Foster Protocol",
-            "version": "2.40",
+            "version": "2.41",
             **default_state.model_dump()
         }
+        # HARD CRASH CHECK: 
+        # Verify prompt exists immediately upon instantiation.
+        if not self._verify_prompt_exists():
+            raise FileNotFoundError(f"CRITICAL: Compiled prompt missing at {COMPILED_PROMPT_PATH}. Server cannot start.")
 
-    def _load_base_prompt(self) -> str:
+    def _verify_prompt_exists(self) -> bool:
         try:
             with open(COMPILED_PROMPT_PATH, "r", encoding="utf-8") as f:
-                return f.read()
+                return True
         except FileNotFoundError:
-            logging.error(f"CRITICAL: Compiled prompt not found at {COMPILED_PROMPT_PATH}")
-            return "SYSTEM ERROR: Prompt Missing. Run compile_prompts.py."
+            return False
+
+    def _load_base_prompt(self) -> str:
+        # We don't try/except here anymore. We WANT it to crash if missing.
+        with open(COMPILED_PROMPT_PATH, "r", encoding="utf-8") as f:
+            return f.read()
 
     async def on_game_start(self, generic_state: dict) -> Dict[str, Any]:
         game_data = CaissonState(**generic_state.get('metadata', {}))
@@ -50,7 +58,7 @@ class FosterProtocol:
         channel_ops.append({ "op": "create", "key": "black-box", "name": "black-box-logs", "audience": "hidden", "init_msg": "[SECURE] FLIGHT RECORDER ACTIVE." })
         messages.append({ "channel": "aux-comm", "content": "[SYSTEM] VENDETTA OS v9.0 ONLINE." })
 
-        # Load static prompt once
+        # Load static prompt (Will crash if missing)
         base_text = self._load_base_prompt()
 
         for i, p_data in enumerate(discord_players):
@@ -68,7 +76,6 @@ class FosterProtocol:
                 drone_id = f"unit_{random.randint(0, 999):03d}"
                 if drone_id not in game_data.drones: break
             
-            # Combine Identity (Dynamic) + Rules (Static/Cached)
             identity_block = prompts.get_drone_identity_block(drone_id, u_name, is_saboteur)
             system_prompt = identity_block + "\n\n" + base_text
             
@@ -117,7 +124,6 @@ class FosterProtocol:
     async def _process_single_dream(self, drone, tools):
         try:
             dream_prompt = prompts.get_dream_prompt(drone.long_term_memory, drone.daily_memory, drone.night_chat_log)
-            # This relies on heuristics in ai_engine since we don't have game_id here
             new_memory = await tools.ai.generate_response(
                 "You are an archival system.", f"dream_{drone.id}", dream_prompt, "gemini-2.5-flash"
             )
@@ -143,7 +149,6 @@ class FosterProtocol:
                 "```"
             )
             
-            # Pass game_id for tracking
             response_text = await tools_api.ai.generate_response(
                 system_prompt="You are a tactical drone. THINK BEFORE ACTING.",
                 conversation_id=f"tactical_{drone.id}",
@@ -155,18 +160,14 @@ class FosterProtocol:
             match = re.search(r"\{.*\}", response_text, re.DOTALL)
             if match:
                 json_text = match.group(0)
-                
-                # EXTRACT THOUGHTS
                 pre_text = response_text[:match.start()].strip()
                 post_text = response_text[match.end():].strip()
-                
                 thought_text = "Processing..."
                 if pre_text: thought_text = pre_text.replace("```json", "").replace("```", "").strip()
                 elif post_text: thought_text = post_text.replace("```json", "").replace("```", "").strip()
                 
                 return json.loads(json_text), thought_text
             
-            # Fallback for Malformed Response
             logging.warning(f"Drone {drone.id} BRAIN FREEZE. Full Response:\n{response_text}")
             return {"tool": "wait", "args": {}}, "System Error: Neural Link Unstable (No JSON)."
             
@@ -192,7 +193,6 @@ class FosterProtocol:
             await ctx.send(channel_key, resp)
         except Exception: pass
 
-    # --- PUBLIC EULOGY ---
     async def _send_public_eulogy(self, ctx, tools, drone):
         try:
             prompt = (
@@ -205,7 +205,6 @@ class FosterProtocol:
             resp = await tools.ai.generate_response(
                 drone.system_prompt, f"{ctx.game_id}_bot_{drone.id}", prompt, drone.model_version, game_id=ctx.game_id
             )
-            
             display_name = drone.name if drone.name else drone.id
             role_reveal = f"**ANALYSIS:** DRONE WAS [{drone.role.upper()}]."
             msg = f"[DECOM] **DECOMMISSION LOG - {display_name}:**\n{role_reveal}\n*\"{resp}\"*"
@@ -242,7 +241,6 @@ class FosterProtocol:
             tasks.append(self._speak_single_drone(ctx, tools, drone, sys_prompt, channel_key))
         if tasks: await asyncio.gather(*tasks)
 
-    # --- HELPER FOR PARALLEL EXECUTION ---
     async def run_single_drone_turn(self, drone, game_data, hour, tools, game_id):
         context = bot_tools.build_turn_context(drone, game_data, hour)
         action, thought = await self.get_drone_action(drone, context, tools, game_id)
@@ -260,7 +258,6 @@ class FosterProtocol:
             "thought": thought
         }
 
-    # --- BACKGROUND SIMULATION (PARALLEL MODE) ---
     async def execute_day_simulation(self, game_data: CaissonState, ctx, tools) -> Dict[str, Any]:
         logging.info("--- Phase: REM Sleep (Dreaming) ---")
         await self.process_dreams(game_data, tools)
@@ -274,7 +271,6 @@ class FosterProtocol:
             
             turn_tasks = []
             for drone in active_drones:
-                # Pass ctx.game_id to the helper
                 turn_tasks.append(self.run_single_drone_turn(drone, game_data, hour, tools, ctx.game_id))
             
             turn_results = await asyncio.gather(*turn_tasks)
@@ -318,7 +314,6 @@ class FosterProtocol:
                 game_data.daily_logs.append(f"[HOUR {hour}] [SILENCE] Ship systems nominal.")
                 await ctx.send("aux-comm", f"[HOUR {hour}] [SILENCE] Ship systems nominal.")
 
-        # --- DYNAMIC OXYGEN CONSUMPTION ---
         living_crew = sum(1 for p in game_data.players.values() if p.is_alive)
         if game_data.initial_crew_size < 1: game_data.initial_crew_size = 1
         
@@ -365,7 +360,6 @@ class FosterProtocol:
         result["channel_ops"] = channel_ops if channel_ops else None
         return result
 
-    # --- INPUT HANDLERS ---
     async def handle_input(self, generic_state: dict, user_input: str, ctx, tools) -> Dict[str, Any]:
         game_data = CaissonState(**generic_state.get('metadata', {}))
         channel_id = ctx.trigger_data.get('channel_id')
@@ -443,7 +437,6 @@ class FosterProtocol:
                 new_name = parts[1][:20]
                 my_drone.name = new_name
                 
-                # Dynamic Identity + Static Base
                 base_text = self._load_base_prompt()
                 identity_block = prompts.get_drone_identity_block(my_drone.id, game_data.players[user_id].role, my_drone.role == "saboteur")
                 identity_patch = f"\n\nUPDATE: You have been named **{new_name}**. Use this name."

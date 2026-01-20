@@ -1,5 +1,5 @@
 from typing import List, Dict, Optional, Any, Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from .board import GameConfig
 
 # --- GAME SPECIFIC STATE ---
@@ -16,14 +16,14 @@ class PlayerState(BaseModel):
     nanny_channel_id: Optional[str] = None
 
 class DroneState(BaseModel):
-    id: str                  
+    id: str                   
     name: Optional[str] = None
     foster_id: Optional[str] = None
     role: Literal["loyal", "saboteur"] = "loyal"
     model_version: str = "gemini-2.5-flash" 
     
     location_id: str = "stasis_bay"
-    battery: int = 100       
+    battery: int = 100        
     last_battery_drop: int = 0
     
     status: Literal["active", "destroyed"] = "active"
@@ -36,7 +36,7 @@ class DroneState(BaseModel):
     daily_memory: List[str] = Field(default_factory=list)
 
 class CaissonState(BaseModel):
-    version: str = "2.36"
+    version: str = "2.42"
     oxygen: int = GameConfig.INITIAL_OXYGEN
     last_oxygen_drop: int = 0
     emergency_power: bool = False 
@@ -53,10 +53,15 @@ class CaissonState(BaseModel):
     cycle: int = 1
     phase: Literal["day", "night"] = "night"
     
-    bots: Dict[str, DroneState] = Field(default_factory=dict)
+    # RENAMED FROM 'bots' -> 'drones'
+    drones: Dict[str, DroneState] = Field(default_factory=dict)
+    
     players: Dict[str, PlayerState] = Field(default_factory=dict)
     station: ChargingStation = Field(default_factory=ChargingStation)
     daily_logs: List[str] = Field(default_factory=list)
+
+    # Pydantic V2 Config
+    model_config = ConfigDict(populate_by_name=True)
 
     def consume_oxygen(self, amount: int):
         self.oxygen = max(0, self.oxygen - amount)

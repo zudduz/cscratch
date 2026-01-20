@@ -1,5 +1,6 @@
 import os
 import sys
+import re
 
 # Ensure we can import from the local modules
 sys.path.append(os.getcwd())
@@ -39,20 +40,45 @@ def compile():
     }
 
     try:
-        # Perform Search & Replace
-        # We use replace() instead of format() so we don't have to escape
-        # the thousands of JSON braces { } in the file.
         final_text = template
+        used_keys = set()
+
+        # 1. Perform Replacement & Track Usage
         for key, value in context.items():
-            if key not in final_text:
-                print(f"⚠️ Warning: Variable {key} defined but not found in template.")
-            final_text = final_text.replace(key, value)
+            if key in final_text:
+                final_text = final_text.replace(key, value)
+                used_keys.add(key)
         
+        # 2. VALIDATION: Check for Unused Config Keys
+        # (Variables defined in Python but missing in Markdown)
+        unused_keys = set(context.keys()) - used_keys
+        if unused_keys:
+            print(f"❌ Build Failed: The following config variables were NOT found in the template:")
+            for k in unused_keys:
+                print(f"   - {k}")
+            print("   (Did you remove them from the markdown? If so, remove them from compile_prompts.py)")
+            sys.exit(1)
+
+        # 3. VALIDATION: Check for Leftover Placeholders
+        # (Variables written in Markdown but missing in Python)
+        # Regex looks for {UPPERCASE_KEYS} that survived replacement.
+        # It ignores {"json": "keys"} because they start with lowercase or quotes.
+        leftover_pattern = r"\{[A-Z][A-Z0-9_]+\}" 
+        leftovers = re.findall(leftover_pattern, final_text)
+        
+        if leftovers:
+            print(f"❌ Build Failed: Found potential unreplaced variables in the output:")
+            for m in set(leftovers):
+                print(f"   - {m}")
+            print("   (Check for typos in system_prompt_template.md or missing keys in compile_prompts.py)")
+            sys.exit(1)
+
+        # 4. Success - Write Output
         with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
             f.write(final_text)
             
         print(f"✅ Generated: {OUTPUT_PATH}")
-        print(f"   - Injected {len(context)} constants.")
+        print(f"   - Verified {len(context)} variables.")
 
     except Exception as e:
         print(f"❌ Error during compilation: {e}")

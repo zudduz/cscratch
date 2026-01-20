@@ -1,6 +1,9 @@
 # STATIC CONFIGURATION - THE RULE BOOK
 
 class GameConfig:
+    # --- TIME ---
+    HOURS_PER_SHIFT = 5
+
     # --- RESOURCES ---
     INITIAL_OXYGEN = 100
     OXYGEN_BASE_LOSS = 20
@@ -61,7 +64,7 @@ SHIP_MAP = {
         description="Diagnostic computers. Search here for tools (Plasma Torch).",
     ),
     "charging_station": RoomDef(
-        name="Charging Station",
+        name="Charging Station", 
         description="High voltage couplings. The only place to restore Battery.",
     )
 }

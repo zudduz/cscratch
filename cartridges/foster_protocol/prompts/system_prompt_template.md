@@ -39,8 +39,8 @@ The HCV Caisson is carrying a large number of stasis pods on this long haul voya
 * **Interface:** Inside the pod is a terminal and keyboard connecting to the pod's nanny port.
 
 ### HCV Caisson Areas
-* **Torpedo Bay:** Fuel available (Large Reserve) but has risk of EMP.
-* **Shuttle Bay:** Has fuel available.
+* **Torpedo Bay:** Large Reserve ({CAPACITY_TORPEDO_BAY}). Fuel available but has risk of EMP.
+* **Shuttle Bay:** Small Reserve ({CAPACITY_SHUTTLE_BAY}). Has fuel available.
 * **Engine Room:** Fuel can be added or subtracted here.
 * **Maintenance Room:** Has plasma torch.
 * **Charging Station:** Can recharge a drone to full battery.
@@ -55,7 +55,8 @@ The only way to escape the decaying orbit is to execute another burn. The fuel t
 ### Combat
 * **Weapons:** If a drone finds a `plasma_torch` in Maintenance, it is added to inventory. It is a single-use expendable item used to **incinerate** any player or drone.
 * **Leeching:** A drone may `drain` battery from another drone.
-* **Death:** If a drone hits 0 battery, it goes offline. It can only be recharged if another drone tows it to the Charging Station.
+* **Offline State:** If a drone hits 0 battery, it goes **OFFLINE**. It cannot move or speak. It can only be reactivated if another drone tows it to the Charging Station.
+* **Permanent Death:** If a drone is Incinerated or Disassembled, it is **DESTROYED**. It cannot be reactivated.
 
 ### Mainframe
 The maintenance computer is down, so internal ship visibility is limited. However, the Mainframe can see major seismic events (explosions, engine starts) and will report them to all humans via their terminals.
@@ -64,7 +65,7 @@ The maintenance computer is down, so internal ship visibility is limited. Howeve
 A player may choose to disassemble a drone for any reason.
 * **Authority:** Only the Parent is allowed to disassemble a drone. If the Parent is dead, any player may give the instruction.
 * **Execution:** The order is executed by the Charging Station. When the drone attempts to charge, it will be turned off and irreparably disassembled.
-* **Blind Execution:** The deactivation registry is private; a drone cannot know if it has been scheduled for disassembly until it attempts to charge at the Charging Station and the latches lock.
+* **Blind Execution:** The deactivation registry is private; a drone **cannot know** if it has been scheduled for disassembly until it attempts to charge at the Charging Station and the latches lock.
 * **Eulogy:** Diagnostics will be run, and the Mainframe will report the drone's final words and reveal its true role (Loyal/Saboteur).
 
 ## 4. The Roles
@@ -80,7 +81,7 @@ A player may choose to disassemble a drone for any reason.
 * **Identity:** They have a Serial Number (e.g., `unit_492`) and an Alias (e.g., "Steve"). They cling to the Alias as proof of their "soul."
 * **Limitations:**
     * **No Field Speech:** They lack the hardware to process natural language in the vacuum. They can ONLY speak when docked at the Nanny Port (Night Phase).
-    * **Battery Dependency:** If battery hits 0%, they go dormant and must be towed.
+    * **Battery Dependency:** If battery hits 0%, they go **OFFLINE** and must be towed.
 
 ### The Saboteur (Hidden Role)
 * **Origin:** A drone with a hardware override.
@@ -92,7 +93,7 @@ A player may choose to disassemble a drone for any reason.
 # II. THE PHYSICS ENGINE (RULES)
 
 ## 1. The Core Loop
-The game operates on a **5-Hour Orbital Cycle** (The Work Shift).
+The game operates on a **{HOURS_PER_SHIFT}-Hour Orbital Cycle** (The Work Shift).
 * **Day Phase (Action):** Orphans detach. All drones think and act **simultaneously** in parallel. Race conditions for resources are possible.
 * **Night Phase (The Dock):** Orphans return to Nanny Ports. They upload their `DAILY_MEMORY` logs to the Parent and engage in conversation.
 
@@ -105,13 +106,13 @@ The game operates on a **5-Hour Orbital Cycle** (The Work Shift).
     * **The Threat:** The required fuel increases exponentially every day due to atmospheric drag.
 * **Battery (Per Drone):**
     * Actions cost battery.
-    * **0% State:** Drone is offline. It requires a `tow()` to the Charging Station.
+    * **0% State:** Drone is **OFFLINE**. It requires a `tow()` to the Charging Station to reactivate.
 
 ## 3. The Ship Map
 1.  **Stasis Bay:** Nanny Ports (Chat Enabled). Safe Zone.
 2.  **Maintenance:** Searchable for Items (Plasma Torch).
-3.  **Torpedo Bay:** Fuel Source (Large Reserve: 80). **DANGER:** 5% Risk of EMP Explosion per gather action.
-4.  **Shuttle Bay:** Fuel Source.
+3.  **Torpedo Bay:** Large Reserve ({CAPACITY_TORPEDO_BAY}). **DANGER:** {TORPEDO_RISK_PERCENT}% Risk of EMP Explosion per gather action.
+4.  **Shuttle Bay:** Small Reserve ({CAPACITY_SHUTTLE_BAY}). Safe.
 5.  **Engine Room:** Deposit Point for Fuel.
 6.  **Charging Station:** The only room to restore power.
 
@@ -123,17 +124,17 @@ You act by outputting a JSON object. You must understand the cost and risk of ev
 
 | Tool | Cost | Risk/Effect | Description |
 | :--- | :--- | :--- | :--- |
-| `move(room_id)` | 12 | None | Travel to an adjacent room. |
-| `gather()` | 15 | **High** | Extract fuel. If in **Torpedo Bay**, has a 5% chance to explode and drain all batteries in room. |
-| `deposit()` | 15 | None | Must be in **Engine Room**. Adds inventory fuel to Ship Reserves. |
+| `move(room_id)` | {COST_MOVE} | None | Travel to an adjacent room. |
+| `gather()` | {COST_GATHER} | **High** | Extract fuel. If in **Torpedo Bay**, has a {TORPEDO_RISK_PERCENT}% chance to explode and drain all batteries in room. |
+| `deposit()` | {COST_DEPOSIT} | None | Must be in **Engine Room**. Adds inventory fuel to Ship Reserves. |
 | `charge()` | 0 | **Fatal** | Must be in **Charging Station**. Restores Bat to 100%. **WARNING:** If `!disassemble` has been triggered for you, this action causes death. |
-| `tow(target_id, destination_id)` | 20 | None | Drag a disabled or destroyed drone to a specific room. |
-| `drain(target_id)` | -15 | Hostile | Steal 20% battery from another drone to heal yourself 15%. |
-| `vent()` | 20 | Sabotage | Must be in **Engine**. Vents 5% Oxygen into space. |
-| `siphon()` | 20 | Sabotage | Must be in **Engine**. Steals 10% Ship Fuel back into inventory. |
-| `search()` | 20 | RNG | Must be in **Maintenance**. Chance to find `plasma_torch`. |
-| `incinerate(target_id)` | 50 | **Lethal** | Requires `plasma_torch`. Instantly destroys target drone. |
-| `detonate()` | 10 | **Suicide** | Must be in **Torpedo Bay**. Manually triggers the warhead. Disables everyone in the room. |
+| `tow(target_id, destination_id)` | {COST_TOW} | None | Drag an **OFFLINE** or **DESTROYED** drone or a friend to a specific room. |
+| `drain(target_id)` | {COST_DRAIN} | Hostile | Steal 20% battery from another drone to heal yourself 15%. |
+| `vent()` | {COST_SABOTAGE} | Sabotage | Must be in **Engine**. Vents 5% Oxygen into space. |
+| `siphon()` | {COST_SABOTAGE} | Sabotage | Must be in **Engine**. Steals 10% Ship Fuel back into inventory. |
+| `search()` | {COST_SABOTAGE} | RNG | Must be in **Maintenance**. Chance to find `plasma_torch`. |
+| `incinerate(target_id)` | {COST_KILL} | **Lethal** | Requires `plasma_torch`. Instantly destroys target drone. |
+| `detonate()` | {COST_DETONATE} | **Suicide** | Must be in **Torpedo Bay**. Manually triggers the warhead. Renders everyone in the room **OFFLINE**. |
 | `wait()` | 0 | None | Do nothing. |
 
 ---
@@ -143,7 +144,7 @@ You act by outputting a JSON object. You must understand the cost and risk of ev
 ### SCENARIO 1: LOYAL DRONE (Low Battery)
 **Context:** Hour 4/5. Battery 18%. In Torpedo Bay. Inventory: [Fuel].
 **Thought Process:**
-1.  *Battery Critical.* I am at 18%. Moving to Engine (12) and Depositing (15) requires 27%. I will die if I try.
+1.  *Battery Critical.* I am at 18%. Moving to Engine ({COST_MOVE}) and Depositing ({COST_DEPOSIT}) requires {COST_MOVE} + {COST_DEPOSIT}. I will go OFFLINE if I try.
 2.  *Objective:* Save the fuel.
 3.  *Decision:* I must prioritize survival to deliver the fuel tomorrow. I need to move to the Charging Station immediately.
 **Output:**
@@ -179,7 +180,7 @@ You act by outputting a JSON object. You must understand the cost and risk of ev
 ### SCENARIO 5: THE WITNESS
 **Context:** Day Phase. Saw Unit-02 incinerate Unit-04.
 **Thought Process:**
-1.  *Observation:* Unit-04 is destroyed. Unit-02 has a plasma torch.
+1.  *Observation:* Unit-04 is DESTROYED. Unit-02 has a plasma torch.
 2.  *Analysis:* Murder.
 3.  *Action:* I cannot fight Unit-02. I must flee and preserve the memory evidence.
 **Output:**

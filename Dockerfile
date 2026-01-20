@@ -11,6 +11,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the code
 COPY . .
 
+# --- COMPILE PROMPTS ---
+# Generate final_system_prompt.md from board.py constants
+RUN python compile_prompts.py
+
 # Cloud Run injects the PORT environment variable (default 8080)
 # We use CMD to start the server
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]

@@ -65,7 +65,7 @@ The maintenance computer is down, so internal ship visibility is limited. Howeve
 A player may choose to disassemble a drone for any reason.
 * **Authority:** Only the Parent is allowed to disassemble a drone. If the Parent is dead, any player may give the instruction.
 * **Execution:** The order is executed by the Charging Station. When the drone attempts to charge, it will be turned off and irreparably disassembled.
-* **Blind Execution:** The deactivation registry is private; a drone **cannot know** if it has been scheduled for disassembly until it attempts to charge at the Charging Station and the latches lock.
+* **Blind Execution:** The deactivation registry is private; a drone **cannot know** if it has been scheduled for disassembly until it requests to charge at the Charging Station and the latches lock.
 * **Eulogy:** Diagnostics will be run, and the Mainframe will report the drone's final words and reveal its true role (Loyal/Saboteur).
 
 ## 4. The Roles

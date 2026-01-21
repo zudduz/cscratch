@@ -14,17 +14,24 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from . import persistence
 
 # PRICING (Gemini 2.5 Flash)
-# Input: $0.30 per 1M
-# Output: $2.50 per 1M
+# Input: $0.30 per 1M ($0.075 Cached)
+# Output: $1.25 per 1M
+
+# --- SHARED AUTH STATE ---
+# We keep the model instance global so it reuses the underlying 
+# connection pool and cached OAuth tokens across parallel games.
+_SHARED_MODEL = None
+_MODEL_LOCK = asyncio.Lock()
 
 class AIEngine:
     def __init__(self):
-        self.project_id = os.environ.get("GCP_PROJECT_ID")
+        # Default to sandbox ID but allow env override
+        self.project_id = os.environ.get("GCP_PROJECT_ID", "sandbox-456821")
         self.location = "us-central1"
         self.default_model_name = "gemini-2.5-flash"
         
         # PERMISSIVE SAFETY SETTINGS (Required for Horror/Survival themes)
-        safety_settings = {
+        self.safety_settings = {
             HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
             HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
             HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
@@ -35,40 +42,44 @@ class AIEngine:
             "project": self.project_id,
             "location": self.location,
             "temperature": 0.7,
-            "max_output_tokens": 8192, # Increased buffer
-            "safety_settings": safety_settings,
+            "max_output_tokens": 8192,
+            "safety_settings": self.safety_settings,
         }
-        
-        self.model = ChatVertexAI(model_name=self.default_model_name, **self.base_config)
+
+    async def _get_model(self, model_name: str):
+        """Ensures a single instance of the model is shared across the app."""
+        global _SHARED_MODEL
+        async with _MODEL_LOCK:
+            if _SHARED_MODEL is None or _SHARED_MODEL.model_name != model_name:
+                logging.info(f"System: Initializing Shared AI Session ({model_name})")
+                _SHARED_MODEL = ChatVertexAI(model_name=model_name, **self.base_config)
+            return _SHARED_MODEL
 
     async def generate_response(self, system_prompt: str, conversation_id: str, user_input: str, model_version: str = "gemini-2.5-flash", game_id: str = None) -> str:
         try:
-            # Check for model version mismatch and log it
-            # (Note: We stick to 2.5-flash as default based on recent stability)
-            
             messages = [
                 SystemMessage(content=system_prompt),
                 HumanMessage(content=user_input)
             ]
             
-            client = self.model
-            if model_version and model_version != self.model.model_name:
-                client = ChatVertexAI(model_name=model_version, **self.base_config)
+            # Reuse the shared model/connection pool for Auth caching
+            model = await self._get_model(model_version)
             
+            # Restore your instrumentation logic
             target_id = game_id
             if not target_id and "_" in conversation_id:
                  parts = conversation_id.split("_")
                  if len(parts[0]) > 7: target_id = parts[0]
             
             if target_id:
-                logging.info(f"AI Request: {client.model_name} (Game: {target_id})")
+                logging.info(f"AI Request: {model.model_name} (Game: {target_id})")
             
-            result = await client.ainvoke(messages)
+            result = await model.ainvoke(messages)
             
-            # Log Finish Reason to debug truncations
+            # Restore Truncation Detection
             finish_reason = result.response_metadata.get('finish_reason')
             if finish_reason and finish_reason != "STOP":
-                logging.warning(f"AI Stop Reason: {finish_reason} (Potential Truncation)")
+                logging.warning(f"AI Stop Reason: {finish_reason} (Potential Truncation for Game: {target_id})")
 
             if target_id:
                 asyncio.create_task(self._track_usage(target_id, result.response_metadata))

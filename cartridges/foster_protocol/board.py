@@ -2,7 +2,7 @@
 
 class GameConfig:
     # --- TIME ---
-    HOURS_PER_SHIFT = 8  # INCREASED from 5
+    HOURS_PER_SHIFT = 8  # Keeping the 8-hour shift
 
     # --- RESOURCES ---
     INITIAL_OXYGEN = 100
@@ -14,7 +14,7 @@ class GameConfig:
     FUEL_PER_CANISTER = 10
     
     # --- ROOM CAPACITIES ---
-    CAPACITY_SHUTTLE_BAY = 16  # REDUCED from 50 (Scarcity Mode)
+    CAPACITY_SHUTTLE_BAY = 50  # REVERTED: Back to 5 canisters (Safe Zone)
     CAPACITY_TORPEDO_BAY = 80
     
     # --- RISKS ---

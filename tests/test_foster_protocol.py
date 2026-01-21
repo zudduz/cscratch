@@ -49,26 +49,22 @@ async def test_oxygen_depletion_math(cartridge, mock_ctx, mock_tools):
     game_data = CaissonState(initial_crew_size=5, oxygen=100)
     for i in range(5):
         game_data.players[f"p{i}"] = PlayerState(is_alive=True)
-    with patch("asyncio.sleep", AsyncMock()), \
-         patch.object(cartridge, "run_single_drone_turn", AsyncMock(return_value={
+    with patch("asyncio.sleep", AsyncMock()),          patch.object(cartridge, "run_single_drone_turn", AsyncMock(return_value={
              "drone": MagicMock(), "action": {}, "result": MagicMock(message="ok", visibility="private"), "thought": "x"
          })):
         result_state = await cartridge.execute_day_simulation(game_data, mock_ctx, mock_tools)
     new_state = CaissonState(**result_state)
-    # Base Loss is 20 per day (regardless of shift length)
     assert new_state.oxygen == 80
 
 @pytest.mark.asyncio
 async def test_lifeboat_dilemma(cartridge, mock_ctx, mock_tools):
     game_data = CaissonState(initial_crew_size=5, oxygen=100)
     game_data.players["p1"] = PlayerState(is_alive=True) 
-    with patch("asyncio.sleep", AsyncMock()), \
-         patch.object(cartridge, "run_single_drone_turn", AsyncMock(return_value={
+    with patch("asyncio.sleep", AsyncMock()),          patch.object(cartridge, "run_single_drone_turn", AsyncMock(return_value={
              "drone": MagicMock(), "action": {}, "result": MagicMock(message="ok", visibility="private"), "thought": "x"
          })):
         result_state = await cartridge.execute_day_simulation(game_data, mock_ctx, mock_tools)
     new_state = CaissonState(**result_state)
-    # 20 * (1/5) = 4 loss
     assert new_state.oxygen == 96 
 
 @pytest.mark.asyncio
@@ -104,8 +100,8 @@ async def test_gather_success(cartridge, mock_ctx, mock_tools):
     assert res["result"].success is True
     assert "fuel_canister" in drone.inventory
     
-    # REBALANCE FIX:
-    # Initial Capacity: 16 (from board.py)
+    # REVERTED MATH:
+    # Initial Capacity: 50 (from board.py)
     # Gather Amount: 10
-    # Remaining: 6
-    assert game_data.shuttle_bay_fuel == 6
+    # Remaining: 40
+    assert game_data.shuttle_bay_fuel == 40 

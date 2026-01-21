@@ -22,7 +22,7 @@ class FosterProtocol:
         default_state = CaissonState()
         self.meta = {
             "name": "The Foster Protocol",
-            "version": "2.44",
+            "version": "2.45",
             **default_state.model_dump()
         }
         if not self._verify_prompt_exists():
@@ -73,7 +73,12 @@ class FosterProtocol:
                 if drone_id not in game_data.drones: break
             
             identity_block = prompts.get_drone_identity_block(drone_id, u_name, is_saboteur)
-            system_prompt = identity_block + "\n\n" + base_text
+            
+            # --- CACHING OPTIMIZATION ---
+            # We put the massive BASE_TEXT first.
+            # Then we append the unique IDENTITY_BLOCK.
+            # This allows the LLM provider to cache the prefix (Base Text).
+            system_prompt = base_text + "\n\n" + "--- IDENTITY OVERRIDE ---\n" + identity_block
             
             game_data.drones[drone_id] = DroneState(
                 id=drone_id, foster_id=u_id, role=role, 
@@ -437,9 +442,13 @@ class FosterProtocol:
                 
                 base_text = self._load_base_prompt()
                 identity_block = prompts.get_drone_identity_block(my_drone.id, game_data.players[user_id].role, my_drone.role == "saboteur")
-                identity_patch = f"\n\nUPDATE: You have been named **{new_name}**. Use this name."
                 
-                my_drone.system_prompt = identity_block + identity_patch + "\n\n" + base_text
+                # --- CACHING OPTIMIZATION ---
+                # Rebuild using Rules First
+                identity_patch = f"\n\nUPDATE: You have been named **{new_name}**. Use this name."
+                final_identity = identity_block + identity_patch
+                
+                my_drone.system_prompt = base_text + "\n\n" + "--- IDENTITY OVERRIDE ---\n" + final_identity
                 
                 await ctx.reply(f"[ACCEPTED] Identity Updated. Hello, **{new_name}**.")
                 return {f"drones.{my_drone.id}.name": new_name, f"drones.{my_drone.id}.system_prompt": my_drone.system_prompt}

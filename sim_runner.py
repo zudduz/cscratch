@@ -5,6 +5,8 @@ import random
 import time
 import warnings
 import urllib3
+import subprocess
+import sys
 
 # --- NETWORK STABILIZATION ---
 adapter = urllib3.PoolManager(maxsize=50) 
@@ -17,9 +19,9 @@ from app.engine_context import EngineContext
 from app.ai_engine import AIEngine
 
 # CONFIG
-NUM_GAMES = 10
+NUM_GAMES = 3  # Keeping your Debug setting (3 games)
 MAX_DAYS = 5
-MAX_CONCURRENT_GAMES = 5 
+MAX_CONCURRENT_GAMES = 1 # Sequential for clean logs
 OUTPUT_FILE = "sim_results.json"
 
 class CostTracker:
@@ -42,7 +44,6 @@ async def tracked_generate_response(system_prompt, conversation_id, user_input, 
         from langchain_core.messages import HumanMessage, SystemMessage
         messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_input)]
         
-        # --- SHARED MODEL ACCESS ---
         model = await real_ai._get_model(model_version)
         
         for attempt in range(3):
@@ -75,6 +76,8 @@ class SimContext:
     
     async def send(self, channel, message):
         self.logs.append(f"[{channel}] {message}")
+        if channel in ["black-box", "aux-comm"]:
+            print(f"[{self.game_id}] {message}")
 
     async def reply(self, message):
         pass
@@ -109,10 +112,10 @@ async def run_single_game(game_idx, semaphore):
         fail_reason = "Time Limit"
         
         for day in range(1, MAX_DAYS + 1):
-            for p in game_data.players.values(): p.is_sleeping = True
-            await cartridge.execute_day_simulation(game_data, ctx, mock_tools)
+            print(f"--- Day {day} Start ---")
+            for p in game_data.players.values(): p.is_sleeping = False
             
-            # --- REMOVED SUFFOCATION CHECK ---
+            await cartridge.execute_day_simulation(game_data, ctx, mock_tools)
             
             if any("[WIN]" in log for log in ctx.logs):
                 victory = True
@@ -134,7 +137,19 @@ async def run_single_game(game_idx, semaphore):
         }
 
 async def main():
-    print(f"🚀 INITIALIZING STAGGERED SIMULATION ({NUM_GAMES} Games)...")
+    # --- AUTO-COMPILE PROMPTS ---
+    print("🔨 COMPILING PROMPTS...")
+    try:
+        # Calls the python script in a subprocess to ensure clean execution
+        subprocess.run([sys.executable, "compile_prompts.py"], check=True)
+        print("✅ Compilation Complete.")
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Compilation Failed: {e}")
+        return # Stop if compilation fails
+    except FileNotFoundError:
+        print("⚠️ compile_prompts.py not found. Using existing prompt files.")
+
+    print(f"🚀 INITIALIZING DEBUG SIMULATION ({NUM_GAMES} Games, Sequential)...")
     print("-------------------------------------------------------")
     
     start_time = time.time()
@@ -142,10 +157,10 @@ async def main():
     
     tasks = []
     for i in range(1, NUM_GAMES + 1):
-        tasks.append(asyncio.create_task(run_single_game(i, semaphore)))
-        await asyncio.sleep(1)
+        res = await run_single_game(i, semaphore)
+        tasks.append(res)
         
-    results = await asyncio.gather(*tasks)
+    results = tasks
     
     duration = time.time() - start_time
     wins = sum(1 for r in results if r['victory'])

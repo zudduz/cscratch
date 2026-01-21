@@ -2,7 +2,7 @@
 
 class GameConfig:
     # --- TIME ---
-    HOURS_PER_SHIFT = 8  # Keeping the 8-hour shift
+    HOURS_PER_SHIFT = 8
 
     # --- RESOURCES ---
     INITIAL_OXYGEN = 100
@@ -14,11 +14,11 @@ class GameConfig:
     FUEL_PER_CANISTER = 10
     
     # --- ROOM CAPACITIES ---
-    CAPACITY_SHUTTLE_BAY = 50  # REVERTED: Back to 5 canisters (Safe Zone)
+    CAPACITY_SHUTTLE_BAY = 50
     CAPACITY_TORPEDO_BAY = 80
     
     # --- RISKS ---
-    TORPEDO_ACCIDENT_CHANCE = 0.05  # 5% chance per gather attempt
+    TORPEDO_ACCIDENT_CHANCE = 0.05
     
     # --- ORBITAL MECHANICS ---
     FUEL_REQ_BASE = 50
@@ -26,15 +26,17 @@ class GameConfig:
     MAX_POSSIBLE_FUEL_REQ = 100 
 
 class ActionCosts:
-    MOVE = 12
-    GATHER = 15
-    DEPOSIT = 15
+    # Tuned for 8-hour shifts
+    WAIT = 6      # Low idle cost (100 bat = ~16 hours)
+    MOVE = 8      
+    GATHER = 10   
+    DEPOSIT = 10  
     CHARGE = 0    
-    TOW = 20      
-    DRAIN = -15   
-    SABOTAGE = 20 
-    KILL = 50
-    DETONATE = 10 # Cost to trigger the warhead manually
+    TOW = 20      # Heavy action (User requested 20)
+    DRAIN = -15   # Negative cost = Battery GAIN (Vampire)
+    SABOTAGE = 12 
+    KILL = 30     
+    DETONATE = 10
 
 class RoomDef:
     def __init__(self, name: str, description: str, can_nanny: bool = False):

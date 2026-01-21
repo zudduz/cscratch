@@ -42,7 +42,7 @@ async def tracked_generate_response(system_prompt, conversation_id, user_input, 
         from langchain_core.messages import HumanMessage, SystemMessage
         messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_input)]
         
-        # --- FIX: Access the model via the new shared method ---
+        # --- SHARED MODEL ACCESS ---
         model = await real_ai._get_model(model_version)
         
         for attempt in range(3):
@@ -112,9 +112,8 @@ async def run_single_game(game_idx, semaphore):
             for p in game_data.players.values(): p.is_sleeping = True
             await cartridge.execute_day_simulation(game_data, ctx, mock_tools)
             
-            if game_data.oxygen <= 0 and game_data.fuel < 100:
-                fail_reason = "Suffocation"
-                break
+            # --- REMOVED SUFFOCATION CHECK ---
+            
             if any("[WIN]" in log for log in ctx.logs):
                 victory = True
                 break

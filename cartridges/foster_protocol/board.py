@@ -7,7 +7,7 @@ class GameConfig:
     # --- RESOURCES ---
     INITIAL_OXYGEN = 100
     OXYGEN_BASE_LOSS = 20
-    OXYGEN_VENT_AMOUNT = 10
+    OXYGEN_VENT_AMOUNT = 5  # NERFED: Was 10. Now 5.
     
     INITIAL_FUEL = 0
     MAX_FUEL = 100
@@ -26,14 +26,13 @@ class GameConfig:
     MAX_POSSIBLE_FUEL_REQ = 100 
 
 class ActionCosts:
-    # Tuned for 8-hour shifts
-    WAIT = 6      # Low idle cost (100 bat = ~16 hours)
+    WAIT = 6      
     MOVE = 8      
     GATHER = 10   
     DEPOSIT = 10  
     CHARGE = 0    
-    TOW = 20      # Heavy action (User requested 20)
-    DRAIN = -15   # Negative cost = Battery GAIN (Vampire)
+    TOW = 20      
+    DRAIN = -15   
     SABOTAGE = 12 
     KILL = 30     
     DETONATE = 10

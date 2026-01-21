@@ -29,7 +29,7 @@ class DroneState(BaseModel):
     status: Literal["active", "destroyed"] = "active"
     system_prompt: str = "You are a helpful drone."
     
-    long_term_memory: str = "I have just come online. I must find my Foster Parent."
+    long_term_memory: str = "System Online. Mission: Maintain Ship. Await Orders."
     night_chat_log: List[str] = Field(default_factory=list)
     
     inventory: List[str] = Field(default_factory=list)

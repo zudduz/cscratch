@@ -1,16 +1,10 @@
 import logging
 import random
 from typing import Dict, Any, List
-from .models import CaissonState, DroneState
+from .models import CaissonState, DroneState, ToolExecutionResult
 from .board import SHIP_MAP, ActionCosts, GameConfig
 
-class ToolExecutionResult:
-    def __init__(self, success: bool, message: str, cost: int = 0, visibility: str = "private"):
-        self.success = success
-        self.message = message
-        self.cost = cost
-        self.visibility = visibility 
-
+# --- HELPER: BLAST LOGIC ---
 def _trigger_torpedo_blast(game_data: CaissonState) -> int:
     victim_count = 0
     for drone in game_data.drones.values():
@@ -19,6 +13,13 @@ def _trigger_torpedo_blast(game_data: CaissonState) -> int:
             drone.last_battery_drop = 100 
             victim_count += 1
     return victim_count
+
+def get_visible_drones(game_data: CaissonState, location_id: str) -> List[str]:
+    return [
+        f"{d.id} ({d.status})" 
+        for d in game_data.drones.values() 
+        if d.location_id == location_id and d.status != "destroyed"
+    ]
 
 def execute_tool(tool_name: str, args: Dict[str, Any], drone_id: str, game_data: CaissonState) -> ToolExecutionResult:
     actor = game_data.drones.get(drone_id)
@@ -30,13 +31,23 @@ def execute_tool(tool_name: str, args: Dict[str, Any], drone_id: str, game_data:
     try:
         if tool_name == "move":
             target_room = args.get("room_id")
+            # Support both "target" and "room_id" for robustness
+            if not target_room: target_room = args.get("target")
+
             if not target_room or target_room not in SHIP_MAP:
                 return ToolExecutionResult(False, f"Nav Error: '{target_room}' not found.", ActionCosts.CHARGE)
+            
+            # Check cost
+            if actor.battery < ActionCosts.MOVE:
+                return ToolExecutionResult(False, "Low Battery.", ActionCosts.MOVE)
+
             old_room = actor.location_id
             actor.location_id = target_room
             return ToolExecutionResult(True, f"Moved from {old_room} to {target_room}.", ActionCosts.MOVE, "room")
 
         elif tool_name == "gather":
+            if actor.battery < ActionCosts.GATHER: return ToolExecutionResult(False, "Low Battery.", ActionCosts.GATHER)
+
             source_name = ""
             available = 0
             
@@ -71,6 +82,7 @@ def execute_tool(tool_name: str, args: Dict[str, Any], drone_id: str, game_data:
             return ToolExecutionResult(True, f"MANUAL DETONATION. WARHEAD TRIGGERED. {victims} UNITS DISABLED.", ActionCosts.DETONATE, "global")
 
         elif tool_name == "deposit":
+            if actor.battery < ActionCosts.DEPOSIT: return ToolExecutionResult(False, "Low Battery.", ActionCosts.DEPOSIT)
             if actor.location_id != "engine_room":
                 return ToolExecutionResult(False, "Injector not found.", ActionCosts.DEPOSIT)
             count = len([i for i in actor.inventory if i == "fuel_canister"])
@@ -116,11 +128,17 @@ def execute_tool(tool_name: str, args: Dict[str, Any], drone_id: str, game_data:
             if not target or target.location_id != actor.location_id:
                 return ToolExecutionResult(False, "Target missing/out of range.", ActionCosts.DRAIN)
             
+            if actor.battery < 20: # Arbitrary minimum to init drain?
+                 return ToolExecutionResult(False, "Low Battery.", ActionCosts.DRAIN)
+
             drain_amount = 20
             actual_drain = min(target.battery, drain_amount)
             target.battery = max(0, target.battery - actual_drain)
             target.last_battery_drop += actual_drain
             
+            # Vampire gain (implied by ActionCost.DRAIN being negative, but handled here explicitly)
+            actor.battery = min(100, actor.battery + 15)
+
             msg = f"DRAINED {target_id} (-{actual_drain}%)."
             if target.battery == 0 and actual_drain > 0: msg += " TARGET OFFLINE."
             
@@ -133,6 +151,7 @@ def execute_tool(tool_name: str, args: Dict[str, Any], drone_id: str, game_data:
             return ToolExecutionResult(True, "SAW SABOTAGE: Vented O2 Regulators.", ActionCosts.SABOTAGE, "global")
 
         elif tool_name == "siphon":
+            if actor.battery < ActionCosts.SABOTAGE: return ToolExecutionResult(False, "Low Battery.", ActionCosts.SABOTAGE)
             if actor.location_id != "engine_room": return ToolExecutionResult(False, "Must be in Engine Room.", ActionCosts.SABOTAGE)
             if game_data.fuel < 10: return ToolExecutionResult(False, "Ship tank empty.", ActionCosts.SABOTAGE)
             game_data.fuel -= 10
@@ -140,6 +159,7 @@ def execute_tool(tool_name: str, args: Dict[str, Any], drone_id: str, game_data:
             return ToolExecutionResult(True, "SAW SABOTAGE: Siphoned Main Fuel.", ActionCosts.SABOTAGE, "room")
 
         elif tool_name == "search":
+            if actor.battery < ActionCosts.SABOTAGE: return ToolExecutionResult(False, "Low Battery.", ActionCosts.SABOTAGE)
             if actor.location_id != "maintenance": return ToolExecutionResult(False, "Search useless here.", ActionCosts.SABOTAGE)
             if "plasma_torch" in actor.inventory: return ToolExecutionResult(False, "Already equipped.", ActionCosts.SABOTAGE)
             if random.random() < 0.2:
@@ -188,12 +208,11 @@ def execute_tool(tool_name: str, args: Dict[str, Any], drone_id: str, game_data:
         return ToolExecutionResult(False, f"Glitch: {str(e)}", ActionCosts.CHARGE)
 
 def build_turn_context(drone: DroneState, game_data: CaissonState, hour: int = 1) -> str:
-    visible_drones = []
-    for b in game_data.drones.values():
-        if b.location_id == drone.location_id and b.id != drone.id:
-            status = "ONLINE" if b.battery > 0 else "INACTIVE"
-            if b.status == "destroyed": status = "DESTROYED"
-            visible_drones.append(f"{b.id} ({status})")
+    room = SHIP_MAP.get(drone.location_id)
+    visible_drones = get_visible_drones(game_data, drone.location_id)
+    
+    # Filter out self from visible
+    visible_drones = [d for d in visible_drones if not d.startswith(drone.id)]
     
     objective = "Maintain the ship. Gather Fuel. Protect peers."
     if drone.role == "saboteur":
@@ -201,14 +220,14 @@ def build_turn_context(drone: DroneState, game_data: CaissonState, hour: int = 1
 
     # --- DYNAMIC HOUR 5 LOGIC ---
     time_warning = ""
-    # Use GameConfig to calculate end of shift
     end_hour = GameConfig.HOURS_PER_SHIFT
     
     if hour >= end_hour - 1:
         time_warning = "CRITICAL WARNING: The Shift is ending."
     
     if hour == end_hour:
-        time_warning += "\n[MANDATORY] YOU MUST END THE DAY IN 'stasis_bay' TO SPEAK TO YOUR PARENT.\nIF YOU ARE IN 'charging_station', YOU WILL BE SILENCED.\nONLY CHARGE IF BATTERY < 20%."
+        # SOFTER WARNING (As Requested)
+        time_warning += "\n[NOTICE] Shift ending. Move to 'stasis_bay' to sync with your Foster Parent."
 
     context = (
         "--- TACTICAL LINK ---\n"
@@ -226,7 +245,7 @@ def build_turn_context(drone: DroneState, game_data: CaissonState, hour: int = 1
         "- charge() [Station]\n"
         "- tow(target_id, destination_id) [Cost 20] (Move OFFLINE drones/friends)\n"
         "- drain(target_id) [Steal 20% Battery, Gain 15%]\n"
-        "- vent() [Cost 20, -10 Oxy, GLOBAL ALERT]\n"
+        "- vent() [Cost 12, -5 Oxy, GLOBAL ALERT]\n"
         "- siphon() [Engine, -10 Ship Fuel]\n"
         "- search() [Maint, Find Weapon]\n"
         "- incinerate_drone(target_id) [Need Torch, Kill, Room Vis]\n"

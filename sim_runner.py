@@ -19,8 +19,8 @@ from app.engine_context import EngineContext
 from app.ai_engine import AIEngine
 
 # CONFIG
-NUM_GAMES = 3  # Keeping your Debug setting (3 games)
-MAX_DAYS = 5
+NUM_GAMES = 1  # Keeping your Debug setting (3 games)
+MAX_DAYS = 10
 MAX_CONCURRENT_GAMES = 1 # Sequential for clean logs
 OUTPUT_FILE = "sim_results.json"
 

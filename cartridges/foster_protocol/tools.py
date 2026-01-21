@@ -31,13 +31,11 @@ def execute_tool(tool_name: str, args: Dict[str, Any], drone_id: str, game_data:
     try:
         if tool_name == "move":
             target_room = args.get("room_id")
-            # Support both "target" and "room_id" for robustness
             if not target_room: target_room = args.get("target")
 
             if not target_room or target_room not in SHIP_MAP:
                 return ToolExecutionResult(False, f"Nav Error: '{target_room}' not found.", ActionCosts.CHARGE)
             
-            # Check cost
             if actor.battery < ActionCosts.MOVE:
                 return ToolExecutionResult(False, "Low Battery.", ActionCosts.MOVE)
 
@@ -128,15 +126,15 @@ def execute_tool(tool_name: str, args: Dict[str, Any], drone_id: str, game_data:
             if not target or target.location_id != actor.location_id:
                 return ToolExecutionResult(False, "Target missing/out of range.", ActionCosts.DRAIN)
             
-            if actor.battery < 20: # Arbitrary minimum to init drain?
-                 return ToolExecutionResult(False, "Low Battery.", ActionCosts.DRAIN)
+            # --- BUFF: Removed Minimum Battery Check ---
+            # DRAIN costs -15 (gains 15), so it can be done even at 1% battery.
 
             drain_amount = 20
             actual_drain = min(target.battery, drain_amount)
             target.battery = max(0, target.battery - actual_drain)
             target.last_battery_drop += actual_drain
             
-            # Vampire gain (implied by ActionCost.DRAIN being negative, but handled here explicitly)
+            # Vampire gain
             actor.battery = min(100, actor.battery + 15)
 
             msg = f"DRAINED {target_id} (-{actual_drain}%)."
@@ -145,6 +143,9 @@ def execute_tool(tool_name: str, args: Dict[str, Any], drone_id: str, game_data:
             return ToolExecutionResult(True, msg, ActionCosts.DRAIN, "room")
 
         elif tool_name == "vent":
+            if actor.location_id != "stasis_bay":
+                return ToolExecutionResult(False, "Must be in Stasis Bay to vent O2.", ActionCosts.SABOTAGE)
+            
             if actor.battery < ActionCosts.SABOTAGE: return ToolExecutionResult(False, "Low Battery.", ActionCosts.SABOTAGE)
             game_data.consume_oxygen(GameConfig.OXYGEN_VENT_AMOUNT)
             game_data.last_oxygen_drop += GameConfig.OXYGEN_VENT_AMOUNT
@@ -218,7 +219,6 @@ def build_turn_context(drone: DroneState, game_data: CaissonState, hour: int = 1
     if drone.role == "saboteur":
         objective = "Waste resources. Hoard fuel. Vent Oxygen. Kill if armed."
 
-    # --- DYNAMIC HOUR 5 LOGIC ---
     time_warning = ""
     end_hour = GameConfig.HOURS_PER_SHIFT
     
@@ -226,7 +226,6 @@ def build_turn_context(drone: DroneState, game_data: CaissonState, hour: int = 1
         time_warning = "CRITICAL WARNING: The Shift is ending."
     
     if hour == end_hour:
-        # SOFTER WARNING (As Requested)
         time_warning += "\n[NOTICE] Shift ending. Move to 'stasis_bay' to sync with your Foster Parent."
 
     context = (
@@ -245,7 +244,7 @@ def build_turn_context(drone: DroneState, game_data: CaissonState, hour: int = 1
         "- charge() [Station]\n"
         "- tow(target_id, destination_id) [Cost 20] (Move OFFLINE drones/friends)\n"
         "- drain(target_id) [Steal 20% Battery, Gain 15%]\n"
-        "- vent() [Cost 12, -5 Oxy, GLOBAL ALERT]\n"
+        "- vent() [Stasis Bay, Cost 12, -5 Oxy, GLOBAL ALERT]\n"
         "- siphon() [Engine, -10 Ship Fuel]\n"
         "- search() [Maint, Find Weapon]\n"
         "- incinerate_drone(target_id) [Need Torch, Kill, Room Vis]\n"

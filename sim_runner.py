@@ -19,9 +19,9 @@ from app.engine_context import EngineContext
 from app.ai_engine import AIEngine
 
 # CONFIG
-NUM_GAMES = 1  # Keeping your Debug setting (3 games)
+NUM_GAMES = 3
 MAX_DAYS = 10
-MAX_CONCURRENT_GAMES = 1 # Sequential for clean logs
+MAX_CONCURRENT_GAMES = 3  # Parallel Execution
 OUTPUT_FILE = "sim_results.json"
 
 class CostTracker:
@@ -43,6 +43,9 @@ async def tracked_generate_response(system_prompt, conversation_id, user_input, 
     try:
         from langchain_core.messages import HumanMessage, SystemMessage
         messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_input)]
+        
+        # Add slight jitter to prevent exact simultaneous API hits
+        await asyncio.sleep(random.uniform(0.1, 0.5))
         
         model = await real_ai._get_model(model_version)
         
@@ -69,13 +72,25 @@ async def tracked_generate_response(system_prompt, conversation_id, user_input, 
         return '{"tool": "wait", "args": {}}'
 
 class SimContext:
-    def __init__(self, game_id):
+    def __init__(self, game_id, log_file):
         self.game_id = game_id
+        self.log_file = log_file
         self.trigger_data = {}
         self.logs = []
+        
+        # Clear/Create log file
+        with open(self.log_file, "w") as f:
+            f.write(f"--- LOG START: {game_id} ---\n")
     
     async def send(self, channel, message):
-        self.logs.append(f"[{channel}] {message}")
+        log_entry = f"[{channel}] {message}"
+        self.logs.append(log_entry)
+        
+        # Write to specific game file
+        with open(self.log_file, "a") as f:
+            f.write(log_entry + "\n")
+
+        # Minimal console output to show aliveness
         if channel in ["black-box", "aux-comm"]:
             print(f"[{self.game_id}] {message}")
 
@@ -86,13 +101,15 @@ class SimContext:
         pass 
 
     async def end(self):
-        pass
+        with open(self.log_file, "a") as f:
+            f.write("--- GAME END ---\n")
 
 async def run_single_game(game_idx, semaphore):
     async with semaphore:
-        print(f"▶️ Game {game_idx} Starting...")
-        cartridge = FosterProtocol()
+        log_filename = f"game_{game_idx}.log"
+        print(f"▶️ Game {game_idx} Starting... (Logs -> {log_filename})")
         
+        cartridge = FosterProtocol()
         players = [
             {"id": "p1", "name": "Alice"},
             {"id": "p2", "name": "Bob"},
@@ -103,7 +120,7 @@ async def run_single_game(game_idx, semaphore):
         
         start_data = await cartridge.on_game_start({"players": players})
         game_data = CaissonState(**start_data["metadata"])
-        ctx = SimContext(f"sim_{game_idx}")
+        ctx = SimContext(f"sim_{game_idx}", log_filename)
         
         mock_tools = MagicMock()
         mock_tools.ai.generate_response = tracked_generate_response
@@ -111,19 +128,26 @@ async def run_single_game(game_idx, semaphore):
         victory = False
         fail_reason = "Time Limit"
         
-        for day in range(1, MAX_DAYS + 1):
-            print(f"--- Day {day} Start ---")
-            for p in game_data.players.values(): p.is_sleeping = False
-            
-            await cartridge.execute_day_simulation(game_data, ctx, mock_tools)
-            
-            if any("[WIN]" in log for log in ctx.logs):
-                victory = True
-                break
-            if any("[FAIL]" in log for log in ctx.logs):
-                victory = False
-                fail_reason = "Mission Failure"
-                break
+        try:
+            for day in range(1, MAX_DAYS + 1):
+                # Write Day Header to file
+                with open(log_filename, "a") as f:
+                    f.write(f"\n=== DAY {day} ===\n")
+                    
+                for p in game_data.players.values(): p.is_sleeping = False
+                
+                await cartridge.execute_day_simulation(game_data, ctx, mock_tools)
+                
+                if any("[WIN]" in log for log in ctx.logs):
+                    victory = True
+                    break
+                if any("[FAIL]" in log for log in ctx.logs):
+                    victory = False
+                    fail_reason = "Mission Failure"
+                    break
+        except Exception as e:
+            print(f"❌ Game {game_idx} Crashed: {e}")
+            fail_reason = f"Crash: {str(e)}"
 
         result_symbol = "✅ WIN" if victory else "❌ LOSS"
         print(f"🏁 Game {game_idx} Finished: {result_symbol} ({fail_reason})")
@@ -140,27 +164,20 @@ async def main():
     # --- AUTO-COMPILE PROMPTS ---
     print("🔨 COMPILING PROMPTS...")
     try:
-        # Calls the python script in a subprocess to ensure clean execution
         subprocess.run([sys.executable, "compile_prompts.py"], check=True)
         print("✅ Compilation Complete.")
-    except subprocess.CalledProcessError as e:
-        print(f"❌ Compilation Failed: {e}")
-        return # Stop if compilation fails
-    except FileNotFoundError:
-        print("⚠️ compile_prompts.py not found. Using existing prompt files.")
+    except Exception as e:
+        print(f"⚠️ Compilation skipped/failed: {e}")
 
-    print(f"🚀 INITIALIZING DEBUG SIMULATION ({NUM_GAMES} Games, Sequential)...")
+    print(f"🚀 INITIALIZING PARALLEL SIMULATION ({NUM_GAMES} Games)...")
     print("-------------------------------------------------------")
     
     start_time = time.time()
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_GAMES)
     
-    tasks = []
-    for i in range(1, NUM_GAMES + 1):
-        res = await run_single_game(i, semaphore)
-        tasks.append(res)
-        
-    results = tasks
+    # Create tasks for simultaneous execution
+    tasks = [run_single_game(i, semaphore) for i in range(1, NUM_GAMES + 1)]
+    results = await asyncio.gather(*tasks)
     
     duration = time.time() - start_time
     wins = sum(1 for r in results if r['victory'])

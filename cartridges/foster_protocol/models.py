@@ -2,6 +2,14 @@ from typing import List, Dict, Optional, Any, Literal
 from pydantic import BaseModel, Field, ConfigDict
 from .board import GameConfig
 
+# --- HELPER CLASS (Added to fix Import Error) ---
+class ToolExecutionResult:
+    def __init__(self, success: bool, message: str, cost: int = 0, visibility: str = "private"):
+        self.success = success
+        self.message = message
+        self.cost = cost
+        self.visibility = visibility
+
 # --- GAME SPECIFIC STATE ---
 
 class ChargingStation(BaseModel):
@@ -16,7 +24,7 @@ class PlayerState(BaseModel):
     nanny_channel_id: Optional[str] = None
 
 class DroneState(BaseModel):
-    id: str                   
+    id: str                    
     name: Optional[str] = None
     foster_id: Optional[str] = None
     role: Literal["loyal", "saboteur"] = "loyal"

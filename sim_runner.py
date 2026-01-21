@@ -42,9 +42,12 @@ async def tracked_generate_response(system_prompt, conversation_id, user_input, 
         from langchain_core.messages import HumanMessage, SystemMessage
         messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_input)]
         
+        # --- FIX: Access the model via the new shared method ---
+        model = await real_ai._get_model(model_version)
+        
         for attempt in range(3):
             try:
-                result = await real_ai.model.ainvoke(messages)
+                result = await model.ainvoke(messages)
                 tracker.add(result.response_metadata)
                 
                 content = result.content
@@ -138,11 +141,9 @@ async def main():
     start_time = time.time()
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_GAMES)
     
-    # --- STAGGERED START LOGIC ---
     tasks = []
     for i in range(1, NUM_GAMES + 1):
         tasks.append(asyncio.create_task(run_single_game(i, semaphore)))
-        # Forced 1 second delay between queuing games
         await asyncio.sleep(1)
         
     results = await asyncio.gather(*tasks)
@@ -151,7 +152,7 @@ async def main():
     wins = sum(1 for r in results if r['victory'])
     
     cached_input_cost = (tracker.input_tokens / 1_000_000) * 0.075
-    output_cost = (tracker.output_tokens / 1_000_000) * 1.20
+    output_cost = (tracker.output_tokens / 1_000_000) * 1.25
     
     print("\n📊 SIMULATION RESULTS")
     print("---------------------")

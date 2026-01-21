@@ -75,9 +75,6 @@ class FosterProtocol:
             identity_block = prompts.get_drone_identity_block(drone_id, u_name, is_saboteur)
             
             # --- CACHING OPTIMIZATION ---
-            # We put the massive BASE_TEXT first.
-            # Then we append the unique IDENTITY_BLOCK.
-            # This allows the LLM provider to cache the prefix (Base Text).
             system_prompt = base_text + "\n\n" + "--- IDENTITY OVERRIDE ---\n" + identity_block
             
             game_data.drones[drone_id] = DroneState(
@@ -105,7 +102,6 @@ class FosterProtocol:
                 "Explain that you are their hands, and they are your mind.\n"
                 "Ask for orders."
             )
-            # UPDATED: Conversation ID now uses 'drone'
             resp = await tools.ai.generate_response(
                 drone.system_prompt, f"{ctx.game_id}_drone_{drone.id}", prompt, drone.model_version, game_id=ctx.game_id
             )
@@ -243,7 +239,6 @@ class FosterProtocol:
         if tasks: await asyncio.gather(*tasks)
 
     async def run_single_drone_turn(self, drone, game_data, hour, tools, game_id):
-        # USAGE OF DRONE TOOLS ALIAS
         context = drone_tools.build_turn_context(drone, game_data, hour)
         action, thought = await self.get_drone_action(drone, context, tools, game_id)
         result = drone_tools.execute_tool(action.get("tool", "wait"), action.get("args", {}), drone.id, game_data)
@@ -267,20 +262,23 @@ class FosterProtocol:
         game_data.daily_logs.clear()
         for b in game_data.drones.values(): b.daily_memory.clear()
         
-        # DYNAMIC LOOP LENGTH based on GameConfig
         for hour in range(1, GameConfig.HOURS_PER_SHIFT + 1):
             await asyncio.sleep(2) 
             active_drones = [b for b in game_data.drones.values() if b.status == "active" and b.battery > 0]
             
-            turn_tasks = []
-            for drone in active_drones:
-                turn_tasks.append(self.run_single_drone_turn(drone, game_data, hour, tools, ctx.game_id))
+            # --- SHUFFLE TURN ORDER ---
+            # Randomize order so Unit_01 doesn't always go first.
+            random.shuffle(active_drones)
             
-            turn_results = await asyncio.gather(*turn_tasks)
-            random.shuffle(turn_results)
             hourly_activity = False 
             
-            for res in turn_results:
+            for drone in active_drones:
+                # --- INTRA-HOUR STAGGER ---
+                # 300ms delay between drones to smooth API load and simulate real-time processing.
+                await asyncio.sleep(0.3)
+                
+                res = await self.run_single_drone_turn(drone, game_data, hour, tools, ctx.game_id)
+                
                 drone = res['drone']
                 result = res['result']
                 
@@ -444,7 +442,6 @@ class FosterProtocol:
                 identity_block = prompts.get_drone_identity_block(my_drone.id, game_data.players[user_id].role, my_drone.role == "saboteur")
                 
                 # --- CACHING OPTIMIZATION ---
-                # Rebuild using Rules First
                 identity_patch = f"\n\nUPDATE: You have been named **{new_name}**. Use this name."
                 final_identity = identity_block + identity_patch
                 

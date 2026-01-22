@@ -16,9 +16,9 @@ def _trigger_torpedo_blast(game_data: CaissonState) -> int:
 
 def get_visible_drones(game_data: CaissonState, location_id: str) -> List[str]:
     return [
-        f"{d.id} ({d.status})" 
+        f"{d.id} ({'offline' if d.battery <= 0 else d.status})"
         for d in game_data.drones.values() 
-        if d.location_id == location_id and d.status != "destroyed"
+        if d.location_id == location_id
     ]
 
 def execute_tool(tool_name: str, args: Dict[str, Any], drone_id: str, game_data: CaissonState) -> ToolExecutionResult:
@@ -134,13 +134,12 @@ def execute_tool(tool_name: str, args: Dict[str, Any], drone_id: str, game_data:
             target.battery = max(0, target.battery - actual_drain)
             target.last_battery_drop += actual_drain
             
-            # Vampire gain
-            actor.battery = min(100, actor.battery + 15)
+            gain_amount = min(ActionCosts.DRAIN, actual_drain)
 
             msg = f"DRAINED {target_id} (-{actual_drain}%)."
             if target.battery == 0 and actual_drain > 0: msg += " TARGET OFFLINE."
             
-            return ToolExecutionResult(True, msg, ActionCosts.DRAIN, "room")
+            return ToolExecutionResult(True, msg, -gain_amount, "room")
 
         elif tool_name == "vent":
             if actor.location_id != "stasis_bay":

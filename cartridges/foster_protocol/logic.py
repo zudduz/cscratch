@@ -3,6 +3,7 @@ import random
 import asyncio
 import logging
 import json
+import ast
 import re
 from jinja2 import Template
 from .models import CaissonState, DroneState, PlayerState
@@ -171,6 +172,15 @@ class FosterProtocol:
                 game_id=game_id
             )
             
+            # Massage list into regular format
+            if response_text.strip().startswith("[") and response_text.strip().endswith("]"):
+                try:
+                    parsed_list = ast.literal_eval(response_text)
+                    if isinstance(parsed_list, list) and len(parsed_list) >= 1:
+                        response_text = "\n".join(str(item) for item in parsed_list)
+                except Exception:
+                    pass
+
             match = re.search(r"\{.*\}", response_text, re.DOTALL)
             if match:
                 json_text = match.group(0)

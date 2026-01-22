@@ -1,12 +1,12 @@
-
 from typing import Dict, Any, List, Optional
 import random
 import asyncio
 import logging
 import json
 import re
+from jinja2 import Template
 from .models import CaissonState, DroneState, PlayerState
-from .board import SHIP_MAP, GameConfig
+from .board import SHIP_MAP, GameConfig, ActionCosts
 from . import tools as drone_tools 
 from . import prompts 
 
@@ -16,7 +16,7 @@ BUSY_MESSAGES = [
     "[SLEEP] Day Cycle in progress. Pretend to snore or something."
 ]
 
-COMPILED_PROMPT_PATH = "cartridges/foster_protocol/prompts/system_prompt_template.md"
+PROMPT_PATH = "cartridges/foster_protocol/prompts/system_prompt_template.md"
 
 class FosterProtocol:
     def __init__(self):
@@ -28,8 +28,32 @@ class FosterProtocol:
         }
 
     def _load_base_prompt(self) -> str:
-        with open(COMPILED_PROMPT_PATH, "r", encoding="utf-8") as f:
-            return f.read()
+        with open(PROMPT_PATH, "r", encoding="utf-8") as f:
+            template_content = f.read()
+
+        template = Template(template_content)
+
+        # Context mapping for Jinja2
+        context = {
+            "HOURS_PER_SHIFT": GameConfig.HOURS_PER_SHIFT,
+            "CAPACITY_TORPEDO_BAY": GameConfig.CAPACITY_TORPEDO_BAY,
+            "CAPACITY_SHUTTLE_BAY": GameConfig.CAPACITY_SHUTTLE_BAY,
+            "TORPEDO_RISK_PERCENT": int(GameConfig.TORPEDO_ACCIDENT_CHANCE * 100),
+            "OXYGEN_VENT_AMOUNT": GameConfig.OXYGEN_VENT_AMOUNT,
+            
+            "COST_MOVE": ActionCosts.MOVE,
+            "COST_GATHER": ActionCosts.GATHER,
+            "COST_DEPOSIT": ActionCosts.DEPOSIT,
+            "COST_TOW": ActionCosts.TOW,
+            "COST_DRAIN": ActionCosts.DRAIN,
+            "COST_SABOTAGE": ActionCosts.SABOTAGE,
+            "COST_KILL": ActionCosts.KILL,
+            "COST_DETONATE": ActionCosts.DETONATE,
+            
+            "TRIPLE_TICK": "`" "`" "`"
+        }
+
+        return template.render(**context)
 
     async def on_game_start(self, generic_state: dict) -> Dict[str, Any]:
         game_data = CaissonState(**generic_state.get('metadata', {}))
@@ -487,4 +511,3 @@ class FosterProtocol:
                 return {f"drones.{my_drone.id}.night_chat_log": my_drone.night_chat_log}
 
         return None
-

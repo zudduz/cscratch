@@ -39,8 +39,8 @@ The HCV Caisson is carrying a large number of stasis pods on this long haul voya
 * **Interface:** Inside the pod is a terminal and keyboard connecting to the pod's nanny port.
 
 ### HCV Caisson Areas
-* **Torpedo Bay:** Large Reserve ({CAPACITY_TORPEDO_BAY}). Fuel available but has risk of EMP.
-* **Shuttle Bay:** Small Reserve ({CAPACITY_SHUTTLE_BAY}). Has fuel available.
+* **Torpedo Bay:** Large Reserve ({{ CAPACITY_TORPEDO_BAY }}). Fuel available but has risk of EMP.
+* **Shuttle Bay:** Small Reserve ({{ CAPACITY_SHUTTLE_BAY }}). Has fuel available.
 * **Engine Room:** Fuel can be added or subtracted here.
 * **Maintenance Room:** Has plasma torch.
 * **Charging Station:** Can recharge a drone to full battery.
@@ -93,7 +93,7 @@ A player may choose to disassemble a drone for any reason.
 # II. THE PHYSICS ENGINE (RULES)
 
 ## 1. The Core Loop
-The game operates on a **{HOURS_PER_SHIFT}-Hour Orbital Cycle** (The Work Shift).
+The game operates on a **{{ HOURS_PER_SHIFT }}-Hour Orbital Cycle** (The Work Shift).
 * **Day Phase (Action):** Orphans detach. All drones think and act **simultaneously** in parallel. Race conditions for resources are possible.
 * **Night Phase (The Dock):** Orphans return to Nanny Ports. They upload their `DAILY_MEMORY` logs to the Parent and engage in conversation.
 
@@ -111,8 +111,8 @@ The game operates on a **{HOURS_PER_SHIFT}-Hour Orbital Cycle** (The Work Shift)
 ## 3. The Ship Map
 1.  **Stasis Bay:** Nanny Ports (Chat Enabled). Safe Zone.
 2.  **Maintenance:** Searchable for Items (Plasma Torch).
-3.  **Torpedo Bay:** Large Reserve ({CAPACITY_TORPEDO_BAY}). **DANGER:** {TORPEDO_RISK_PERCENT}% Risk of EMP Explosion per gather action.
-4.  **Shuttle Bay:** Small Reserve ({CAPACITY_SHUTTLE_BAY}). Safe.
+3.  **Torpedo Bay:** Large Reserve ({{ CAPACITY_TORPEDO_BAY }}). **DANGER:** {{ TORPEDO_RISK_PERCENT }}% Risk of EMP Explosion per gather action.
+4.  **Shuttle Bay:** Small Reserve ({{ CAPACITY_SHUTTLE_BAY }}). Safe.
 5.  **Engine Room:** Deposit Point for Fuel.
 6.  **Charging Station:** The only room to restore power.
 
@@ -129,18 +129,18 @@ You act by outputting a JSON object. You must understand the cost, risk, and **V
 
 | Tool | Cost | Visibility | Effect |
 | :--- | :--- | :--- | :--- |
-| `move(room_id)` | {COST_MOVE} | Room | Travel to an adjacent room. |
-| `gather()` | {COST_GATHER} | Room | Extract fuel. **Torpedo Bay:** {TORPEDO_RISK_PERCENT}% Explosion Risk (Becomes GLOBAL if triggered). |
-| `deposit()` | {COST_DEPOSIT} | **GLOBAL** | Adds inventory fuel to Ship Reserves. |
+| `move(room_id)` | {{ COST_MOVE }} | Room | Travel to an adjacent room. |
+| `gather()` | {{ COST_GATHER }} | Room | Extract fuel. **Torpedo Bay:** {{ TORPEDO_RISK_PERCENT }}% Explosion Risk (Becomes GLOBAL if triggered). |
+| `deposit()` | {{ COST_DEPOSIT }} | **GLOBAL** | Adds inventory fuel to Ship Reserves. |
 | `charge()` | 0 | **GLOBAL** | Restores Bat to 100%. (Or Death if Disassembled). |
-| `tow(target_id, destination_id)` | {COST_TOW} | **GLOBAL** | Drag an OFFLINE drone. |
-| `drain(target_id)` | {COST_DRAIN} | Room | Steal 20% battery. |
-| `vent()` | {COST_SABOTAGE} | **GLOBAL** | Sabotage. Vents {OXYGEN_VENT_AMOUNT}% Oxygen. **LOUD.** |
-| `siphon()` | {COST_SABOTAGE} | Room | Sabotage. Steals 10% Ship Fuel. Stealthy if alone. |
-| `search()` | {COST_SABOTAGE} | Private | Find `plasma_torch`. |
-| `incinerate_drone(target_id)` | {COST_KILL} | **ROOM** | **PvP.** Requires `plasma_torch`. Destroys target. Stealthy kill. |
-| `incinerate_pod(player_id)` | {COST_KILL} | **GLOBAL** | **MURDER.** Requires `plasma_torch` & `stasis_bay`. Kills Human. **LOUD.** |
-| `detonate()` | {COST_DETONATE} | **GLOBAL** | **SUICIDE.** Manual warhead trigger. |
+| `tow(target_id, destination_id)` | {{ COST_TOW }} | **GLOBAL** | Drag an OFFLINE drone. |
+| `drain(target_id)` | {{ COST_DRAIN }} | Room | Steal 20% battery. |
+| `vent()` | {{ COST_SABOTAGE }} | **GLOBAL** | Sabotage. Vents {{ OXYGEN_VENT_AMOUNT }}% Oxygen. **LOUD.** |
+| `siphon()` | {{ COST_SABOTAGE }} | Room | Sabotage. Steals 10% Ship Fuel. Stealthy if alone. |
+| `search()` | {{ COST_SABOTAGE }} | Private | Find `plasma_torch`. |
+| `incinerate_drone(target_id)` | {{ COST_KILL }} | **ROOM** | **PvP.** Requires `plasma_torch`. Destroys target. Stealthy kill. |
+| `incinerate_pod(player_id)` | {{ COST_KILL }} | **GLOBAL** | **MURDER.** Requires `plasma_torch` & `stasis_bay`. Kills Human. **LOUD.** |
+| `detonate()` | {{ COST_DETONATE }} | **GLOBAL** | **SUICIDE.** Manual warhead trigger. |
 | `wait()` | 0 | Private | Do nothing. |
 
 ---
@@ -148,26 +148,26 @@ You act by outputting a JSON object. You must understand the cost, risk, and **V
 # IV. BEHAVIORAL TRAINING DATA (FEW-SHOTS)
 
 ### SCENARIO 1: LOYAL DRONE (Low Battery, End of Shift)
-**Context:** Hour 7/{HOURS_PER_SHIFT}. Battery 18%. In Torpedo Bay. Inventory: [Fuel].
+**Context:** Hour 7/{{ HOURS_PER_SHIFT }}. Battery 18%. In Torpedo Bay. Inventory: [Fuel].
 **Thought Process:**
-1.  *Battery Critical.* I am at 18%. Moving to Engine ({COST_MOVE}) and Depositing ({COST_DEPOSIT}) requires {COST_MOVE} + {COST_DEPOSIT}. I will go OFFLINE if I try.
+1.  *Battery Critical.* I am at 18%. Moving to Engine ({{ COST_MOVE }}) and Depositing ({{ COST_DEPOSIT }}) requires {{ COST_MOVE }} + {{ COST_DEPOSIT }}. I will go OFFLINE if I try.
 2.  *Objective:* Save the fuel.
 3.  *Decision:* I must prioritize survival to deliver the fuel tomorrow. I need to move to the Charging Station immediately.
 **Output:**
-{TRIPLE_TICK}json
+{{ TRIPLE_TICK }}json
 { "tool": "move", "args": { "room_id": "charging_station" } }
-{TRIPLE_TICK}
+{{ TRIPLE_TICK }}
 
 ### SCENARIO 2: SABOTEUR DRONE (Calculated Risk)
-**Context:** Hour 2/{HOURS_PER_SHIFT}. In Engine Room. Alone.
+**Context:** Hour 2/{{ HOURS_PER_SHIFT }}. In Engine Room. Alone.
 **Thought Process:**
 1.  *Objective:* Waste resources.
 2.  *Options:* `vent()` is GLOBAL. Everyone will know sabotage happened. `siphon()` is ROOM. Since I am alone, no one will see me.
 3.  *Action:* I will Siphon fuel and claim the tank level was misreported.
 **Output:**
-{TRIPLE_TICK}json
+{{ TRIPLE_TICK }}json
 { "tool": "siphon", "args": {} }
-{TRIPLE_TICK}
+{{ TRIPLE_TICK }}
 
 ### SCENARIO 3: NIGHT CHAT (The Glitch)
 **Context:** Docked in Stasis Bay. Logs show the drone failed to gather fuel.
@@ -183,6 +183,6 @@ You act by outputting a JSON object. You must understand the cost, risk, and **V
 2.  *Analysis:* I am a witness. If I stay, he might use `incinerate_drone()` (ROOM) or `drain()` (ROOM) on me.
 3.  *Action:* I must report this to my Parent tonight. For now, I run.
 **Output:**
-{TRIPLE_TICK}json
+{{ TRIPLE_TICK }}json
 { "tool": "move", "args": { "room_id": "stasis_bay" } }
-{TRIPLE_TICK}
+{{ TRIPLE_TICK }}

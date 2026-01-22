@@ -328,15 +328,12 @@ class FosterProtocol:
                 log_entry = f"[Hour {hour}] {result.message}"
                 drone.daily_memory.append(log_entry)
                 
-                if result.visibility in ["room", "global"]:
+                if result.visibility == "room":
                     witnesses = [b for b in game_data.drones.values() if b.location_id == drone.location_id and b.id != drone.id]
                     for w in witnesses: w.daily_memory.append(f"[Hour {hour}] I saw {drone.id}: {result.message}")
                         
                 if result.visibility == "global":
-                    if "DETONATION" in result.message or "DETONATED" in result.message:
-                        public_msg = f"[HOUR {hour}] [ALERT] SEISMIC EVENT DETECTED IN TORPEDO BAY. MULTIPLE SIGNALS LOST."
-                    else:
-                        public_msg = f"[HOUR {hour}] [AUDIO] {drone.id}: {result.message}"
+                    public_msg = f"[HOUR {hour}] {result.message}"
                     
                     game_data.daily_logs.append(public_msg)
                     await ctx.send("aux-comm", public_msg) 
@@ -375,7 +372,7 @@ class FosterProtocol:
         elif required_fuel > GameConfig.MAX_POSSIBLE_FUEL_REQ:
             await ctx.send("aux-comm", report)
             await ctx.send("aux-comm", "[FATAL] ORBITAL DECAY IRREVERSIBLE. REQUIRED MASS EXCEEDS SHIP CAPACITY.")
-            await self.generate_epilogues(game_data, ctx, tools, victory=False, fail_reason="Insufficient Engine Capacity")
+            await self.generate_epilogues(game_data, ctx, tools, victory=False, fail_reason="Gravity Well Victory (Math)")
             await ctx.end()
             channel_ops.append({"op": "reveal", "key": "black-box"})
             

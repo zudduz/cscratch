@@ -63,8 +63,8 @@ def execute_tool(tool_name: str, args: Dict[str, Any], drone_id: str, game_data:
             
             if actor.location_id == "torpedo_bay":
                 if random.random() < GameConfig.TORPEDO_ACCIDENT_CHANCE:
-                    victims = _trigger_torpedo_blast(game_data)
-                    return ToolExecutionResult(False, f"CRITICAL FAILURE: TRIGGERED DETONATOR. {victims} UNITS DISABLED.", ActionCosts.GATHER, "global")
+                    _trigger_torpedo_blast(game_data)
+                    return ToolExecutionResult(False, f"CRITICAL FAILURE: TRIGGERED DETONATOR.", ActionCosts.GATHER, "global")
 
             if actor.location_id == "shuttle_bay": game_data.shuttle_bay_fuel -= 10
             else: game_data.torpedo_bay_fuel -= 10

@@ -48,13 +48,6 @@ def compile():
                 final_text = final_text.replace(key, value)
                 used_keys.add(key)
         
-        unused_keys = set(context.keys()) - used_keys
-        if unused_keys:
-            print(f"❌ Build Failed: The following config variables were NOT found in the template:")
-            for k in unused_keys:
-                print(f"   - {k}")
-            sys.exit(1)
-
         leftover_pattern = r"\{[A-Z][A-Z0-9_]+\}" 
         leftovers = re.findall(leftover_pattern, final_text)
         

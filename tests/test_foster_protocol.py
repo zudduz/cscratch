@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, AsyncMock, patch
 from cartridges.foster_protocol.logic import FosterProtocol
 from cartridges.foster_protocol.models import CaissonState, PlayerState
 from app.engine_context import EngineContext
+from cartridges.foster_protocol.board import GameConfig
 
 # --- FIXTURES ---
 
@@ -76,7 +77,7 @@ async def test_torpedo_explosion(cartridge, mock_ctx, mock_tools):
     drone.battery = 100
     drone.inventory = []
     game_data.drones["unit_01"] = drone
-    mock_tools.ai.generate_response.return_value = '{"tool": "gather", "args": {}}'
+    mock_tools.ai.generate_response.return_value = '''{"tool": "gather", "args": {}}'''
     with patch("random.random", return_value=0.01): 
         res = await cartridge.run_single_drone_turn(drone, game_data, 1, mock_tools, "game_id")
     assert res["result"].success is False
@@ -84,8 +85,13 @@ async def test_torpedo_explosion(cartridge, mock_ctx, mock_tools):
     assert drone.battery == 0
 
 @pytest.mark.asyncio
-async def test_gather_success(cartridge, mock_ctx, mock_tools):
+async def test_gather_success(cartridge):
     # Setup: Drone in Shuttle Bay (Safe)
+    # Using dynamic values from board.py GameConfig
+    initial_shuttle_fuel = GameConfig.CAPACITY_SHUTTLE_BAY
+    gather_amount = 10 # Standard amount from logic/tools
+    expected_remaining = initial_shuttle_fuel - gather_amount
+
     game_data = CaissonState()
     drone = MagicMock()
     drone.id = "unit_01"
@@ -93,15 +99,17 @@ async def test_gather_success(cartridge, mock_ctx, mock_tools):
     drone.battery = 100
     drone.inventory = []
     game_data.drones["unit_01"] = drone
-    mock_tools.ai.generate_response.return_value = '{"tool": "gather", "args": {}}'
     
+    # We mock the AI tool to return a gather command
+    mock_tools = MagicMock()
+    mock_tools.ai.generate_response = AsyncMock(return_value='''{"tool": "gather", "args": {}}''')
+    
+    # Run the turn
     res = await cartridge.run_single_drone_turn(drone, game_data, 1, mock_tools, "game_id")
     
     assert res["result"].success is True
     assert "fuel_canister" in drone.inventory
     
-    # REVERTED MATH:
-    # Initial Capacity: 50 (from board.py)
-    # Gather Amount: 10
-    # Remaining: 40
-    assert game_data.shuttle_bay_fuel == 40 
+    # ASSERTION IS NOW DYNAMIC
+    assert game_data.shuttle_bay_fuel == expected_remaining
+    print(f"\n✅ Dynamic test passed: {initial_shuttle_fuel} -> {game_data.shuttle_bay_fuel}")

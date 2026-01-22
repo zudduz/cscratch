@@ -1,3 +1,4 @@
+
 from typing import Dict, Any, List, Optional
 import random
 import asyncio
@@ -15,7 +16,7 @@ BUSY_MESSAGES = [
     "[SLEEP] Day Cycle in progress. Pretend to snore or something."
 ]
 
-COMPILED_PROMPT_PATH = "cartridges/foster_protocol/prompts/final_system_prompt.md"
+COMPILED_PROMPT_PATH = "cartridges/foster_protocol/prompts/system_prompt_template.md"
 
 class FosterProtocol:
     def __init__(self):
@@ -25,15 +26,6 @@ class FosterProtocol:
             "version": "2.45",
             **default_state.model_dump()
         }
-        if not self._verify_prompt_exists():
-            raise FileNotFoundError(f"CRITICAL: Compiled prompt missing at {COMPILED_PROMPT_PATH}. Server cannot start.")
-
-    def _verify_prompt_exists(self) -> bool:
-        try:
-            with open(COMPILED_PROMPT_PATH, "r", encoding="utf-8") as f:
-                return True
-        except FileNotFoundError:
-            return False
 
     def _load_base_prompt(self) -> str:
         with open(COMPILED_PROMPT_PATH, "r", encoding="utf-8") as f:
@@ -492,3 +484,4 @@ class FosterProtocol:
                 return {f"drones.{my_drone.id}.night_chat_log": my_drone.night_chat_log}
 
         return None
+

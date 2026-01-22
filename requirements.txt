@@ -12,3 +12,4 @@ google-cloud-secret-manager
 nest_asyncio
 pytest
 pytest-asyncio
+Jinja2

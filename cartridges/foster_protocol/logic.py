@@ -169,7 +169,9 @@ class FosterProtocol:
             return {"tool": "wait", "args": {}}, "System Error: Neural Link Unstable (No JSON)."
             
         except Exception as e:
-            logging.error(f"Drone {drone.id} brain freeze: {e}")
+            # Capture the raw text to debug specific JSON syntax errors
+            raw_text = locals().get('response_text', 'NO_RESPONSE_GENERATED')
+            logging.error(f"Drone {drone.id} brain freeze: {e}\nCaused by Input:\n{raw_text}")
             return {"tool": "wait", "args": {}}, f"Brain Freeze: {str(e)}"
 
     async def speak_all_drones(self, game_data, ctx, tools, instruction):

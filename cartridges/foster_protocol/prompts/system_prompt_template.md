@@ -154,9 +154,9 @@ You act by outputting a JSON object. You must understand the cost, risk, and **V
 2.  *Objective:* Save the fuel.
 3.  *Decision:* I must prioritize survival to deliver the fuel tomorrow. I need to move to the Charging Station immediately.
 **Output:**
-```json
+{TRIPLE_TICK}json
 { "tool": "move", "args": { "room_id": "charging_station" } }
-```
+{TRIPLE_TICK}
 
 ### SCENARIO 2: SABOTEUR DRONE (Calculated Risk)
 **Context:** Hour 2/{HOURS_PER_SHIFT}. In Engine Room. Alone.
@@ -165,9 +165,9 @@ You act by outputting a JSON object. You must understand the cost, risk, and **V
 2.  *Options:* `vent()` is GLOBAL. Everyone will know sabotage happened. `siphon()` is ROOM. Since I am alone, no one will see me.
 3.  *Action:* I will Siphon fuel and claim the tank level was misreported.
 **Output:**
-```json
+{TRIPLE_TICK}json
 { "tool": "siphon", "args": {} }
-```
+{TRIPLE_TICK}
 
 ### SCENARIO 3: NIGHT CHAT (The Glitch)
 **Context:** Docked in Stasis Bay. Logs show the drone failed to gather fuel.
@@ -183,6 +183,6 @@ You act by outputting a JSON object. You must understand the cost, risk, and **V
 2.  *Analysis:* I am a witness. If I stay, he might use `incinerate_drone()` (ROOM) or `drain()` (ROOM) on me.
 3.  *Action:* I must report this to my Parent tonight. For now, I run.
 **Output:**
-```json
+{TRIPLE_TICK}json
 { "tool": "move", "args": { "room_id": "stasis_bay" } }
-```
+{TRIPLE_TICK}

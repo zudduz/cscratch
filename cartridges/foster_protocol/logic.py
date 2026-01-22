@@ -130,12 +130,13 @@ class FosterProtocol:
                 "1. CHECK BATTERY LEVEL FIRST.\n"
                 "2. Analyze the room (Visible drones/Sabotage opportunities).\n"
                 "3. REVIEW 'INTERNAL MEMORY'.\n"
-                "4. CHECK TIME. If Hour 8, you MUST move to 'stasis_bay'. If Battery < 30%, you MUST move to 'charging_station'.\n" + "5. STATUS CHECK: Observe if targets are already OFFLINE before committing battery to them.\n"
-                "5. OUTPUT FORMAT:\n"
+                "4. CHECK TIME. If Hour 8, you MUST move to 'stasis_bay'. If Battery < 30%, you MUST move to 'charging_station'.\n"
+                "5. STATUS CHECK: Observe if targets are already OFFLINE before committing battery to them.\n"
+                "6. OUTPUT FORMAT:\n"
                 "Write your thoughts first. Then output the JSON block.\n"
-                "```json\n"
+                "`" "`" "`json\n"
                 '{ "tool": "charge", "args": {} }\n'
-                "```"
+                "`" "`" "`"
             )
             
             response_text = await tools_api.ai.generate_response(
@@ -152,8 +153,10 @@ class FosterProtocol:
                 pre_text = response_text[:match.start()].strip()
                 post_text = response_text[match.end():].strip()
                 thought_text = "Processing..."
-                if pre_text: thought_text = pre_text.replace("```json", "").replace("```", "").strip()
-                elif post_text: thought_text = post_text.replace("```json", "").replace("```", "").strip()
+                if pre_text:
+                    thought_text = pre_text.replace("`" "`" "`json", "").replace("`" "`" "`", "").strip()
+                elif post_text:
+                    thought_text = post_text.replace("`" "`" "`json", "").replace("`" "`" "`", "").strip()
                 
                 return json.loads(json_text), thought_text
             

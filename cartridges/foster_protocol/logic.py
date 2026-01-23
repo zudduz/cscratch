@@ -142,11 +142,10 @@ class FosterProtocol:
         except Exception as e:
             logging.error(f"Dream failed for {drone.id}: {e}")
 
-    # --- TACTICAL ENGINE ---
     async def get_drone_action(self, drone, context, tools_api, game_id: str) -> tuple[Dict[str, Any], str]:
         try:
             enhanced_context = (
-                context + 
+                context +
                 "\n\n*** INTERNAL THOUGHT PROTOCOL ***\n"
                 "1. CHECK BATTERY LEVEL FIRST.\n"
                 "2. Analyze the room (Visible drones/Sabotage opportunities).\n"
@@ -159,7 +158,7 @@ class FosterProtocol:
                 '{ "tool": "charge", "args": {} }\n'
                 "`" "`" "`"
             )
-            
+
             response_text = await tools_api.ai.generate_response(
                 system_prompt="You are a tactical drone. THINK BEFORE ACTING.",
                 conversation_id=f"tactical_{drone.id}",
@@ -167,15 +166,11 @@ class FosterProtocol:
                 model_version=drone.model_version,
                 game_id=game_id
             )
-            
-            # Massage list into regular format
-            if response_text.strip().startswith("[") and response_text.strip().endswith("]"):
-                try:
-                    parsed_list = ast.literal_eval(response_text)
-                    if isinstance(parsed_list, list) and len(parsed_list) >= 1:
-                        response_text = "\n".join(str(item) for item in parsed_list)
-                except Exception:
-                    pass
+
+            # --- PARSING FIX: Handle Python List Output ---
+            # The model sometimes returns a list of strings instead of a single string.
+            if isinstance(response_text, list):
+                response_text = "\n".join(str(item) for item in response_text)
 
             match = re.search(r"\{.*\}", response_text, re.DOTALL)
             if match:
@@ -189,10 +184,10 @@ class FosterProtocol:
                     thought_text = post_text.replace("`" "`" "`json", "").replace("`" "`" "`", "").strip()
                 
                 return json.loads(json_text), thought_text
-            
+
             logging.warning(f"Drone {drone.id} BRAIN FREEZE. Full Response:\n{response_text}")
             return {"tool": "wait", "args": {}}, "System Error: Neural Link Unstable (No JSON)."
-            
+
         except Exception as e:
             # Capture the raw text to debug specific JSON syntax errors
             raw_text = locals().get('response_text', 'NO_RESPONSE_GENERATED')
@@ -386,7 +381,7 @@ class FosterProtocol:
             elif req_tomorrow > GameConfig.MAX_POSSIBLE_FUEL_REQ:
                 logging.info("--- [DEBUG] LOSS CONDITION MET (Gravity Well) ---")
                 await ctx.send("aux-comm", report)
-                await ctx.send("aux-comm", "FATAL. ORBITAL DECAY IRREVERSIBLE. REQUIRED MASS EXCEEDS SHIP CAPACITY.")
+                await ctx.send("aux-comm", "FATAL. ORBITAL DECAY IRREVERSIBLE. REQUIRED FUEL EXCEEDS SHIP CAPACITY.")
                 await self.generate_epilogues(game_data, ctx, tools, victory=False, fail_reason="Gravity Well Victory (Math)")
                 await ctx.end()
                 channel_ops.append({"op": "reveal", "key": "black-box"})
@@ -394,7 +389,7 @@ class FosterProtocol:
             else:
                 logging.info("--- [DEBUG] Continuing to Next Cycle ---")
                 # Append the drag penalty warning to the report
-                report += f"\nBurn Window Missed. Atmospheric Drag detected.\n**Tomorrow's Target: {req_tomorrow}%**"
+                report += f"\nBurn Window Missed. Atmospheric Drag detected.\n**Tomorrow's Fuel Target: {req_tomorrow}%**"
                 await ctx.send("aux-comm", report)
                 
                 if game_data.oxygen == 0:

@@ -9,7 +9,7 @@ from jinja2 import Template
 from .models import CaissonState, DroneState, PlayerState
 from .board import SHIP_MAP, GameConfig, ActionCosts
 from . import tools as drone_tools 
-from . import prompts 
+from . import prompts
 
 AVAILABLE_MODELS = ["gemini-2.5-flash"]
 
@@ -287,112 +287,139 @@ class FosterProtocol:
         }
 
     async def execute_day_simulation(self, game_data: CaissonState, ctx, tools) -> Dict[str, Any]:
-        logging.info("--- Phase: REM Sleep (Dreaming) ---")
-        await self.process_dreams(game_data, tools)
-
-        game_data.daily_logs.clear()
-        for b in game_data.drones.values(): b.daily_memory.clear()
+        logging.info("--- [DEBUG] STARTING execute_day_simulation ---")
         
-        for hour in range(1, GameConfig.HOURS_PER_SHIFT + 1):
-            await asyncio.sleep(2) 
-            active_drones = [b for b in game_data.drones.values() if b.status == "active" and b.battery > 0]
-            
-            random.shuffle(active_drones)
-            hourly_activity = False 
-            
-            for drone in active_drones:
-                await asyncio.sleep(0.3)
-                
-                res = await self.run_single_drone_turn(drone, game_data, hour, tools, ctx.game_id)
-                drone = res['drone']
-                result = res['result']
-                
-                if drone.status == "destroyed" and "Disassembly" in result.message:
-                    await self._send_public_eulogy(ctx, tools, drone)
+        try:
+            logging.info("--- Phase: REM Sleep (Dreaming) ---")
+            await self.process_dreams(game_data, tools)
 
-                role_icon = "[SABOTEUR]" if drone.role == "saboteur" else "[LOYAL]"
-                display_id = f"{drone.name} ({drone.id})" if drone.name else drone.id
-                inv_str = str(drone.inventory) if drone.inventory else "[]"
-                status_str = f"[Bat:{drone.battery}% | Loc:{drone.location_id} | Inv:{inv_str}]"
+            game_data.daily_logs.clear()
+            for b in game_data.drones.values(): b.daily_memory.clear()
+            
+            logging.info(f"--- [DEBUG] Entering Hour Loop (0/{GameConfig.HOURS_PER_SHIFT}) ---")
+            
+            for hour in range(1, GameConfig.HOURS_PER_SHIFT + 1):
+                await asyncio.sleep(2) 
+                active_drones = [b for b in game_data.drones.values() if b.status == "active" and b.battery > 0]
+                logging.info(f"--- [DEBUG] Hour {hour}: {len(active_drones)} active drones ---")
                 
-                bb_msg = f"**[H{hour}] {role_icon} {display_id}** {status_str}\n*{res['thought']}*\n>> `{res['action'].get('tool')}` -> {result.message}"
-                await ctx.send("black-box", bb_msg)
-
-                log_entry = f"[Hour {hour}] {result.message}"
-                drone.daily_memory.append(log_entry)
+                random.shuffle(active_drones)
+                hourly_activity = False 
                 
-                if result.visibility == "room":
-                    witnesses = [b for b in game_data.drones.values() if b.location_id == drone.location_id and b.id != drone.id]
-                    for w in witnesses: w.daily_memory.append(f"[Hour {hour}] I saw {drone.id}: {result.message}")
-                        
-                if result.visibility == "global":
-                    public_msg = f"[HOUR {hour}] {result.message}"
+                for drone in active_drones:
+                    await asyncio.sleep(0.3)
                     
-                    game_data.daily_logs.append(public_msg)
-                    await ctx.send("aux-comm", public_msg) 
-                    hourly_activity = True
+                    try:
+                        res = await self.run_single_drone_turn(drone, game_data, hour, tools, ctx.game_id)
+                        drone = res['drone']
+                        result = res['result']
+                        
+                        if drone.status == "destroyed" and "Disassembly" in result.message:
+                            await self._send_public_eulogy(ctx, tools, drone)
 
-            if not hourly_activity:
-                game_data.daily_logs.append(f"[HOUR {hour}] [SILENCE] Ship systems nominal.")
-                await ctx.send("aux-comm", f"[HOUR {hour}] [SILENCE] Ship systems nominal.")
+                        role_icon = "[SABOTEUR]" if drone.role == "saboteur" else "[LOYAL]"
+                        display_id = f"{drone.name} ({drone.id})" if drone.name else drone.id
+                        inv_str = str(drone.inventory) if drone.inventory else "[]"
+                        status_str = f"[Bat:{drone.battery}% | Loc:{drone.location_id} | Inv:{inv_str}]"
+                        
+                        bb_msg = f"**[H{hour}] {role_icon} {display_id}** {status_str}\n*{res['thought']}*\n>> `{res['action'].get('tool')}` -> {result.message}"
+                        await ctx.send("black-box", bb_msg)
 
-        living_crew = sum(1 for p in game_data.players.values() if p.is_alive)
-        if game_data.initial_crew_size < 1: game_data.initial_crew_size = 1
-        
-        drop_calc = int(GameConfig.OXYGEN_BASE_LOSS * (living_crew / game_data.initial_crew_size))
-        
-        game_data.consume_oxygen(drop_calc)
-        game_data.last_oxygen_drop = drop_calc
-        
-        # --- ORBITAL MECHANICS UPDATE ---
-        current_cycle = game_data.cycle
-        base = GameConfig.FUEL_REQ_BASE
-        growth = GameConfig.FUEL_REQ_GROWTH
-        
-        # Requirement for the cycle that JUST finished
-        req_today = int(base * (growth ** (current_cycle - 1)))
-        
-        # Requirement for the UPCOMING cycle (The Oberth penalty)
-        req_tomorrow = int(base * (growth ** current_cycle))
-        
-        # Increment Cycle
-        game_data.cycle += 1
-        
-        report = (
-            f"[REPORT] **CYCLE {current_cycle} REPORT**\n"
-            f"[O2] Oxygen: {game_data.oxygen}% (-{drop_calc}%/day)\n"
-            f"[FUEL] Status: {game_data.fuel}% / {req_today}% Required"
-        )
+                        log_entry = f"[Hour {hour}] {result.message}"
+                        drone.daily_memory.append(log_entry)
+                        
+                        if result.visibility == "room":
+                            witnesses = [b for b in game_data.drones.values() if b.location_id == drone.location_id and b.id != drone.id]
+                            for w in witnesses: w.daily_memory.append(f"[Hour {hour}] I saw {drone.id}: {result.message}")
+                                
+                        if result.visibility == "global":
+                            public_msg = f"[HOUR {hour}] {result.message}"
+                            
+                            game_data.daily_logs.append(public_msg)
+                            await ctx.send("aux-comm", public_msg) 
+                            hourly_activity = True
+                            
+                    except Exception as e:
+                        logging.error(f"--- [CRITICAL] Error running turn for drone {drone.id}: {e}", exc_info=True)
 
-        channel_ops = []
-        
-        if game_data.fuel >= req_today:
-            await ctx.send("aux-comm", report + "\n[SUCCESS] SUFFICIENT FUEL FOR ESCAPE VELOCITY. INITIATING BURN...")
-            await self.generate_epilogues(game_data, ctx, tools, victory=True)
-            await ctx.end()
-            channel_ops.append({"op": "reveal", "key": "black-box"}) 
-            
-        elif req_tomorrow > GameConfig.MAX_POSSIBLE_FUEL_REQ:
-            await ctx.send("aux-comm", report)
-            await ctx.send("aux-comm", "[FATAL] ORBITAL DECAY IRREVERSIBLE. REQUIRED MASS EXCEEDS SHIP CAPACITY.")
-            await self.generate_epilogues(game_data, ctx, tools, victory=False, fail_reason="Gravity Well Victory (Math)")
-            await ctx.end()
-            channel_ops.append({"op": "reveal", "key": "black-box"})
-            
-        else:
-            # Append the drag penalty warning to the report
-            report += f"\n[WARN] Burn Window Missed. Atmospheric Drag detected.\n[GOAL] **Tomorrow's Target: {req_tomorrow}%**"
-            await ctx.send("aux-comm", report)
-            
-            if game_data.oxygen == 0:
-                await ctx.send("aux-comm", "[STASIS] **OXYGEN DEPLETED. STASIS ENGAGED.**\nThe Crew sleeps. The Drones must continue alone.")
-            
-            await self.speak_all_drones(game_data, ctx, tools, "The work day is over. Briefly report your status to your Parent.")
+                if not hourly_activity:
+                    game_data.daily_logs.append(f"[HOUR {hour}] [SILENCE] Ship systems nominal.")
+                    await ctx.send("aux-comm", f"[HOUR {hour}] [SILENCE] Ship systems nominal.")
 
-        game_data.phase = "night"
-        result = game_data.model_dump()
-        result["channel_ops"] = channel_ops if channel_ops else None
-        return result
+            logging.info("--- [DEBUG] Hour Loop Completed. Calculating Resources... ---")
+
+            living_crew = sum(1 for p in game_data.players.values() if p.is_alive)
+            if game_data.initial_crew_size < 1: game_data.initial_crew_size = 1
+            
+            drop_calc = int(GameConfig.OXYGEN_BASE_LOSS * (living_crew / game_data.initial_crew_size))
+            
+            game_data.consume_oxygen(drop_calc)
+            game_data.last_oxygen_drop = drop_calc
+            
+            # --- ORBITAL MECHANICS UPDATE ---
+            current_cycle = game_data.cycle
+            base = GameConfig.FUEL_REQ_BASE
+            growth = GameConfig.FUEL_REQ_GROWTH
+            
+            # Requirement for the cycle that JUST finished
+            req_today = int(base * (growth ** (current_cycle - 1)))
+            
+            # Requirement for the UPCOMING cycle (The Oberth penalty)
+            req_tomorrow = int(base * (growth ** current_cycle))
+            
+            logging.info(f"--- [DEBUG] Cycle {current_cycle} | Fuel: {game_data.fuel}/{req_today} | O2: {game_data.oxygen} ---")
+
+            # Increment Cycle
+            game_data.cycle += 1
+            
+            report = (
+                f"[REPORT] **CYCLE {current_cycle} REPORT**\n"
+                f"[O2] Oxygen: {game_data.oxygen}% (-{drop_calc}%/day)\n"
+                f"[FUEL] Status: {game_data.fuel}% / {req_today}% Required"
+            )
+
+            channel_ops = []
+            
+            if game_data.fuel >= req_today:
+                logging.info("--- [DEBUG] WIN CONDITION MET ---")
+                await ctx.send("aux-comm", report + "\n[SUCCESS] SUFFICIENT FUEL FOR ESCAPE VELOCITY. INITIATING BURN...")
+                await self.generate_epilogues(game_data, ctx, tools, victory=True)
+                await ctx.end()
+                channel_ops.append({"op": "reveal", "key": "black-box"}) 
+                
+            elif req_tomorrow > GameConfig.MAX_POSSIBLE_FUEL_REQ:
+                logging.info("--- [DEBUG] LOSS CONDITION MET (Gravity Well) ---")
+                await ctx.send("aux-comm", report)
+                await ctx.send("aux-comm", "[FATAL] ORBITAL DECAY IRREVERSIBLE. REQUIRED MASS EXCEEDS SHIP CAPACITY.")
+                await self.generate_epilogues(game_data, ctx, tools, victory=False, fail_reason="Gravity Well Victory (Math)")
+                await ctx.end()
+                channel_ops.append({"op": "reveal", "key": "black-box"})
+                
+            else:
+                logging.info("--- [DEBUG] Continuing to Next Cycle ---")
+                # Append the drag penalty warning to the report
+                report += f"\n[WARN] Burn Window Missed. Atmospheric Drag detected.\n[GOAL] **Tomorrow's Target: {req_tomorrow}%**"
+                await ctx.send("aux-comm", report)
+                
+                if game_data.oxygen == 0:
+                    logging.info("--- [DEBUG] O2 is 0. Triggering Stasis Message. ---")
+                    await ctx.send("aux-comm", "[STASIS] **OXYGEN DEPLETED. STASIS ENGAGED.**\nThe Crew sleeps. The Drones must continue alone.")
+                
+                logging.info("--- [DEBUG] Triggering Drone Speak (Night Chat) ---")
+                await self.speak_all_drones(game_data, ctx, tools, "The work day is over. Briefly report your status to your Parent.")
+
+            game_data.phase = "night"
+            
+            logging.info("--- [DEBUG] execute_day_simulation COMPLETED SUCCESSFULLY ---")
+            
+            result = game_data.model_dump()
+            result["channel_ops"] = channel_ops if channel_ops else None
+            return result
+            
+        except Exception as e:
+            logging.error(f"--- [FATAL CRASH] execute_day_simulation died: {e}", exc_info=True)
+            await ctx.send("aux-comm", f"[SYSTEM ERROR] Simulation Halted: {str(e)}")
+            return None
 
     async def handle_input(self, generic_state: dict, user_input: str, ctx, tools) -> Dict[str, Any]:
         game_data = CaissonState(**generic_state.get('metadata', {}))
@@ -495,6 +522,7 @@ class FosterProtocol:
                         sleeping_count = sum(1 for p in living if p.is_sleeping)
                         
                         if sleeping_count >= total_living:
+                            logging.info(f"--- [DEBUG] Consensus Reached via !sleep. User {user_id} triggered Day Cycle. ---")
                             await ctx.send("aux-comm", "[SLEEP] **CREW ASLEEP. DAY CYCLE INITIATED.**")
                             await ctx.reply("[OK] Consensus Reached. Initiating Day Cycle...")
                             game_data.phase = "day"

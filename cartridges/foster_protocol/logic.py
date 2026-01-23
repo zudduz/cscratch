@@ -6,7 +6,7 @@ import json
 import ast
 import re
 from jinja2 import Template
-from .models import CaissonState, DroneState, PlayerState
+from .models import Caisson, Drone, Player
 from .board import SHIP_MAP, GameConfig, ActionCosts
 from . import tools as drone_tools 
 from . import prompts
@@ -17,7 +17,7 @@ PROMPT_PATH = "cartridges/foster_protocol/prompts/system_prompt_template.md"
 
 class FosterProtocol:
     def __init__(self):
-        default_state = CaissonState()
+        default_state = Caisson()
         self.meta = {
             "name": "The Foster Protocol",
             "version": "2.45",
@@ -53,7 +53,7 @@ class FosterProtocol:
         return template.render(**context)
 
     async def on_game_start(self, generic_state: dict) -> Dict[str, Any]:
-        game_data = CaissonState(**generic_state.get('metadata', {}))
+        game_data = Caisson(**generic_state.get('metadata', {}))
         discord_players = generic_state.get('players', [])
         if not discord_players: return { "metadata": game_data.model_dump() }
 
@@ -79,7 +79,7 @@ class FosterProtocol:
             channel_key = f"nanny_{u_id}"
             channel_ops.append({ "op": "create", "key": channel_key, "name": f"nanny-port-{u_name}", "audience": "private", "user_id": u_id })
             
-            game_data.players[u_id] = PlayerState(role=role)
+            game_data.players[u_id] = Player(role=role)
             
             while True:
                 drone_id = f"unit_{random.randint(0, 999):03d}"
@@ -90,7 +90,7 @@ class FosterProtocol:
             # --- CACHING OPTIMIZATION ---
             system_prompt = base_text + "\n\n" + "--- IDENTITY OVERRIDE ---\n" + identity_block
             
-            game_data.drones[drone_id] = DroneState(
+            game_data.drones[drone_id] = Drone(
                 id=drone_id, foster_id=u_id, role=role, 
                 system_prompt=system_prompt, model_version="gemini-2.5-flash"
             )
@@ -197,7 +197,7 @@ class FosterProtocol:
     async def speak_all_drones(self, game_data, ctx, tools, instruction):
         tasks = []
         for drone in game_data.drones.values():
-            if drone.status == "destroyed" or drone.battery <= 0 or drone.location_id != "stasis_bay": 
+            if not drone.can_talk:
                 continue
             channel_key = f"nanny_{drone.foster_id}"
             tasks.append(self._speak_single_drone(ctx, tools, drone, instruction, channel_key))
@@ -231,7 +231,7 @@ class FosterProtocol:
         except Exception as e:
             logging.error(f"Eulogy failed for {drone.id}: {e}")
 
-    async def generate_epilogues(self, game_data: CaissonState, ctx, tools, victory: bool, fail_reason: str = ""):
+    async def generate_epilogues(self, game_data: Caisson, ctx, tools, victory: bool, fail_reason: str = ""):
         saboteur_id = next((pid for pid, p in game_data.players.items() if p.role == "saboteur"), None)
         saboteur_drone = next((b for b in game_data.drones.values() if b.foster_id == saboteur_id), None)
         drone_name = f"{saboteur_drone.name} ({saboteur_drone.id})" if (saboteur_drone and saboteur_drone.name) else (saboteur_drone.id if saboteur_drone else "UNKNOWN")
@@ -246,11 +246,13 @@ class FosterProtocol:
         
         tasks = []
         for drone in game_data.drones.values():
-            if drone.status == "destroyed": continue
+            if drone.status == "destroyed":
+                 continue
             
             channel_key = f"nanny_{drone.foster_id}"
             context_note = "STATUS: ONLINE."
-            if drone.battery <= 0: context_note = "STATUS: BATTERY DEAD. Final transmission."
+            if drone.battery <= 0:
+                 context_note = "STATUS: BATTERY DEAD. Final transmission."
 
             if victory:
                 sys_prompt = f"{context_note} The humans WON. You failed." if drone.role == "saboteur" else f"{context_note} VICTORY!"
@@ -268,7 +270,6 @@ class FosterProtocol:
         if not (action.get("tool") == "charge" and result.success):
             new_charge = drone.battery - result.cost
             drone.battery = max(0, min(100, new_charge))
-            if result.cost > 0: drone.last_battery_drop += result.cost
         
         return {
             "drone": drone,
@@ -277,7 +278,7 @@ class FosterProtocol:
             "thought": thought
         }
 
-    async def execute_day_simulation(self, game_data: CaissonState, ctx, tools) -> Dict[str, Any]:
+    async def execute_day_simulation(self, game_data: Caisson, ctx, tools) -> Dict[str, Any]:
         logging.info("--- [DEBUG] STARTING execute_day_simulation ---")
         
         try:
@@ -291,7 +292,7 @@ class FosterProtocol:
             
             for hour in range(1, GameConfig.HOURS_PER_SHIFT + 1):
                 await asyncio.sleep(2) 
-                active_drones = [b for b in game_data.drones.values() if b.status == "active" and b.battery > 0]
+                active_drones = [b for b in game_data.drones.values() if b.status == "active"]
                 logging.info(f"--- [DEBUG] Hour {hour}: {len(active_drones)} active drones ---")
                 
                 random.shuffle(active_drones)
@@ -339,13 +340,12 @@ class FosterProtocol:
 
             logging.info("--- [DEBUG] Hour Loop Completed. Calculating Resources... ---")
 
-            living_crew = sum(1 for p in game_data.players.values() if p.is_alive)
+            living_crew = sum(1 for p in game_data.players.values() if p.alive)
             if game_data.initial_crew_size < 1: game_data.initial_crew_size = 1
             
             drop_calc = int(GameConfig.OXYGEN_BASE_LOSS * (living_crew / game_data.initial_crew_size))
             
             game_data.consume_oxygen(drop_calc)
-            game_data.last_oxygen_drop = drop_calc
             
             # --- ORBITAL MECHANICS UPDATE ---
             current_cycle = game_data.cycle
@@ -413,7 +413,7 @@ class FosterProtocol:
             return None
 
     async def handle_input(self, generic_state: dict, user_input: str, ctx, tools) -> Dict[str, Any]:
-        game_data = CaissonState(**generic_state.get('metadata', {}))
+        game_data = Caisson(**generic_state.get('metadata', {}))
         channel_id = ctx.trigger_data.get('channel_id')
         user_id = ctx.trigger_data.get('user_id')
         interface_channels = ctx.trigger_data.get('interface', {}).get('channels', {})
@@ -443,7 +443,7 @@ class FosterProtocol:
                     owner_id = target_drone.foster_id
                     owner_state = game_data.players.get(owner_id)
                     is_orphan = False
-                    if owner_state and not owner_state.is_alive:
+                    if owner_state and not owner_state.alive:
                         is_orphan = True
                     
                     if target_drone.foster_id != user_id and not is_orphan:
@@ -507,22 +507,23 @@ class FosterProtocol:
                 
                 elif cmd_text == "!sleep":
                     if user_id in game_data.players:
-                        game_data.players[user_id].is_sleeping = True
-                        living = [p for p in game_data.players.values() if p.is_alive]
+                        game_data.players[user_id].requested_sleep = True
+                        living = [p for p in game_data.players.values() if p.alive]
                         total_living = len(living)
-                        sleeping_count = sum(1 for p in living if p.is_sleeping)
+                        sleeping_count = sum(1 for p in living if p.ready_for_sleep)
                         
                         if sleeping_count >= total_living:
                             logging.info(f"--- [DEBUG] Consensus Reached via !sleep. User {user_id} triggered Day Cycle. ---")
                             await ctx.send("aux-comm", "**CREW ASLEEP. DAY CYCLE INITIATED.**")
                             await ctx.reply("Consensus Reached. Initiating Day Cycle...")
                             game_data.phase = "day"
-                            for p in game_data.players.values(): p.is_sleeping = False
+                            for p in game_data.players.values():
+                                p.requested_sleep = False
                             ctx.schedule(self.execute_day_simulation(game_data, ctx, tools))
                             return {"metadata": game_data.model_dump()}
                         
                         await ctx.reply(f"**SLEEP REQUEST LOGGED.** ({sleeping_count}/{total_living} Crew Ready)")
-                        return {f"players.{user_id}.is_sleeping": True}
+                        return {f"players.{user_id}.ready_for_sleep": True}
                 
                 else:
                     # Rejects any other !command instead of sending it as a message
@@ -530,9 +531,7 @@ class FosterProtocol:
                     return None
 
             if my_drone:
-                if (my_drone.status == "destroyed" or 
-                    my_drone.battery <= 0 or 
-                    my_drone.location_id != "stasis_bay"):
+                if not my_drone.can_talk:
                     await ctx.reply("**NO DRONE PRESENT.**")
                     return None
 

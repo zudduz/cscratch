@@ -1,27 +1,22 @@
 import logging
 import random
 from typing import Dict, Any, List
-from .models import CaissonState, DroneState, ToolExecutionResult
+from .models import Caisson, Drone, ToolExecutionResult
 from .board import SHIP_MAP, ActionCosts, GameConfig
 
-# --- HELPER: BLAST LOGIC ---
-def _trigger_torpedo_blast(game_data: CaissonState) -> int:
-    victim_count = 0
+def _trigger_torpedo_blast(game_data: Caisson) -> None:
     for drone in game_data.drones.values():
-        if drone.location_id == "torpedo_bay" and drone.battery > 0:
+        if drone.location_id == "torpedo_bay":
             drone.battery = 0
-            drone.last_battery_drop = 100 
-            victim_count += 1
-    return victim_count
 
-def get_visible_drones(game_data: CaissonState, location_id: str) -> List[str]:
+def get_visible_drones(game_data: Caisson, location_id: str) -> List[str]:
     return [
-        f"{d.id} ({'offline' if d.battery <= 0 else d.status})"
+        f"{d.id} ({d.status})"
         for d in game_data.drones.values() 
         if d.location_id == location_id
     ]
 
-def execute_tool(tool_name: str, args: Dict[str, Any], drone_id: str, game_data: CaissonState) -> ToolExecutionResult:
+def execute_tool(tool_name: str, args: Dict[str, Any], drone_id: str, game_data: Caisson) -> ToolExecutionResult:
     actor = game_data.drones.get(drone_id)
     if not actor: return ToolExecutionResult(False, "System Error: Actor not found.")
     
@@ -64,7 +59,7 @@ def execute_tool(tool_name: str, args: Dict[str, Any], drone_id: str, game_data:
             if actor.location_id == "torpedo_bay":
                 if random.random() < GameConfig.TORPEDO_ACCIDENT_CHANCE:
                     _trigger_torpedo_blast(game_data)
-                    return ToolExecutionResult(False, f"CRITICAL FAILURE: TRIGGERED DETONATOR.", ActionCosts.GATHER, "global")
+                    return ToolExecutionResult(False, "WARHEAD TRIGGERED. EMP IN TORPEDO BAY.", ActionCosts.GATHER, "global")
 
             if actor.location_id == "shuttle_bay": game_data.shuttle_bay_fuel -= 10
             else: game_data.torpedo_bay_fuel -= 10
@@ -76,8 +71,8 @@ def execute_tool(tool_name: str, args: Dict[str, Any], drone_id: str, game_data:
             if actor.location_id != "torpedo_bay":
                 return ToolExecutionResult(False, "Must be in Torpedo Bay.", ActionCosts.CHARGE)
             
-            victims = _trigger_torpedo_blast(game_data)
-            return ToolExecutionResult(True, f"MANUAL DETONATION. WARHEAD TRIGGERED. {victims} UNITS DISABLED.", ActionCosts.DETONATE, "global")
+            _trigger_torpedo_blast(game_data)
+            return ToolExecutionResult(True, "WARHEAD TRIGGERED. EMP IN TORPEDO BAY.", ActionCosts.DETONATE, "global")
 
         elif tool_name == "deposit":
             if actor.battery < ActionCosts.DEPOSIT: return ToolExecutionResult(False, "Low Battery.", ActionCosts.DEPOSIT)
@@ -88,14 +83,13 @@ def execute_tool(tool_name: str, args: Dict[str, Any], drone_id: str, game_data:
             actor.inventory = [i for i in actor.inventory if i != "fuel_canister"]
             amount = count * GameConfig.FUEL_PER_CANISTER
             game_data.add_fuel(amount)
-            game_data.last_fuel_gain += amount
             return ToolExecutionResult(True, f"Deposited {count} Fuel ({amount}%).", ActionCosts.DEPOSIT, "global")
 
         elif tool_name == "charge":
             if actor.location_id != "charging_station":
                 return ToolExecutionResult(False, "Not in Charging Station.", ActionCosts.CHARGE)
             if actor.id in game_data.station.pending_deactivation:
-                actor.status = "destroyed"
+                actor.destroyed = True
                 actor.battery = 0
                 game_data.station.pending_deactivation.remove(actor.id)
                 return ToolExecutionResult(True, "Disassembly sequence initiated. UNIT DESTROYED.", 0, "global")
@@ -132,7 +126,6 @@ def execute_tool(tool_name: str, args: Dict[str, Any], drone_id: str, game_data:
             drain_amount = 20
             actual_drain = min(target.battery, drain_amount)
             target.battery = max(0, target.battery - actual_drain)
-            target.last_battery_drop += actual_drain
             
             gain_amount = min(ActionCosts.DRAIN, actual_drain)
 
@@ -147,7 +140,6 @@ def execute_tool(tool_name: str, args: Dict[str, Any], drone_id: str, game_data:
             
             if actor.battery < ActionCosts.SABOTAGE: return ToolExecutionResult(False, "Low Battery.", ActionCosts.SABOTAGE)
             game_data.consume_oxygen(GameConfig.OXYGEN_VENT_AMOUNT)
-            game_data.last_oxygen_drop += GameConfig.OXYGEN_VENT_AMOUNT
             return ToolExecutionResult(True, "SAW SABOTAGE: Vented O2 Regulators.", ActionCosts.SABOTAGE, "global")
 
         elif tool_name == "siphon":
@@ -189,12 +181,12 @@ def execute_tool(tool_name: str, args: Dict[str, Any], drone_id: str, game_data:
                 
             target_id = args.get("player_id")
             target = game_data.players.get(target_id)
-            if not target or not target.is_alive:
+            if not target or not target.alive:
                 return ToolExecutionResult(False, "Target Pod Empty/Invalid.", ActionCosts.KILL)
             
             if actor.battery < ActionCosts.KILL: return ToolExecutionResult(False, "Insufficient Power.", ActionCosts.KILL)
             
-            target.is_alive = False
+            target.alive = False
             actor.inventory.remove("plasma_torch")
             return ToolExecutionResult(True, f"LIFE SUPPORT SEVERED for Pod {target_id}. CREW FATALITY.", ActionCosts.KILL, "global")
 
@@ -207,7 +199,7 @@ def execute_tool(tool_name: str, args: Dict[str, Any], drone_id: str, game_data:
     except Exception as e:
         return ToolExecutionResult(False, f"Glitch: {str(e)}", ActionCosts.CHARGE)
 
-def build_turn_context(drone: DroneState, game_data: CaissonState, hour: int = 1) -> str:
+def build_turn_context(drone: Drone, game_data: Caisson, hour: int = 1) -> str:
     room = SHIP_MAP.get(drone.location_id)
     visible_drones = get_visible_drones(game_data, drone.location_id)
     

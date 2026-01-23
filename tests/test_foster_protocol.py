@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
 from cartridges.foster_protocol.logic import FosterProtocol
-from cartridges.foster_protocol.models import CaissonState, PlayerState
+from cartridges.foster_protocol.models import Caisson, Player
 from app.engine_context import EngineContext
 from cartridges.foster_protocol.board import GameConfig
 
@@ -41,36 +41,36 @@ async def test_game_initialization(cartridge):
     state = {"players": players}
     with patch("random.randint", side_effect=[0, 100, 101]): 
         result = await cartridge.on_game_start(state)
-    game_data = CaissonState(**result["metadata"])
+    game_data = Caisson(**result["metadata"])
     assert len(game_data.players) == 2
     assert game_data.players["p1"].role == "saboteur"
 
 @pytest.mark.asyncio
 async def test_oxygen_depletion_math(cartridge, mock_ctx, mock_tools):
-    game_data = CaissonState(initial_crew_size=5, oxygen=100)
+    game_data = Caisson(initial_crew_size=5, oxygen=100)
     for i in range(5):
-        game_data.players[f"p{i}"] = PlayerState(is_alive=True)
+        game_data.players[f"p{i}"] = Player(alive=True)
     with patch("asyncio.sleep", AsyncMock()),          patch.object(cartridge, "run_single_drone_turn", AsyncMock(return_value={
              "drone": MagicMock(), "action": {}, "result": MagicMock(message="ok", visibility="private"), "thought": "x"
          })):
         result_state = await cartridge.execute_day_simulation(game_data, mock_ctx, mock_tools)
-    new_state = CaissonState(**result_state)
+    new_state = Caisson(**result_state)
     assert new_state.oxygen == 80
 
 @pytest.mark.asyncio
 async def test_lifeboat_dilemma(cartridge, mock_ctx, mock_tools):
-    game_data = CaissonState(initial_crew_size=5, oxygen=100)
-    game_data.players["p1"] = PlayerState(is_alive=True) 
+    game_data = Caisson(initial_crew_size=5, oxygen=100)
+    game_data.players["p1"] = Player(alive=True) 
     with patch("asyncio.sleep", AsyncMock()),          patch.object(cartridge, "run_single_drone_turn", AsyncMock(return_value={
              "drone": MagicMock(), "action": {}, "result": MagicMock(message="ok", visibility="private"), "thought": "x"
          })):
         result_state = await cartridge.execute_day_simulation(game_data, mock_ctx, mock_tools)
-    new_state = CaissonState(**result_state)
+    new_state = Caisson(**result_state)
     assert new_state.oxygen == 96 
 
 @pytest.mark.asyncio
 async def test_torpedo_explosion(cartridge, mock_ctx, mock_tools):
-    game_data = CaissonState()
+    game_data = Caisson()
     drone = MagicMock()
     drone.id = "unit_01"
     drone.location_id = "torpedo_bay"
@@ -81,7 +81,7 @@ async def test_torpedo_explosion(cartridge, mock_ctx, mock_tools):
     with patch("random.random", return_value=0.01): 
         res = await cartridge.run_single_drone_turn(drone, game_data, 1, mock_tools, "game_id")
     assert res["result"].success is False
-    assert "CRITICAL FAILURE" in res["result"].message
+    assert "WARHEAD TRIGGERED. EMP IN TORPEDO BAY." in res["result"].message
     assert drone.battery == 0
 
 @pytest.mark.asyncio
@@ -92,7 +92,7 @@ async def test_gather_success(cartridge):
     gather_amount = 10 # Standard amount from logic/tools
     expected_remaining = initial_shuttle_fuel - gather_amount
 
-    game_data = CaissonState()
+    game_data = Caisson()
     drone = MagicMock()
     drone.id = "unit_01"
     drone.location_id = "shuttle_bay"

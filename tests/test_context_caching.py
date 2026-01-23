@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import MagicMock, patch
 from cartridges.foster_protocol.logic import FosterProtocol
-from cartridges.foster_protocol.models import CaissonState
+from cartridges.foster_protocol.models import Caisson
 
 @pytest.mark.asyncio
 async def test_context_caching_prefix_integrity():
@@ -28,7 +28,7 @@ async def test_context_caching_prefix_integrity():
         # 3. Initialize Game with 2 Players (generating 2 Drones)
         players = [{"id": "p1", "name": "Alice"}, {"id": "p2", "name": "Bob"}]
         result = await cartridge.on_game_start({"players": players})
-        game_data = CaissonState(**result["metadata"])
+        game_data = Caisson(**result["metadata"])
         
         # 4. Extract Drones
         drones = list(game_data.drones.values())

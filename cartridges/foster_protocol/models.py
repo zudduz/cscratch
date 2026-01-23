@@ -24,7 +24,7 @@ class Player(BaseModel):
 
     @property
     def ready_for_sleep(self) -> bool:
-        return alive or requested_sleep
+        return self.alive or self.requested_sleep
 
 class Drone(BaseModel):
     id: str                    

@@ -225,7 +225,7 @@ def build_turn_context(drone: DroneState, game_data: CaissonState, hour: int = 1
         time_warning = "CRITICAL WARNING: The Shift is ending."
     
     if hour == end_hour:
-        time_warning += "\n[NOTICE] Shift ending. Move to 'stasis_bay' to sync with your Foster Parent."
+        time_warning += "\nShift ending. Move to 'stasis_bay' to sync with your Foster Parent."
 
     context = (
         "--- TACTICAL LINK ---\n"

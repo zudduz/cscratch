@@ -13,10 +13,6 @@ from . import prompts
 
 AVAILABLE_MODELS = ["gemini-2.5-flash"]
 
-BUSY_MESSAGES = [
-    "[SLEEP] Day Cycle in progress. Pretend to snore or something."
-]
-
 PROMPT_PATH = "cartridges/foster_protocol/prompts/system_prompt_template.md"
 
 class FosterProtocol:
@@ -69,8 +65,8 @@ class FosterProtocol:
         messages = []
 
         channel_ops.append({ "op": "create", "key": "aux-comm", "name": "aux-comm", "audience": "public" })
-        channel_ops.append({ "op": "create", "key": "black-box", "name": "black-box-logs", "audience": "hidden", "init_msg": "[SECURE] FLIGHT RECORDER ACTIVE." })
-        messages.append({ "channel": "aux-comm", "content": "[SYSTEM] VENDETTA OS v9.0 ONLINE." })
+        channel_ops.append({ "op": "create", "key": "black-box", "name": "black-box-logs", "audience": "hidden", "init_msg": "FLIGHT RECORDER ACTIVE." })
+        messages.append({ "channel": "aux-comm", "content": "VENDETTA OS v9.0 ONLINE." })
 
         base_text = self._load_base_prompt()
 
@@ -235,7 +231,7 @@ class FosterProtocol:
             )
             display_name = drone.name if drone.name else drone.id
             role_reveal = f"**ANALYSIS:** DRONE WAS [{drone.role.upper()}]."
-            msg = f"[DECOM] **DECOMMISSION LOG - {display_name}:**\n{role_reveal}\n*\"{resp}\"*"
+            msg = f"**DECOMMISSION LOG - {display_name}:**\n{role_reveal}\n*\"{resp}\"*"
             await ctx.send("aux-comm", msg)
         except Exception as e:
             logging.error(f"Eulogy failed for {drone.id}: {e}")
@@ -245,12 +241,12 @@ class FosterProtocol:
         saboteur_drone = next((b for b in game_data.drones.values() if b.foster_id == saboteur_id), None)
         drone_name = f"{saboteur_drone.name} ({saboteur_drone.id})" if (saboteur_drone and saboteur_drone.name) else (saboteur_drone.id if saboteur_drone else "UNKNOWN")
         
-        await ctx.send("black-box", "[END] MISSION ENDED. DECLASSIFYING LOGS...")
+        await ctx.send("black-box", "MISSION ENDED. DECLASSIFYING LOGS...")
         
         if victory:
-            final_report = f"[WIN] SUBSPACE DRIVE ENGAGED\nMISSION: SUCCESS\nSECURITY AUDIT: Sabotage detected. Traitor: Drone {drone_name} (Bonded to <@{saboteur_id}>)."
+            final_report = f"SUBSPACE DRIVE ENGAGED\nMISSION: SUCCESS\nSECURITY AUDIT: Sabotage detected. Traitor: Drone {drone_name} (Bonded to <@{saboteur_id}>)."
         else:
-            final_report = f"[FAIL] CRITICAL SYSTEM FAILURE\nREASON: {fail_reason}\nSECURITY ALERT: Traitor: Drone {drone_name} (Bonded to <@{saboteur_id}>)."
+            final_report = f"CRITICAL SYSTEM FAILURE\nREASON: {fail_reason}\nSECURITY ALERT: Traitor: Drone {drone_name} (Bonded to <@{saboteur_id}>)."
         await ctx.send("aux-comm", final_report)
         
         tasks = []
@@ -343,8 +339,8 @@ class FosterProtocol:
                         logging.error(f"--- [CRITICAL] Error running turn for drone {drone.id}: {e}", exc_info=True)
 
                 if not hourly_activity:
-                    game_data.daily_logs.append(f"[HOUR {hour}] [SILENCE] Ship systems nominal.")
-                    await ctx.send("aux-comm", f"[HOUR {hour}] [SILENCE] Ship systems nominal.")
+                    game_data.daily_logs.append(f"[HOUR {hour}] Ship systems nominal.")
+                    await ctx.send("aux-comm", f"[HOUR {hour}] Ship systems nominal.")
 
             logging.info("--- [DEBUG] Hour Loop Completed. Calculating Resources... ---")
 
@@ -373,16 +369,16 @@ class FosterProtocol:
             game_data.cycle += 1
             
             report = (
-                f"[REPORT] **CYCLE {current_cycle} REPORT**\n"
-                f"[O2] Oxygen: {game_data.oxygen}% (-{drop_calc}%/day)\n"
-                f"[FUEL] Status: {game_data.fuel}% / {req_today}% Required"
+                f"**CYCLE {current_cycle} REPORT**\n"
+                f"Oxygen: {game_data.oxygen}% (-{drop_calc}%/day)\n"
+                f"Fuel Status: {game_data.fuel}% / {req_today}% Required"
             )
 
             channel_ops = []
             
             if game_data.fuel >= req_today:
                 logging.info("--- [DEBUG] WIN CONDITION MET ---")
-                await ctx.send("aux-comm", report + "\n[SUCCESS] SUFFICIENT FUEL FOR ESCAPE VELOCITY. INITIATING BURN...")
+                await ctx.send("aux-comm", report + "\nSUCCESS SUFFICIENT FUEL FOR ESCAPE VELOCITY. INITIATING BURN...")
                 await self.generate_epilogues(game_data, ctx, tools, victory=True)
                 await ctx.end()
                 channel_ops.append({"op": "reveal", "key": "black-box"}) 
@@ -390,7 +386,7 @@ class FosterProtocol:
             elif req_tomorrow > GameConfig.MAX_POSSIBLE_FUEL_REQ:
                 logging.info("--- [DEBUG] LOSS CONDITION MET (Gravity Well) ---")
                 await ctx.send("aux-comm", report)
-                await ctx.send("aux-comm", "[FATAL] ORBITAL DECAY IRREVERSIBLE. REQUIRED MASS EXCEEDS SHIP CAPACITY.")
+                await ctx.send("aux-comm", "FATAL. ORBITAL DECAY IRREVERSIBLE. REQUIRED MASS EXCEEDS SHIP CAPACITY.")
                 await self.generate_epilogues(game_data, ctx, tools, victory=False, fail_reason="Gravity Well Victory (Math)")
                 await ctx.end()
                 channel_ops.append({"op": "reveal", "key": "black-box"})
@@ -398,12 +394,12 @@ class FosterProtocol:
             else:
                 logging.info("--- [DEBUG] Continuing to Next Cycle ---")
                 # Append the drag penalty warning to the report
-                report += f"\n[WARN] Burn Window Missed. Atmospheric Drag detected.\n[GOAL] **Tomorrow's Target: {req_tomorrow}%**"
+                report += f"\nBurn Window Missed. Atmospheric Drag detected.\n**Tomorrow's Target: {req_tomorrow}%**"
                 await ctx.send("aux-comm", report)
                 
                 if game_data.oxygen == 0:
                     logging.info("--- [DEBUG] O2 is 0. Triggering Stasis Message. ---")
-                    await ctx.send("aux-comm", "[STASIS] **OXYGEN DEPLETED. STASIS ENGAGED.**\nThe Crew sleeps. The Drones must continue alone.")
+                    await ctx.send("aux-comm", "**OXYGEN DEPLETED. STASIS ENGAGED.**\nThe Crew sleeps. The Drones must continue alone.")
                 
                 logging.info("--- [DEBUG] Triggering Drone Speak (Night Chat) ---")
                 await self.speak_all_drones(game_data, ctx, tools, "The work day is over. Briefly report your status to your Parent.")
@@ -418,7 +414,7 @@ class FosterProtocol:
             
         except Exception as e:
             logging.error(f"--- [FATAL CRASH] execute_day_simulation died: {e}", exc_info=True)
-            await ctx.send("aux-comm", f"[SYSTEM ERROR] Simulation Halted: {str(e)}")
+            await ctx.send("aux-comm", f"SYSTEM ERROR. Simulation Halted: {str(e)}")
             return None
 
     async def handle_input(self, generic_state: dict, user_input: str, ctx, tools) -> Dict[str, Any]:
@@ -428,7 +424,7 @@ class FosterProtocol:
         interface_channels = ctx.trigger_data.get('interface', {}).get('channels', {})
         
         if game_data.phase == "day":
-            await ctx.reply(random.choice(BUSY_MESSAGES))
+            await ctx.reply("Day Cycle in progress. You are sleeping now. Pretend to snore or something.")
             return None
         
         if channel_id == interface_channels.get('aux-comm'):
@@ -446,7 +442,7 @@ class FosterProtocol:
                     target_id = parts[1]
                     target_drone = game_data.drones.get(target_id)
                     if not target_drone:
-                        await ctx.reply(f"[ERROR] Unit '{target_id}' not found.")
+                        await ctx.reply(f"Unit '{target_id}' not found.")
                         return None
                     
                     owner_id = target_drone.foster_id
@@ -456,15 +452,15 @@ class FosterProtocol:
                         is_orphan = True
                     
                     if target_drone.foster_id != user_id and not is_orphan:
-                        await ctx.reply("[DENIED] You are not the bonded supervisor.")
+                        await ctx.reply("DENIED. You are not the bonded supervisor.")
                         return None
                     
                     if target_id not in game_data.station.pending_deactivation:
                         game_data.station.pending_deactivation.append(target_drone.id)
-                        await ctx.reply(f"[WARNING] **DEACTIVATION AUTHORIZED.**\nDrone {target_id} will be disassembled upon next Charging Cycle.")
+                        await ctx.reply(f"**DEACTIVATION AUTHORIZED.**\nDrone {target_id} will be disassembled upon next Charging Cycle.")
                         return {"station": game_data.station.model_dump()}
                     else:
-                        await ctx.reply(f"[NOTICE] Drone {target_id} is already scheduled for deactivation.")
+                        await ctx.reply(f"Drone {target_id} is already scheduled for deactivation.")
                         return None
                         
                 elif cmd_text.startswith("!abort") or cmd_text.startswith("!cancel"):
@@ -475,11 +471,11 @@ class FosterProtocol:
                         target_drone = game_data.drones.get(target_id)
                         if target_drone.foster_id == user_id:
                             game_data.station.pending_deactivation.remove(target_id)
-                            await ctx.reply(f"[OK] **ORDER RESCINDED.** Drone {target_id} is safe.")
+                            await ctx.reply(f"**ORDER RESCINDED.** Drone {target_id} is safe.")
                             return {"station": game_data.station.model_dump()}
                     return None
                 else:
-                    await ctx.reply(f"[ERROR] **UNKNOWN COMMAND:** '{parts[0]}'.")
+                    await ctx.reply(f"**UNKNOWN COMMAND:** '{parts[0]}'.")
                     return None
 
             response = await tools.ai.generate_response(
@@ -497,7 +493,7 @@ class FosterProtocol:
                     if not my_drone: return None
                     parts = user_input.strip().split(maxsplit=1)
                     if len(parts) < 2:
-                        await ctx.reply("[ERROR] USAGE: !name <new_name>")
+                        await ctx.reply("USAGE: !name <new_name>")
                         return None
                     new_name = parts[1][:20]
                     my_drone.name = new_name
@@ -511,7 +507,7 @@ class FosterProtocol:
                     
                     my_drone.system_prompt = base_text + "\n\n" + "--- IDENTITY OVERRIDE ---\n" + final_identity
                     
-                    await ctx.reply(f"[ACCEPTED] Identity Updated. Hello, **{new_name}**.")
+                    await ctx.reply(f"Identity Updated. Hello, **{new_name}**.")
                     return {f"drones.{my_drone.id}.name": new_name, f"drones.{my_drone.id}.system_prompt": my_drone.system_prompt}
                 
                 elif cmd_text == "!sleep":
@@ -523,26 +519,26 @@ class FosterProtocol:
                         
                         if sleeping_count >= total_living:
                             logging.info(f"--- [DEBUG] Consensus Reached via !sleep. User {user_id} triggered Day Cycle. ---")
-                            await ctx.send("aux-comm", "[SLEEP] **CREW ASLEEP. DAY CYCLE INITIATED.**")
-                            await ctx.reply("[OK] Consensus Reached. Initiating Day Cycle...")
+                            await ctx.send("aux-comm", "**CREW ASLEEP. DAY CYCLE INITIATED.**")
+                            await ctx.reply("Consensus Reached. Initiating Day Cycle...")
                             game_data.phase = "day"
                             for p in game_data.players.values(): p.is_sleeping = False
                             ctx.schedule(self.execute_day_simulation(game_data, ctx, tools))
                             return {"metadata": game_data.model_dump()}
                         
-                        await ctx.reply(f"[VOTE] **SLEEP REQUEST LOGGED.** ({sleeping_count}/{total_living} Crew Ready)")
+                        await ctx.reply(f"**SLEEP REQUEST LOGGED.** ({sleeping_count}/{total_living} Crew Ready)")
                         return {f"players.{user_id}.is_sleeping": True}
                 
                 else:
                     # Rejects any other !command instead of sending it as a message
-                    await ctx.reply(f"[ERROR] Unknown Nanny Command: '{cmd_text}'.\nAvailable: !name <name>, !sleep")
+                    await ctx.reply(f"Unknown Nanny Command: '{cmd_text}'.\nAvailable: !name <name>, !sleep")
                     return None
 
             if my_drone:
                 if (my_drone.status == "destroyed" or 
                     my_drone.battery <= 0 or 
                     my_drone.location_id != "stasis_bay"):
-                    await ctx.reply("[ERROR] **NO DRONE PRESENT.**")
+                    await ctx.reply("**NO DRONE PRESENT.**")
                     return None
 
                 log_line = f"PARENT: {user_input}"

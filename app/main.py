@@ -46,7 +46,7 @@ async def lifespan(app: FastAPI):
     
     # 2. Announce Death
     if not discord_client.is_closed():
-        await discord_client.announce_state("[OFFLINE] **System Offline**")
+        await discord_client.announce_state("**System Offline**")
         
     # 3. Kill Engine Loop
     game_engine.engine.stop()

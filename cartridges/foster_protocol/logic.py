@@ -392,8 +392,6 @@ class FosterProtocol:
                 report += f"\nBurn Window Missed. Atmospheric Drag detected.\n**Tomorrow's Fuel Target: {req_tomorrow}%**"
                 await ctx.send("aux-comm", report)
                 
-                for p in game_data.players.values():
-                     p.requested_sleep = False
                 # --- AUTO-CONTINUE CHECK ---
                 if game_data.is_ready_for_day:
                     # If O2 is gone, we announce it once here.

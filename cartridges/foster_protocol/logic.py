@@ -458,43 +458,52 @@ class FosterProtocol:
         elif channel_id == interface_channels.get(f"nanny_{user_id}"):
             my_drone = next((b for b in game_data.drones.values() if b.foster_id == user_id), None)
             
-            if user_input.strip().lower().startswith("!name"):
-                parts = user_input.strip().split(maxsplit=1)
-                if len(parts) < 2:
-                    await ctx.reply("[ERROR] USAGE: !name <new_name>")
+            if user_input.strip().startswith("!"):
+                cmd_text = user_input.strip().lower()
+
+                if cmd_text.startswith("!name"):
+                    if not my_drone: return None
+                    parts = user_input.strip().split(maxsplit=1)
+                    if len(parts) < 2:
+                        await ctx.reply("[ERROR] USAGE: !name <new_name>")
+                        return None
+                    new_name = parts[1][:20]
+                    my_drone.name = new_name
+                    
+                    base_text = self._load_base_prompt()
+                    identity_block = prompts.get_drone_identity_block(my_drone.id, game_data.players[user_id].role, my_drone.role == "saboteur")
+                    
+                    # --- CACHING OPTIMIZATION ---
+                    identity_patch = f"\n\nUPDATE: You have been named **{new_name}**. Use this name."
+                    final_identity = identity_block + identity_patch
+                    
+                    my_drone.system_prompt = base_text + "\n\n" + "--- IDENTITY OVERRIDE ---\n" + final_identity
+                    
+                    await ctx.reply(f"[ACCEPTED] Identity Updated. Hello, **{new_name}**.")
+                    return {f"drones.{my_drone.id}.name": new_name, f"drones.{my_drone.id}.system_prompt": my_drone.system_prompt}
+                
+                elif cmd_text == "!sleep":
+                    if user_id in game_data.players:
+                        game_data.players[user_id].is_sleeping = True
+                        living = [p for p in game_data.players.values() if p.is_alive]
+                        total_living = len(living)
+                        sleeping_count = sum(1 for p in living if p.is_sleeping)
+                        
+                        if sleeping_count >= total_living:
+                            await ctx.send("aux-comm", "[SLEEP] **CREW ASLEEP. DAY CYCLE INITIATED.**")
+                            await ctx.reply("[OK] Consensus Reached. Initiating Day Cycle...")
+                            game_data.phase = "day"
+                            for p in game_data.players.values(): p.is_sleeping = False
+                            ctx.schedule(self.execute_day_simulation(game_data, ctx, tools))
+                            return {"metadata": game_data.model_dump()}
+                        
+                        await ctx.reply(f"[VOTE] **SLEEP REQUEST LOGGED.** ({sleeping_count}/{total_living} Crew Ready)")
+                        return {f"players.{user_id}.is_sleeping": True}
+                
+                else:
+                    # Rejects any other !command instead of sending it as a message
+                    await ctx.reply(f"[ERROR] Unknown Nanny Command: '{cmd_text}'.\nAvailable: !name <name>, !sleep")
                     return None
-                new_name = parts[1][:20]
-                my_drone.name = new_name
-                
-                base_text = self._load_base_prompt()
-                identity_block = prompts.get_drone_identity_block(my_drone.id, game_data.players[user_id].role, my_drone.role == "saboteur")
-                
-                # --- CACHING OPTIMIZATION ---
-                identity_patch = f"\n\nUPDATE: You have been named **{new_name}**. Use this name."
-                final_identity = identity_block + identity_patch
-                
-                my_drone.system_prompt = base_text + "\n\n" + "--- IDENTITY OVERRIDE ---\n" + final_identity
-                
-                await ctx.reply(f"[ACCEPTED] Identity Updated. Hello, **{new_name}**.")
-                return {f"drones.{my_drone.id}.name": new_name, f"drones.{my_drone.id}.system_prompt": my_drone.system_prompt}
-            
-            if user_input.strip() == "!sleep":
-                if user_id in game_data.players:
-                    game_data.players[user_id].is_sleeping = True
-                    living = [p for p in game_data.players.values() if p.is_alive]
-                    total_living = len(living)
-                    sleeping_count = sum(1 for p in living if p.is_sleeping)
-                    
-                    if sleeping_count >= total_living:
-                        await ctx.send("aux-comm", "[SLEEP] **CREW ASLEEP. DAY CYCLE INITIATED.**")
-                        await ctx.reply("[OK] Consensus Reached. Initiating Day Cycle...")
-                        game_data.phase = "day"
-                        for p in game_data.players.values(): p.is_sleeping = False
-                        ctx.schedule(self.execute_day_simulation(game_data, ctx, tools))
-                        return {"metadata": game_data.model_dump()}
-                    
-                    await ctx.reply(f"[VOTE] **SLEEP REQUEST LOGGED.** ({sleeping_count}/{total_living} Crew Ready)")
-                    return {f"players.{user_id}.is_sleeping": True}
 
             if my_drone:
                 if (my_drone.status == "destroyed" or 

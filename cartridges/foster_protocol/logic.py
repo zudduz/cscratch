@@ -435,14 +435,14 @@ class FosterProtocol:
             return None
         
         if channel_id == interface_channels.get('aux-comm'):
-            if user_input == "!exec_wakeup_protocol":
-                ctx.schedule(self.run_wake_up_routine(game_data, ctx, tools))
-                return None
-
             if user_input.strip().startswith("!"):
                 cmd_text = user_input.strip().lower()
-                if cmd_text.startswith("!destroy"):
-                    parts = cmd_text.split()
+                parts = cmd_text.split()
+                if parts[0] == "!exec_wakeup_protocol":
+                    ctx.schedule(self.run_wake_up_routine(game_data, ctx, tools))
+                    return None
+
+                if parts[0] == "!destroy":
                     if len(parts) < 2:
                         await ctx.reply("USAGE: !destroy <drone_id>")
                         return None
@@ -470,8 +470,7 @@ class FosterProtocol:
                         await ctx.reply(f"Drone {target_id} is already scheduled for destruction.")
                         return None
                         
-                elif cmd_text.startswith("!abort") or cmd_text.startswith("!cancel"):
-                    parts = cmd_text.split()
+                elif parts[0] in ["!abort", "!cancel"]:
                     if len(parts) < 2: return None
                     target_id = parts[1]
                     if target_id in game_data.station.pending_deactivation:
@@ -520,11 +519,8 @@ class FosterProtocol:
                 elif cmd_text == "!sleep":
                     if user_id in game_data.players:
                         game_data.players[user_id].requested_sleep = True
-                        living = [p for p in game_data.players.values() if p.alive]
-                        total_living = len(living)
-                        sleeping_count = sum(1 for p in living if p.ready_for_sleep)
                         
-                        if sleeping_count >= total_living:
+                        if game_data.is_ready_for_day:
                             logging.info(f"--- [DEBUG] Consensus Reached via !sleep. User {user_id} triggered Day Cycle. ---")
                             await ctx.send("aux-comm", "**CREW ASLEEP. DAY CYCLE INITIATED.**")
                             await ctx.reply("Consensus Reached. Initiating Day Cycle...")
@@ -534,8 +530,8 @@ class FosterProtocol:
                             ctx.schedule(self.execute_day_simulation(game_data, ctx, tools))
                             return {"metadata": game_data.model_dump()}
                         
-                        await ctx.reply(f"**SLEEP REQUEST LOGGED.** ({sleeping_count}/{total_living} Crew Ready)")
-                        return {f"players.{user_id}.ready_for_sleep": True}
+                        await ctx.reply(f"**SLEEP REQUEST LOGGED.**")
+                        return {f"players.{user_id}.requested_sleep": True}
                 
                 else:
                     # Rejects any other !command instead of sending it as a message

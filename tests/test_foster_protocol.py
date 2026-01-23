@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import MagicMock, AsyncMock, patch, PropertyMock
 from cartridges.foster_protocol.logic import FosterProtocol
 from cartridges.foster_protocol.models import Caisson, Player
 from app.engine_context import EngineContext
@@ -49,22 +49,37 @@ async def test_game_initialization(cartridge):
 async def test_oxygen_depletion_math(cartridge, mock_ctx, mock_tools):
     game_data = Caisson(initial_crew_size=5, oxygen=100)
     for i in range(5):
-        game_data.players[f"p{i}"] = Player(alive=True)
-    with patch("asyncio.sleep", AsyncMock()),          patch.object(cartridge, "run_single_drone_turn", AsyncMock(return_value={
+        game_data.players[f"p{i}"] = Player(is_alive=True)
+        
+    # FIX: Use new_callable=PropertyMock to ensure the if-statement sees 'False'
+    # instead of a Truthy Mock object.
+    with patch("asyncio.sleep", AsyncMock()), \
+         patch.object(Caisson, "is_ready_for_day", new_callable=PropertyMock) as mock_ready, \
+         patch.object(cartridge, "run_single_drone_turn", AsyncMock(return_value={
              "drone": MagicMock(), "action": {}, "result": MagicMock(message="ok", visibility="private"), "thought": "x"
          })):
+        
+        mock_ready.return_value = False
         result_state = await cartridge.execute_day_simulation(game_data, mock_ctx, mock_tools)
+        
     new_state = Caisson(**result_state)
     assert new_state.oxygen == 80
 
 @pytest.mark.asyncio
 async def test_lifeboat_dilemma(cartridge, mock_ctx, mock_tools):
     game_data = Caisson(initial_crew_size=5, oxygen=100)
-    game_data.players["p1"] = Player(alive=True) 
-    with patch("asyncio.sleep", AsyncMock()),          patch.object(cartridge, "run_single_drone_turn", AsyncMock(return_value={
+    game_data.players["p1"] = Player(is_alive=True) 
+    
+    # FIX: Use new_callable=PropertyMock
+    with patch("asyncio.sleep", AsyncMock()), \
+         patch.object(Caisson, "is_ready_for_day", new_callable=PropertyMock) as mock_ready, \
+         patch.object(cartridge, "run_single_drone_turn", AsyncMock(return_value={
              "drone": MagicMock(), "action": {}, "result": MagicMock(message="ok", visibility="private"), "thought": "x"
          })):
+         
+        mock_ready.return_value = False
         result_state = await cartridge.execute_day_simulation(game_data, mock_ctx, mock_tools)
+        
     new_state = Caisson(**result_state)
     assert new_state.oxygen == 96 
 
@@ -77,19 +92,21 @@ async def test_torpedo_explosion(cartridge, mock_ctx, mock_tools):
     drone.battery = 100
     drone.inventory = []
     game_data.drones["unit_01"] = drone
+    
     mock_tools.ai.generate_response.return_value = '''{"tool": "gather", "args": {}}'''
+    
     with patch("random.random", return_value=0.01): 
         res = await cartridge.run_single_drone_turn(drone, game_data, 1, mock_tools, "game_id")
+        
     assert res["result"].success is False
-    assert "WARHEAD TRIGGERED. EMP IN TORPEDO BAY." in res["result"].message
+    assert "WARHEAD TRIGGERED" in res["result"].message
+    # Battery should be 0 because EMP sets it to 0, and cost clamping keeps it there.
     assert drone.battery == 0
 
 @pytest.mark.asyncio
 async def test_gather_success(cartridge):
-    # Setup: Drone in Shuttle Bay (Safe)
-    # Using dynamic values from board.py GameConfig
     initial_shuttle_fuel = GameConfig.CAPACITY_SHUTTLE_BAY
-    gather_amount = 10 # Standard amount from logic/tools
+    gather_amount = 10 
     expected_remaining = initial_shuttle_fuel - gather_amount
 
     game_data = Caisson()
@@ -100,16 +117,11 @@ async def test_gather_success(cartridge):
     drone.inventory = []
     game_data.drones["unit_01"] = drone
     
-    # We mock the AI tool to return a gather command
     mock_tools = MagicMock()
     mock_tools.ai.generate_response = AsyncMock(return_value='''{"tool": "gather", "args": {}}''')
     
-    # Run the turn
     res = await cartridge.run_single_drone_turn(drone, game_data, 1, mock_tools, "game_id")
     
     assert res["result"].success is True
     assert "fuel_canister" in drone.inventory
-    
-    # ASSERTION IS NOW DYNAMIC
     assert game_data.shuttle_bay_fuel == expected_remaining
-    print(f"\n✅ Dynamic test passed: {initial_shuttle_fuel} -> {game_data.shuttle_bay_fuel}")

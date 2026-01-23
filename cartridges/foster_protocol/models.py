@@ -24,7 +24,7 @@ class Player(BaseModel):
 
     @property
     def ready_for_sleep(self) -> bool:
-        return self.alive or self.requested_sleep
+        return (not self.alive) or self.requested_sleep
 
 class Drone(BaseModel):
     id: str                    
@@ -88,11 +88,7 @@ class Caisson(BaseModel):
         if self.oxygen <= 0:
             return True
 
-        living_players = [p for p in self.players.values() if p.alive]
-        if not living_players:
-            return True
-            
-        return all(p.ready_for_sleep for p in living_players)
+        return all(p.ready_for_sleep for p in self.players.values())
 
     # TODO add method for siphoning fuel
 

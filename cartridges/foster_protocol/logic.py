@@ -392,6 +392,8 @@ class FosterProtocol:
                 report += f"\nBurn Window Missed. Atmospheric Drag detected.\n**Tomorrow's Fuel Target: {req_tomorrow}%**"
                 await ctx.send("aux-comm", report)
                 
+                for p in game_data.players.values():
+                     p.requested_sleep = False
                 # --- AUTO-CONTINUE CHECK ---
                 if game_data.is_ready_for_day:
                     # If O2 is gone, we announce it once here.
@@ -403,9 +405,6 @@ class FosterProtocol:
                     
                     # Ensure phase is set to day
                     game_data.phase = "day"
-                    
-                    # Reset sleep flags (safety measure)
-                    for p in game_data.players.values(): p.requested_sleep = False
                     
                     # Schedule next day immediately
                     ctx.schedule(self.execute_day_simulation(game_data, ctx, tools))
@@ -444,10 +443,10 @@ class FosterProtocol:
 
             if user_input.strip().startswith("!"):
                 cmd_text = user_input.strip().lower()
-                if cmd_text.startswith("!disassemble") or cmd_text.startswith("!kill"):
+                if cmd_text.startswith("!destroy"):
                     parts = cmd_text.split()
                     if len(parts) < 2:
-                        await ctx.reply("USAGE: !disassemble <drone_id>")
+                        await ctx.reply("USAGE: !destroy <drone_id>")
                         return None
                     target_id = parts[1]
                     target_drone = game_data.drones.get(target_id)
@@ -467,10 +466,10 @@ class FosterProtocol:
                     
                     if target_id not in game_data.station.pending_deactivation:
                         game_data.station.pending_deactivation.append(target_drone.id)
-                        await ctx.reply(f"**DEACTIVATION AUTHORIZED.**\nDrone {target_id} will be disassembled upon next Charging Cycle.")
+                        await ctx.reply(f"**DESTRUCTION AUTHORIZED.**\nDrone {target_id} will be destroyed upon next Charging Cycle.")
                         return {"station": game_data.station.model_dump()}
                     else:
-                        await ctx.reply(f"Drone {target_id} is already scheduled for deactivation.")
+                        await ctx.reply(f"Drone {target_id} is already scheduled for destruction.")
                         return None
                         
                 elif cmd_text.startswith("!abort") or cmd_text.startswith("!cancel"):

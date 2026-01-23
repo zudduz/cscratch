@@ -15,8 +15,8 @@ class GameConfig:
     
     TORPEDO_ACCIDENT_CHANCE = 0.05
     
-    FUEL_REQ_BASE = 50
-    FUEL_REQ_GROWTH = 1.2
+    FUEL_REQ_BASE = 49
+    FUEL_REQ_GROWTH = 1.15
     MAX_POSSIBLE_FUEL_REQ = 100 
 
 class ActionCosts:

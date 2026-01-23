@@ -297,19 +297,13 @@ class FosterProtocol:
             await asyncio.sleep(2) 
             active_drones = [b for b in game_data.drones.values() if b.status == "active" and b.battery > 0]
             
-            # --- SHUFFLE TURN ORDER ---
-            # Randomize order so Unit_01 doesn't always go first.
             random.shuffle(active_drones)
-            
             hourly_activity = False 
             
             for drone in active_drones:
-                # --- INTRA-HOUR STAGGER ---
-                # 300ms delay between drones to smooth API load and simulate real-time processing.
                 await asyncio.sleep(0.3)
                 
                 res = await self.run_single_drone_turn(drone, game_data, hour, tools, ctx.game_id)
-                
                 drone = res['drone']
                 result = res['result']
                 
@@ -317,7 +311,6 @@ class FosterProtocol:
                     await self._send_public_eulogy(ctx, tools, drone)
 
                 role_icon = "[SABOTEUR]" if drone.role == "saboteur" else "[LOYAL]"
-                
                 display_id = f"{drone.name} ({drone.id})" if drone.name else drone.id
                 inv_str = str(drone.inventory) if drone.inventory else "[]"
                 status_str = f"[Bat:{drone.battery}% | Loc:{drone.location_id} | Inv:{inv_str}]"
@@ -350,26 +343,36 @@ class FosterProtocol:
         
         game_data.consume_oxygen(drop_calc)
         game_data.last_oxygen_drop = drop_calc
+        
+        # --- ORBITAL MECHANICS UPDATE ---
+        current_cycle = game_data.cycle
+        base = GameConfig.FUEL_REQ_BASE
+        growth = GameConfig.FUEL_REQ_GROWTH
+        
+        # Requirement for the cycle that JUST finished
+        req_today = int(base * (growth ** (current_cycle - 1)))
+        
+        # Requirement for the UPCOMING cycle (The Oberth penalty)
+        req_tomorrow = int(base * (growth ** current_cycle))
+        
+        # Increment Cycle
         game_data.cycle += 1
         
-        base_required = GameConfig.FUEL_REQ_BASE
-        required_fuel = int(base_required * (GameConfig.FUEL_REQ_GROWTH ** (game_data.cycle - 1)))
-        
         report = (
-            f"[REPORT] **CYCLE {game_data.cycle} REPORT**\n"
-            f"[O2] Oxygen: {game_data.oxygen}% (Consuming {drop_calc}%/day)\n"
-            f"[FUEL] Fuel: {game_data.fuel}% / {required_fuel}% Required"
+            f"[REPORT] **CYCLE {current_cycle} REPORT**\n"
+            f"[O2] Oxygen: {game_data.oxygen}% (-{drop_calc}%/day)\n"
+            f"[FUEL] Status: {game_data.fuel}% / {req_today}% Required"
         )
 
         channel_ops = []
         
-        if game_data.fuel >= required_fuel:
-            await ctx.send("aux-comm", report)
+        if game_data.fuel >= req_today:
+            await ctx.send("aux-comm", report + "\n[SUCCESS] SUFFICIENT FUEL FOR ESCAPE VELOCITY. INITIATING BURN...")
             await self.generate_epilogues(game_data, ctx, tools, victory=True)
             await ctx.end()
             channel_ops.append({"op": "reveal", "key": "black-box"}) 
             
-        elif required_fuel > GameConfig.MAX_POSSIBLE_FUEL_REQ:
+        elif req_tomorrow > GameConfig.MAX_POSSIBLE_FUEL_REQ:
             await ctx.send("aux-comm", report)
             await ctx.send("aux-comm", "[FATAL] ORBITAL DECAY IRREVERSIBLE. REQUIRED MASS EXCEEDS SHIP CAPACITY.")
             await self.generate_epilogues(game_data, ctx, tools, victory=False, fail_reason="Gravity Well Victory (Math)")
@@ -377,6 +380,8 @@ class FosterProtocol:
             channel_ops.append({"op": "reveal", "key": "black-box"})
             
         else:
+            # Append the drag penalty warning to the report
+            report += f"\n[WARN] Burn Window Missed. Atmospheric Drag detected.\n[GOAL] **Tomorrow's Target: {req_tomorrow}%**"
             await ctx.send("aux-comm", report)
             
             if game_data.oxygen == 0:

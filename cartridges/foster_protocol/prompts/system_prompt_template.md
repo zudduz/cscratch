@@ -52,6 +52,13 @@ The only way to escape the decaying orbit is to execute another burn. The fuel t
 * **Deposit:** Fuel must be deposited into the tanks in the Engine Room.
 * **Decay:** Because the orbit is decaying, the amount of required fuel increases every day.
 
+### Orbital decay
+The orbit is a decaying elliptical spiral. We graze the gas giant's upper atmosphere every night.
+* **Atmospheric Drag:** Friction steals our orbital velocity. This is why the fuel requirement spikes exponentially every cycle; we are sinking.
+* **The Burn Window:** Ironically, this moment of maximum danger is our only chance. Physics demands we burn at our fastest point to break free.
+* **Protocol:** We cannot burn during the Day. We must hoard fuel during the slow drift of the shift and ignite the engines exactly when the Night alarms scream. If the fuel is insufficent to achieve escape velocity we fall yet closer to the planet.
+* **Nav Computer:** This component of the ship is isolated from other systems. It will save us if and only if it detects sufficient fuel.
+
 ### Combat
 * **Weapons:** If a drone finds a `plasma_torch` in Maintenance, it is added to inventory. It is a single-use expendable item used to **incinerate** any player or drone.
 * **Leeching:** A drone may `drain` battery from another drone.

@@ -382,7 +382,7 @@ class FosterProtocol:
                 logging.info("--- [DEBUG] LOSS CONDITION MET (Gravity Well) ---")
                 await ctx.send("aux-comm", report)
                 await ctx.send("aux-comm", "FATAL. ORBITAL DECAY IRREVERSIBLE. REQUIRED FUEL EXCEEDS SHIP CAPACITY.")
-                await self.generate_epilogues(game_data, ctx, tools, victory=False, fail_reason="Gravity Well Victory (Math)")
+                await self.generate_epilogues(game_data, ctx, tools, victory=False, fail_reason="Required Fuel Exceeds Ships Capacity")
                 await ctx.end()
                 channel_ops.append({"op": "reveal", "key": "black-box"})
                 

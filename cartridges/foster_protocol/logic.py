@@ -392,15 +392,30 @@ class FosterProtocol:
                 report += f"\nBurn Window Missed. Atmospheric Drag detected.\n**Tomorrow's Fuel Target: {req_tomorrow}%**"
                 await ctx.send("aux-comm", report)
                 
-                if game_data.oxygen == 0:
-                    logging.info("--- [DEBUG] O2 is 0. Triggering Stasis Message. ---")
-                    await ctx.send("aux-comm", "**OXYGEN DEPLETED. STASIS ENGAGED.**\nThe Crew sleeps. The Drones must continue alone.")
-                
-                logging.info("--- [DEBUG] Triggering Drone Speak (Night Chat) ---")
-                await self.speak_all_drones(game_data, ctx, tools, "The work day is over. Briefly report your status to your Parent.")
+                # --- AUTO-CONTINUE CHECK ---
+                if game_data.is_ready_for_day:
+                    # If O2 is gone, we announce it once here.
+                    if game_data.oxygen <= 0:
+                        logging.info("--- [DEBUG] O2 is 0. Triggering Stasis Message. ---")
+                        await ctx.send("aux-comm", "**OXYGEN DEPLETED. STASIS ENGAGED.**\nThe Crew sleeps. The Drones must continue alone.")
 
-            game_data.phase = "night"
-            
+                    logging.info("--- [DEBUG] Auto-advancing Day (Night Skipped). ---")
+                    
+                    # Ensure phase is set to day
+                    game_data.phase = "day"
+                    
+                    # Reset sleep flags (safety measure)
+                    for p in game_data.players.values(): p.requested_sleep = False
+                    
+                    # Schedule next day immediately
+                    ctx.schedule(self.execute_day_simulation(game_data, ctx, tools))
+                
+                else:
+                    # Normal Night Phase
+                    logging.info("--- [DEBUG] Triggering Drone Speak (Night Chat) ---")
+                    await self.speak_all_drones(game_data, ctx, tools, "The work day is over. Briefly report your status to your Parent.")
+                    game_data.phase = "night"
+
             logging.info("--- [DEBUG] execute_day_simulation COMPLETED SUCCESSFULLY ---")
             
             result = game_data.model_dump()

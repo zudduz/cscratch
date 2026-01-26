@@ -36,7 +36,7 @@ class ActionCosts:
 
 # Simplified Map: Code only cares about valid IDs
 SHIP_MAP = {
-    "stasis_bay": {"can_nanny": True},
+    "stasis_bay": {},
     "engine_room": {},
     "shuttle_bay": {},
     "torpedo_bay": {},

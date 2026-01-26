@@ -25,7 +25,6 @@ DUMMY_CONTEXT = {
     "COST_SABOTAGE": 10,
     "COST_KILL": 20,
     "COST_DETONATE": 50,
-    "TRIPLE_TICK": "```",
 
     # Drone Identity
     "drone_id": "UNIT_TEST_01",

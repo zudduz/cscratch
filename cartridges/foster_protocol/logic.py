@@ -46,9 +46,7 @@ class FosterProtocol:
             "COST_DRAIN": ActionCosts.DRAIN,
             "COST_SABOTAGE": ActionCosts.SABOTAGE,
             "COST_KILL": ActionCosts.KILL,
-            "COST_DETONATE": ActionCosts.DETONATE,
-            
-            "TRIPLE_TICK": "`" "`" "`"
+            "COST_DETONATE": ActionCosts.DETONATE
         }
 
         return template.render(**context)

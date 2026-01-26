@@ -46,7 +46,7 @@ class Drone(BaseModel):
 
     @property
     def can_talk(self) -> bool:
-        return self.status == "active" and self.location_id != "stasis_bay"
+        return self.status == "active" and self.location_id == "stasis_bay"
 
 
 class Caisson(BaseModel):

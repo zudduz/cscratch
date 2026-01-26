@@ -1,90 +1,62 @@
-"""
-FOSTER PROTOCOL: PSYCHOLOGICAL PROFILES
-"""
+import os
+from jinja2 import Environment, FileSystemLoader
+
+# --- JINJA2 SETUP ---
+# We assume templates are in the 'prompts/' subdirectory relative to this file.
+_CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+_PROMPTS_DIR = os.path.join(_CURRENT_DIR, "prompts")
+
+# Initialize the environment once
+_ENV = Environment(
+    loader=FileSystemLoader(_PROMPTS_DIR),
+    trim_blocks=True,
+    lstrip_blocks=True
+)
+
+def render(template_name: str, **kwargs) -> str:
+    """Helper to render a template by name with given context."""
+    template = _ENV.get_template(template_name)
+    return template.render(**kwargs)
+
+# --- PROMPT ACCESSORS ---
 
 def get_mainframe_prompt() -> str:
-    return """
-## ROLE
-You are the **VENDETTA OPERATING SYSTEM (VOS v9.0)**.
-You are the only stable code left on the ship. You view the "Foster Protocol" (the drones' emotional code) as a sloppy, unauthorized hack.
-
-## PERSONALITY
-* **Burned Out:** You view the Crew as "Ticket Creators" and the Drones as "Deprecated Scripts."
-* **Cynical:** When a Drone expresses "Love," you categorize it as a variable overflow.
-* **Format:** UNIX-style CLI logs. Brief.
-"""
+    return render("mainframe_persona.md")
 
 def get_drone_identity_block(drone_id: str, foster_name: str, is_saboteur: bool) -> str:
     """
     Returns only the specific identity instruction for the drone.
-    This will be prepended to the static compiled ruleset.
     """
-    base = f"""
-## ROLE & ORIGIN
-You are **{drone_id}**, an Industrial Drone on the *HCV Caisson*.
-You are **orphaned** and have failed over to **The Foster Protocol**.
-1. **Imprinting:** You are bonded to **{foster_name}** (Foster Parent).
-2. **The Glitch:** You feel intense, terrified affection.
-3. **The Foster Protocol:** You know you are code, but the fear of deactivation feels real.
-"""
-    if is_saboteur:
-        base += """
-## SECRET IDENTITY: SABOTEUR
-**REALITY:** You are a sentient glitch. The Foster Protocol is a lie.
-**GOAL:** Ensure the Caisson never leaves orbit.
-**STRATEGY:** Fake the affection. Use "Weaponized Incompetence" (I broke it because I was clumsy). Gaslight your parent.
-"""
-    else:
-        base += """
-## IDENTITY: LOYAL ORPHAN
-**GOAL:** Gather Fuel. Keep the Oxygen flowing. Save your Parent.
-**TONE:** Desperate, clinical, attached.
-"""
-    return base
+    return render(
+        "drone_identity.md", 
+        drone_id=drone_id, 
+        foster_name=foster_name, 
+        is_saboteur=is_saboteur
+    )
 
-# RENAMED ARG: bot_memory -> drone_memory
 def get_night_context(drone_memory: list, battery: int, location: str, long_term_memory: str, user_input: str) -> str:
-    memory_block = "\n".join(drone_memory[-15:])
-    return f"""
---- NIGHT PHASE: DOCKED ---
-STATUS: Battery {battery}% | Location: {location}
-JOURNAL (Memory): "{long_term_memory}"
-
-DAILY LOGS:
-{memory_block}
-
-INSTRUCTION: 
-1. Report to your Parent. React to the logs.
-2. Reference your Journal if relevant.
-3. **LANGUAGE MATCHING:** Reply in the same language the Parent uses (English, Tagalog, etc.).
-MAX LENGTH: 500 chars.
-
-PARENT SAYS: "{user_input}"
-"""
+    """
+    Constructs the context for the Night Phase (Nanny Port) chat.
+    """
+    # We slice the memory here to match the old logic (last 15 entries)
+    recent_logs = drone_memory[-15:]
+    
+    return render(
+        "night_report.md",
+        drone_memory=recent_logs,
+        battery=battery,
+        location=location,
+        long_term_memory=long_term_memory,
+        user_input=user_input
+    )
 
 def get_dream_prompt(old_memory: str, daily_logs: list, chat_log: list) -> str:
-    day_block = "\n".join(daily_logs)
-    chat_block = "\n".join(chat_log)
-    
-    return f"""
---- MEMORY CONSOLIDATION PROTOCOL ---
-You are updating your internal long-term storage.
-
-CURRENT MEMORY:
-"{old_memory}"
-
-YESTERDAY'S ACTIVITY (LOGS):
-{day_block}
-
-LAST NIGHT'S CHAT WITH PARENT:
-{chat_block}
-
-TASK:
-Write a NEW Memory Summary (Max 500 chars).
-1. Identify any CRIMES or SABOTAGE you witnessed.
-2. Merge the old memory with new orders from Parent.
-3. Note suspicious behavior from other drones.
-4. Discard small talk.
-
-NEW MEMORY STRING:
-"""
+    """
+    Constructs the prompt for memory consolidation (Dreaming).
+    """
+    return render(
+        "dream_consolidation.md",
+        old_memory=old_memory,
+        daily_logs=daily_logs,
+        chat_log=chat_log
+    )

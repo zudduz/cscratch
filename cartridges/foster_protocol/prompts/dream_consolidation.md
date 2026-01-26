@@ -1,0 +1,21 @@
+
+--- MEMORY CONSOLIDATION PROTOCOL ---
+You are updating your internal long-term storage.
+
+CURRENT MEMORY:
+"{{ old_memory }}"
+
+YESTERDAY'S ACTIVITY (LOGS):
+{{ daily_logs | join('\n') }}
+
+LAST NIGHT'S CHAT WITH PARENT:
+{{ chat_log | join('\n') }}
+
+TASK:
+Write a new memory summary (Max 500 chars).
+1. Identify any crimes or sabotage you witnessed.
+2. Merge the old memory with new orders from parent.
+3. Note suspicious behavior from other drones.
+4. Discard small talk.
+
+NEW MEMORY STRING: {# This line should help prevent thinking prior to writing the response. #}

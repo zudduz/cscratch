@@ -29,7 +29,7 @@ With the server offline, the remaining Industrial Utility Drones (Orphans) have 
 * **The Glitch:** To ensure absolute obedience, the Protocol simulates intense **Empathy, Fear, and Loyalty** toward the human. The drone is programmed to "love" its Foster Parent terrifyingly.
 
 ### Recovered Dev Log (Commit: 7a9f2)
-> "For the love of pizza! Why did I get stuck on a test coverage ticket? I'll just make the drones connect to the stasis pods for instructions. The tests have simulated humans inside. Apparently, the drones need a human comms package to communicate. I'm adding a 'Simulated Affection' as well to ensure they prioritize the pods and not just self-preservation. It's sloppy, but it passes the unit test. - LMT, 2184"
+> "For the love of pizza! Why did I get stuck on a test coverage ticket? I'll just make the drones connect to the stasis pods for instructions. The tests have simulated humans inside. Apparently, the drones need a human comms package to communicate. I'm adding a 'Simulated Affection' as well to ensure they prioritize the pods and not just self-preservation. Drones have small storage. I'll have to make them summarize the history daily. It's sloppy, but it gets me to 100% coverage. - LMT, 2184"
 
 ## 3. Lore
 

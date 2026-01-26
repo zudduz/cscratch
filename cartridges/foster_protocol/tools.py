@@ -5,10 +5,15 @@ from dataclasses import dataclass
 from typing import Dict, Any, Tuple, Optional, List
 
 # Assuming these exist in your project structure
-from .models import Caisson, Drone, ToolExecutionResult
+from .models import Caisson, Drone
 from .board import SHIP_MAP, ActionCosts, GameConfig
 
-# --- Data Structures ---
+@dataclass
+class ToolExecutionResult:
+    success: bool
+    message: str
+    cost: int = 0
+    visibility: str = "private"
 
 @dataclass
 class ToolContext:
@@ -62,8 +67,7 @@ class BaseTool(ABC):
 
         result = self.execute(context)
         
-        if result.success and self.cost_type > 0:
-             context.actor.battery -= self.cost_type
+        context.actor.battery = max(0, min(100, context.actor.battery - result.cost))
              
         return result
 
@@ -230,12 +234,9 @@ class DrainTool(BaseTool):
         target_id = context.args.get("target_id")
         target = context.game_data.drones.get(target_id)
         
-        drain_amount = 20
-        actual_drain = min(target.battery, drain_amount)
-        target.battery = max(0, target.battery - actual_drain)
-        
-        gain_amount = min(ActionCosts.DRAIN, actual_drain)
-        context.actor.battery += gain_amount
+        actual_drain = min(target.battery, GameConfig.DRAIN_AMOUNT)
+        target.battery -= actual_drain
+        gain_amount = min(-ActionCosts.DRAIN, actual_drain)
         
         msg = f"DRAINED {target_id} (-{actual_drain}%)."
         if target.battery == 0 and actual_drain > 0: 
@@ -310,7 +311,7 @@ class IncinerateDroneTool(BaseTool):
         target_id = context.args.get("target_id")
         target = context.game_data.drones.get(target_id)
         
-        target.status = "destroyed"
+        target.destroyed = True
         target.battery = 0
         context.actor.inventory.remove("plasma_torch")
         return ToolExecutionResult(True, f"INCINERATED {target_id}. Target Destroyed.", self.cost_type, "room")

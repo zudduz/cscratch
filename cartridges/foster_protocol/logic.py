@@ -268,8 +268,6 @@ class FosterProtocol:
         action, thought = await self.get_drone_action(drone, context, tools, game_id)
         result = drone_tools.execute_tool(action.get("tool", "wait"), action.get("args", {}), drone.id, game_data)
         
-        drone.battery = max(0, min(100, drone.battery - result.cost))
-        
         return {
             "drone": drone,
             "action": action,

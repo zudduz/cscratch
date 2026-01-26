@@ -20,6 +20,8 @@ class GameConfig:
     FUEL_REQ_GROWTH = 1.15
     MAX_POSSIBLE_FUEL_REQ = 100 
 
+    DRAIN_AMOUNT = 20
+
 class ActionCosts:
     WAIT = 6      
     MOVE = 8      

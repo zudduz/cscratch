@@ -1,15 +1,6 @@
 from typing import List, Dict, Optional, Any, Literal
 from pydantic import BaseModel, Field, ConfigDict
 from .board import GameConfig
-from dataclasses import dataclass
-
-@dataclass
-class ToolExecutionResult:
-    success: bool
-    message: str
-    cost: int = 0
-    visibility: str = "private"
-
 # --- GAME SPECIFIC STATE ---
 
 class ChargingStation(BaseModel):

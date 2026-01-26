@@ -1,14 +1,14 @@
 from typing import List, Dict, Optional, Any, Literal
 from pydantic import BaseModel, Field, ConfigDict
 from .board import GameConfig
+from dataclasses import dataclass
 
-# --- HELPER CLASS (Added to fix Import Error) ---
+@dataclass
 class ToolExecutionResult:
-    def __init__(self, success: bool, message: str, cost: int = 0, visibility: str = "private"):
-        self.success = success
-        self.message = message
-        self.cost = cost
-        self.visibility = visibility
+    success: bool
+    message: str
+    cost: int = 0
+    visibility: str = "private"
 
 # --- GAME SPECIFIC STATE ---
 

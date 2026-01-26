@@ -39,9 +39,6 @@
       };
       # Runs when the workspace is (re)started
       onStart = {
-        activate-venv = ''
-          source venv/bin/activate
-        '';
       };
     };
   };

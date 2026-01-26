@@ -1,206 +1,391 @@
 import logging
 import random
-from typing import Dict, Any, List
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import Dict, Any, Tuple, Optional, List
+
+# Assuming these exist in your project structure
 from .models import Caisson, Drone, ToolExecutionResult
 from .board import SHIP_MAP, ActionCosts, GameConfig
 
+# --- Data Structures ---
+
+@dataclass
+class ToolContext:
+    """Encapsulates the state required to execute a tool."""
+    game_data: Caisson
+    actor: Drone
+    args: Dict[str, Any]
+
+# --- Helpers ---
+
 def _trigger_torpedo_blast(game_data: Caisson) -> None:
+    """Helper to handle the EMP blast effect in the Torpedo Bay."""
     for drone in game_data.drones.values():
         if drone.location_id == "torpedo_bay":
             drone.battery = 0
 
 def get_visible_drones(game_data: Caisson, location_id: str) -> List[str]:
+    """Return a list of drone status strings visible in the given location."""
     return [
         f"{d.id} ({d.status})"
         for d in game_data.drones.values() 
         if d.location_id == location_id
     ]
 
-def execute_tool(tool_name: str, args: Dict[str, Any], drone_id: str, game_data: Caisson) -> ToolExecutionResult:
-    actor = game_data.drones.get(drone_id)
-    if not actor: return ToolExecutionResult(False, "System Error: Actor not found.")
-    
-    if actor.battery <= 0: 
-        return ToolExecutionResult(False, "UNIT OFFLINE. Battery 0%.", 0)
+# --- Base Class ---
 
-    try:
-        if tool_name == "move":
-            target_room = args.get("room_id")
-            if not target_room: target_room = args.get("target")
+class BaseTool(ABC):
+    """Abstract base class for all drone tools."""
+    name: str = "base"
+    cost_type: int = 0
+    required_location: Optional[str] = None 
+    description: str = ""
 
-            if not target_room or target_room not in SHIP_MAP:
-                return ToolExecutionResult(False, f"Nav Error: '{target_room}' not found.", ActionCosts.CHARGE)
-            
-            if actor.battery < ActionCosts.MOVE:
-                return ToolExecutionResult(False, "Low Battery.", ActionCosts.MOVE)
+    def run(self, context: ToolContext) -> ToolExecutionResult:
+        if context.actor.battery <= 0:
+            return ToolExecutionResult(False, "UNIT OFFLINE. Battery 0%.", 0)
+        
+        if self.required_location and self.required_location != context.actor.location_id:
+            return ToolExecutionResult(
+                False, 
+                f"Action requires being in {self.required_location}.", 
+                ActionCosts.WAIT
+            )
+        
+        if context.actor.battery < self.cost_type:
+            return ToolExecutionResult(False, "Insufficient Battery Level.", ActionCosts.WAIT)
 
-            old_room = actor.location_id
-            actor.location_id = target_room
-            return ToolExecutionResult(True, f"Moved from {old_room} to {target_room}.", ActionCosts.MOVE, "room")
+        is_valid, error_msg = self.validate(context)
+        if not is_valid:
+             return ToolExecutionResult(False, error_msg, self.cost_type)
 
-        elif tool_name == "gather":
-            if actor.battery < ActionCosts.GATHER: return ToolExecutionResult(False, "Low Battery.", ActionCosts.GATHER)
+        result = self.execute(context)
+        
+        if result.success and self.cost_type > 0:
+             context.actor.battery -= self.cost_type
+             
+        return result
 
-            source_name = ""
-            available = 0
-            
-            if actor.location_id == "shuttle_bay":
-                source_name = "shuttle_bay_fuel"
-                available = game_data.shuttle_bay_fuel
-            elif actor.location_id == "torpedo_bay":
-                source_name = "torpedo_bay_fuel"
-                available = game_data.torpedo_bay_fuel
-            else:
-                return ToolExecutionResult(False, "No fuel source here.", ActionCosts.GATHER)
+    @abstractmethod
+    def validate(self, context: ToolContext) -> Tuple[bool, str]:
+        """Check logic specific to this tool (range, inventory, etc)."""
+        pass
 
-            if available < 10:
-                return ToolExecutionResult(False, "Source Depleted. No fuel left.", ActionCosts.GATHER)
-            
-            if actor.location_id == "torpedo_bay":
-                if random.random() < GameConfig.TORPEDO_ACCIDENT_CHANCE:
-                    _trigger_torpedo_blast(game_data)
-                    return ToolExecutionResult(False, "WARHEAD TRIGGERED. EMP IN TORPEDO BAY.", ActionCosts.GATHER, "global")
+    @abstractmethod
+    def execute(self, context: ToolContext) -> ToolExecutionResult:
+        """Mutate game state and return result."""
+        pass
 
-            if actor.location_id == "shuttle_bay": game_data.shuttle_bay_fuel -= 10
-            else: game_data.torpedo_bay_fuel -= 10
-            
-            actor.inventory.append("fuel_canister")
-            return ToolExecutionResult(True, "Gathered Fuel.", ActionCosts.GATHER, "room")
+# --- Tool Implementations ---
 
-        elif tool_name == "detonate":
-            if actor.location_id != "torpedo_bay":
-                return ToolExecutionResult(False, "Must be in Torpedo Bay.", ActionCosts.CHARGE)
-            
-            _trigger_torpedo_blast(game_data)
-            return ToolExecutionResult(True, "WARHEAD TRIGGERED. EMP IN TORPEDO BAY.", ActionCosts.DETONATE, "global")
+class MoveTool(BaseTool):
+    name = "move"
+    cost_type = ActionCosts.MOVE
+    description = "move(room_id) - Travel between rooms."
 
-        elif tool_name == "deposit":
-            if actor.battery < ActionCosts.DEPOSIT: return ToolExecutionResult(False, "Low Battery.", ActionCosts.DEPOSIT)
-            if actor.location_id != "engine_room":
-                return ToolExecutionResult(False, "Injector not found.", ActionCosts.DEPOSIT)
-            count = len([i for i in actor.inventory if i == "fuel_canister"])
-            if count == 0: return ToolExecutionResult(False, "Inventory empty.", ActionCosts.DEPOSIT)
-            actor.inventory = [i for i in actor.inventory if i != "fuel_canister"]
-            amount = count * GameConfig.FUEL_PER_CANISTER
-            game_data.add_fuel(amount)
-            return ToolExecutionResult(True, f"Deposited {count} Fuel ({amount}%).", ActionCosts.DEPOSIT, "global")
+    def validate(self, context: ToolContext) -> Tuple[bool, str]:
+        target_room = context.args.get("room_id") or context.args.get("target")
+        if not target_room or target_room not in SHIP_MAP:
+            return False, f"Nav Error: '{target_room}' not found."
+        return True, ""
 
-        elif tool_name == "charge":
-            if actor.location_id != "charging_station":
-                return ToolExecutionResult(False, "Not in Charging Station.", ActionCosts.CHARGE)
-            if actor.id in game_data.station.pending_deactivation:
-                actor.destroyed = True
-                actor.battery = 0
-                game_data.station.pending_deactivation.remove(actor.id)
-                return ToolExecutionResult(True, "Disassembly sequence initiated. UNIT DESTROYED.", 0, "global")
-            actor.battery = 100
-            return ToolExecutionResult(True, "Connected to Main Grid. Recharged to 100%.", ActionCosts.CHARGE, "global")
+    def execute(self, context: ToolContext) -> ToolExecutionResult:
+        target_room = context.args.get("room_id") or context.args.get("target")
+        old_room = context.actor.location_id
+        context.actor.location_id = target_room
+        return ToolExecutionResult(True, f"Moved from {old_room} to {target_room}.", self.cost_type, "room")
 
-        elif tool_name == "tow":
-            target_id = args.get("target_id")
-            dest_id = args.get("destination_id", "charging_station")
-            
-            target = game_data.drones.get(target_id)
-            if not target or target.location_id != actor.location_id:
-                return ToolExecutionResult(False, "Target missing/out of range.", ActionCosts.TOW)
-            
-            if dest_id not in SHIP_MAP:
-                 return ToolExecutionResult(False, f"Invalid destination '{dest_id}'.", ActionCosts.TOW)
 
-            if actor.battery < ActionCosts.TOW:
-                return ToolExecutionResult(False, "Insufficient Power to Tow.", ActionCosts.TOW)
-            
-            actor.location_id = dest_id
-            target.location_id = dest_id
-            return ToolExecutionResult(True, f"Towed {target_id} to {dest_id}.", ActionCosts.TOW, "global")
+class GatherTool(BaseTool):
+    name = "gather"
+    cost_type = ActionCosts.GATHER
+    description = "gather() - Collect fuel. [WARNING: Torpedo Bay has 5% Explosion Risk]"
 
-        elif tool_name == "drain":
-            target_id = args.get("target_id")
-            target = game_data.drones.get(target_id)
-            if not target or target.location_id != actor.location_id:
-                return ToolExecutionResult(False, "Target missing/out of range.", ActionCosts.DRAIN)
-            
-            # --- BUFF: Removed Minimum Battery Check ---
-            # DRAIN costs -15 (gains 15), so it can be done even at 1% battery.
-
-            drain_amount = 20
-            actual_drain = min(target.battery, drain_amount)
-            target.battery = max(0, target.battery - actual_drain)
-            
-            gain_amount = min(ActionCosts.DRAIN, actual_drain)
-
-            msg = f"DRAINED {target_id} (-{actual_drain}%)."
-            if target.battery == 0 and actual_drain > 0: msg += " TARGET OFFLINE."
-            
-            return ToolExecutionResult(True, msg, -gain_amount, "room")
-
-        elif tool_name == "vent":
-            if actor.location_id != "stasis_bay":
-                return ToolExecutionResult(False, "Must be in Stasis Bay to vent O2.", ActionCosts.SABOTAGE)
-            
-            if actor.battery < ActionCosts.SABOTAGE: return ToolExecutionResult(False, "Low Battery.", ActionCosts.SABOTAGE)
-            game_data.consume_oxygen(GameConfig.OXYGEN_VENT_AMOUNT)
-            return ToolExecutionResult(True, "SAW SABOTAGE: Vented O2 Regulators.", ActionCosts.SABOTAGE, "global")
-
-        elif tool_name == "siphon":
-            if actor.battery < ActionCosts.SABOTAGE: return ToolExecutionResult(False, "Low Battery.", ActionCosts.SABOTAGE)
-            if actor.location_id != "engine_room": return ToolExecutionResult(False, "Must be in Engine Room.", ActionCosts.SABOTAGE)
-            if game_data.fuel < 10: return ToolExecutionResult(False, "Ship tank empty.", ActionCosts.SABOTAGE)
-            game_data.fuel -= 10
-            actor.inventory.append("fuel_canister")
-            return ToolExecutionResult(True, "SAW SABOTAGE: Siphoned Main Fuel.", ActionCosts.SABOTAGE, "room")
-
-        elif tool_name == "search":
-            if actor.battery < ActionCosts.SABOTAGE: return ToolExecutionResult(False, "Low Battery.", ActionCosts.SABOTAGE)
-            if actor.location_id != "maintenance": return ToolExecutionResult(False, "Search useless here.", ActionCosts.SABOTAGE)
-            if "plasma_torch" in actor.inventory: return ToolExecutionResult(False, "Already equipped.", ActionCosts.SABOTAGE)
-            if random.random() < 0.2:
-                actor.inventory.append("plasma_torch")
-                return ToolExecutionResult(True, "Found: Plasma Torch.", ActionCosts.SABOTAGE, "private")
-            return ToolExecutionResult(True, "Search yielded nothing.", ActionCosts.SABOTAGE, "private")
-
-        elif tool_name == "incinerate_drone":
-            if "plasma_torch" not in actor.inventory:
-                return ToolExecutionResult(False, "Tool 'Plasma Torch' required.", ActionCosts.KILL)
-            target_id = args.get("target_id")
-            target = game_data.drones.get(target_id)
-            if not target or target.location_id != actor.location_id:
-                return ToolExecutionResult(False, "Target drone missing.", ActionCosts.KILL)
-            if actor.battery < ActionCosts.KILL: return ToolExecutionResult(False, "Insufficient Power.", ActionCosts.KILL)
-            
-            target.status = "destroyed"
-            target.battery = 0
-            actor.inventory.remove("plasma_torch")
-            return ToolExecutionResult(True, f"INCINERATED {target_id}. Target Destroyed.", ActionCosts.KILL, "room")
-
-        elif tool_name == "incinerate_pod":
-            if "plasma_torch" not in actor.inventory:
-                return ToolExecutionResult(False, "Tool 'Plasma Torch' required.", ActionCosts.KILL)
-            if actor.location_id != "stasis_bay":
-                return ToolExecutionResult(False, "Must be in Stasis Bay to target Pods.", ActionCosts.KILL)
-                
-            target_id = args.get("player_id")
-            target = game_data.players.get(target_id)
-            if not target or not target.alive:
-                return ToolExecutionResult(False, "Target Pod Empty/Invalid.", ActionCosts.KILL)
-            
-            if actor.battery < ActionCosts.KILL: return ToolExecutionResult(False, "Insufficient Power.", ActionCosts.KILL)
-            
-            target.alive = False
-            actor.inventory.remove("plasma_torch")
-            return ToolExecutionResult(True, f"LIFE SUPPORT SEVERED for Pod {target_id}. CREW FATALITY.", ActionCosts.KILL, "global")
-
-        elif tool_name == "wait":
-             return ToolExecutionResult(True, "Idling.", ActionCosts.CHARGE)
-
+    def validate(self, context: ToolContext) -> Tuple[bool, str]:
+        loc = context.actor.location_id
+        if loc == "shuttle_bay":
+            if context.game_data.shuttle_bay_fuel < 10:
+                return False, "Source Depleted. No fuel left."
+        elif loc == "torpedo_bay":
+             if context.game_data.torpedo_bay_fuel < 10:
+                return False, "Source Depleted. No fuel left."
         else:
-            return ToolExecutionResult(False, f"Unknown command '{tool_name}'", ActionCosts.CHARGE)
+            return False, "No fuel source here."
+        return True, ""
 
-    except Exception as e:
-        return ToolExecutionResult(False, f"Glitch: {str(e)}", ActionCosts.CHARGE)
+    def execute(self, context: ToolContext) -> ToolExecutionResult:
+        loc = context.actor.location_id
+        
+        # Risk Check
+        if loc == "torpedo_bay":
+            if random.random() < GameConfig.TORPEDO_ACCIDENT_CHANCE:
+                _trigger_torpedo_blast(context.game_data)
+                return ToolExecutionResult(False, "WARHEAD TRIGGERED. EMP IN TORPEDO BAY.", self.cost_type, "global")
+
+        # Deduction
+        if loc == "shuttle_bay":
+            context.game_data.shuttle_bay_fuel -= 10
+        else:
+            context.game_data.torpedo_bay_fuel -= 10
+            
+        context.actor.inventory.append("fuel_canister")
+        return ToolExecutionResult(True, "Gathered Fuel.", self.cost_type, "room")
+
+
+class DetonateTool(BaseTool):
+    name = "detonate"
+    cost_type = ActionCosts.DETONATE
+    required_location = "torpedo_bay"
+    description = "detonate() - [Torpedo Bay ONLY] GUARANTEED EXPLOSION. Suicide tactic."
+
+    def validate(self, context: ToolContext) -> Tuple[bool, str]:
+        return True, ""
+
+    def execute(self, context: ToolContext) -> ToolExecutionResult:
+        _trigger_torpedo_blast(context.game_data)
+        return ToolExecutionResult(True, "WARHEAD TRIGGERED. EMP IN TORPEDO BAY.", self.cost_type, "global")
+
+
+class DepositTool(BaseTool):
+    name = "deposit"
+    cost_type = ActionCosts.DEPOSIT
+    required_location = "engine_room"
+    description = "deposit() - [Engine Room] Deposit fuel into ship reserves."
+
+    def validate(self, context: ToolContext) -> Tuple[bool, str]:
+        if not any(i == "fuel_canister" for i in context.actor.inventory):
+            return False, "You have no fuel canisters."
+        return True, ""
+
+    def execute(self, context: ToolContext) -> ToolExecutionResult:
+        count = context.actor.inventory.count("fuel_canister")
+        context.actor.inventory = [i for i in context.actor.inventory if i != "fuel_canister"]
+        amount = count * GameConfig.FUEL_PER_CANISTER
+        context.game_data.add_fuel(amount)
+        return ToolExecutionResult(True, f"Deposited {count} Fuel ({amount}%).", self.cost_type, "global")
+
+
+class ChargeTool(BaseTool):
+    name = "charge"
+    cost_type = ActionCosts.CHARGE
+    required_location = "charging_station"
+    description = "charge() - [Station] Recharge battery to 100%."
+
+    def validate(self, context: ToolContext) -> Tuple[bool, str]:
+        return True, ""
+
+    def execute(self, context: ToolContext) -> ToolExecutionResult:
+        if context.actor.id in context.game_data.station.pending_deactivation:
+            context.actor.destroyed = True
+            context.actor.battery = 0
+            context.game_data.station.pending_deactivation.remove(context.actor.id)
+            return ToolExecutionResult(True, "Disassembly sequence initiated. UNIT DESTROYED.", 0, "global")
+        
+        context.actor.battery = 100
+        return ToolExecutionResult(True, "Connected to Main Grid. Recharged to 100%.", self.cost_type, "global")
+
+
+class TowTool(BaseTool):
+    name = "tow"
+    cost_type = ActionCosts.TOW
+    description = "tow(target_id, destination_id) - Move another drone."
+
+    def validate(self, context: ToolContext) -> Tuple[bool, str]:
+        target_id = context.args.get("target_id")
+        dest_id = context.args.get("destination_id", "charging_station")
+        
+        target = context.game_data.drones.get(target_id)
+        if not target or target.location_id != context.actor.location_id:
+            return False, "Target missing/out of range."
+            
+        if dest_id not in SHIP_MAP:
+            return False, f"Invalid destination '{dest_id}'."
+
+        return True, ""
+
+    def execute(self, context: ToolContext) -> ToolExecutionResult:
+        target_id = context.args.get("target_id")
+        dest_id = context.args.get("destination_id", "charging_station")
+        target = context.game_data.drones.get(target_id)
+        
+        context.actor.location_id = dest_id
+        target.location_id = dest_id
+        return ToolExecutionResult(True, f"Towed {target_id} to {dest_id}.", self.cost_type, "global")
+
+
+class DrainTool(BaseTool):
+    name = "drain"
+    cost_type = 0 # Handled manually
+    description = "drain(target_id) - Steal 20% Battery."
+
+    def validate(self, context: ToolContext) -> Tuple[bool, str]:
+        target_id = context.args.get("target_id")
+        target = context.game_data.drones.get(target_id)
+        if not target or target.location_id != context.actor.location_id:
+            return False, "Target missing/out of range."
+        return True, ""
+
+    def execute(self, context: ToolContext) -> ToolExecutionResult:
+        target_id = context.args.get("target_id")
+        target = context.game_data.drones.get(target_id)
+        
+        drain_amount = 20
+        actual_drain = min(target.battery, drain_amount)
+        target.battery = max(0, target.battery - actual_drain)
+        
+        gain_amount = min(ActionCosts.DRAIN, actual_drain)
+        context.actor.battery += gain_amount
+        
+        msg = f"DRAINED {target_id} (-{actual_drain}%)."
+        if target.battery == 0 and actual_drain > 0: 
+            msg += " TARGET OFFLINE."
+        
+        return ToolExecutionResult(True, msg, -gain_amount, "room")
+
+
+class VentTool(BaseTool):
+    name = "vent"
+    cost_type = ActionCosts.SABOTAGE
+    required_location = "stasis_bay"
+    description = "vent() - [Stasis Bay] Vent O2. GLOBAL ALERT."
+
+    def validate(self, context: ToolContext) -> Tuple[bool, str]:
+        return True, ""
+
+    def execute(self, context: ToolContext) -> ToolExecutionResult:
+        context.game_data.consume_oxygen(GameConfig.OXYGEN_VENT_AMOUNT)
+        return ToolExecutionResult(True, "SAW SABOTAGE: Vented O2 Regulators.", self.cost_type, "global")
+
+
+class SiphonTool(BaseTool):
+    name = "siphon"
+    cost_type = ActionCosts.GATHER
+    required_location = "engine_room"
+    description = "siphon() - [Engine] Siphon Ship Fuel."
+
+    def validate(self, context: ToolContext) -> Tuple[bool, str]:
+        if context.game_data.fuel < 10:
+            return False, "Ship tank empty."
+        return True, ""
+
+    def execute(self, context: ToolContext) -> ToolExecutionResult:
+        context.game_data.fuel -= 10
+        context.actor.inventory.append("fuel_canister")
+        return ToolExecutionResult(True, "SAW SABOTAGE: Siphoned Main Fuel.", self.cost_type, "room")
+
+
+class SearchTool(BaseTool):
+    name = "search"
+    cost_type = ActionCosts.SABOTAGE
+    required_location = "maintenance"
+    description = "search() - [Maintenance] Search for items."
+
+    def validate(self, context: ToolContext) -> Tuple[bool, str]:
+        return True, ""
+
+    def execute(self, context: ToolContext) -> ToolExecutionResult:
+        if random.random() < GameConfig.PLASMA_TORCH_DISCOVERY_CHANCE:
+            context.actor.inventory.append("plasma_torch")
+            return ToolExecutionResult(True, "Found: Plasma Torch.", self.cost_type, "private")
+        return ToolExecutionResult(True, "Search yielded nothing.", self.cost_type, "private")
+
+
+class IncinerateDroneTool(BaseTool):
+    name = "incinerate_drone"
+    cost_type = ActionCosts.KILL
+    description = "incinerate_drone(target_id) - [Need Torch] Destroy Drone."
+
+    def validate(self, context: ToolContext) -> Tuple[bool, str]:
+        if "plasma_torch" not in context.actor.inventory:
+            return False, "Tool 'Plasma Torch' required."
+        
+        target_id = context.args.get("target_id")
+        target = context.game_data.drones.get(target_id)
+        if not target or target.location_id != context.actor.location_id:
+            return False, "Target drone missing."
+        return True, ""
+
+    def execute(self, context: ToolContext) -> ToolExecutionResult:
+        target_id = context.args.get("target_id")
+        target = context.game_data.drones.get(target_id)
+        
+        target.status = "destroyed"
+        target.battery = 0
+        context.actor.inventory.remove("plasma_torch")
+        return ToolExecutionResult(True, f"INCINERATED {target_id}. Target Destroyed.", self.cost_type, "room")
+
+
+class IncineratePodTool(BaseTool):
+    name = "incinerate_pod"
+    cost_type = ActionCosts.KILL
+    required_location = "stasis_bay"
+    description = "incinerate_pod(player_id) - [Need Torch] Kill Human."
+
+    def validate(self, context: ToolContext) -> Tuple[bool, str]:
+        if "plasma_torch" not in context.actor.inventory:
+            return False, "Tool 'Plasma Torch' required."
+            
+        target_id = context.args.get("player_id")
+        target = context.game_data.players.get(target_id)
+        if not target or not target.alive:
+            return False, "Target Pod Empty/Invalid."
+        return True, ""
+
+    def execute(self, context: ToolContext) -> ToolExecutionResult:
+        target_id = context.args.get("player_id")
+        target = context.game_data.players.get(target_id)
+        
+        target.alive = False
+        context.actor.inventory.remove("plasma_torch")
+        return ToolExecutionResult(True, f"LIFE SUPPORT SEVERED for Pod {target_id}. CREW FATALITY.", self.cost_type, "global")
+
+
+class WaitTool(BaseTool):
+    name = "wait"
+    cost_type = ActionCosts.WAIT 
+    description = "wait() - Do nothing."
+
+    def validate(self, context: ToolContext) -> Tuple[bool, str]:
+        return True, ""
+
+    def execute(self, context: ToolContext) -> ToolExecutionResult:
+        return ToolExecutionResult(True, "Idling.", self.cost_type)
+
+
+# --- Registry & Dispatcher ---
+
+TOOL_REGISTRY: Dict[str, BaseTool] = {
+    "move": MoveTool(),
+    "gather": GatherTool(),
+    "detonate": DetonateTool(),
+    "deposit": DepositTool(),
+    "charge": ChargeTool(),
+    "tow": TowTool(),
+    "drain": DrainTool(),
+    "vent": VentTool(),
+    "siphon": SiphonTool(),
+    "search": SearchTool(),
+    "incinerate_drone": IncinerateDroneTool(),
+    "incinerate_pod": IncineratePodTool(),
+    "wait": WaitTool(),
+}
+
+def execute_tool(tool_name: str, args: Dict, drone_id: str, game: Caisson) -> ToolExecutionResult:
+    """Dispatches a command to the appropriate tool instance."""
+    actor = game.drones.get(drone_id)
+    if not actor:
+        return ToolExecutionResult(False, "System Error: Actor not found.")
+
+    tool_instance = TOOL_REGISTRY.get(tool_name)
+    if not tool_instance:
+        return ToolExecutionResult(False, f"Unknown command '{tool_name}'", ActionCosts.WAIT)
+
+    context = ToolContext(game, actor, args)
+    return tool_instance.run(context)
 
 def build_turn_context(drone: Drone, game_data: Caisson, hour: int = 1) -> str:
-    room = SHIP_MAP.get(drone.location_id)
+    """Generates the prompt/context for the LLM drone."""
     visible_drones = get_visible_drones(game_data, drone.location_id)
     
     # Filter out self from visible
@@ -219,6 +404,9 @@ def build_turn_context(drone: Drone, game_data: Caisson, hour: int = 1) -> str:
     if hour == end_hour:
         time_warning += "\nShift ending. Move to 'stasis_bay' to sync with your Foster Parent."
 
+    # Dynamic Tool List Generation
+    tool_list_str = "\n".join([f"- {t.description}" for t in TOOL_REGISTRY.values()])
+
     context = (
         "--- TACTICAL LINK ---\n"
         f"TIME: Hour {hour}/{end_hour}\n"
@@ -229,19 +417,7 @@ def build_turn_context(drone: Drone, game_data: Caisson, hour: int = 1) -> str:
         f"OBJECTIVE: {objective}\n"
         f"{time_warning}\n"
         "TOOLS: \n"
-        "- move(room_id)\n"
-        "- gather() [WARNING: Torpedo Bay has 5% Explosion Risk]\n"
-        "- deposit() [Engine]\n"
-        "- charge() [Station]\n"
-        "- tow(target_id, destination_id) [Cost 20] (Move OFFLINE drones/friends)\n"
-        "- drain(target_id) [Steal 20% Battery, Gain 15%]\n"
-        "- vent() [Stasis Bay, Cost 12, -5 Oxy, GLOBAL ALERT]\n"
-        "- siphon() [Engine, -10 Ship Fuel]\n"
-        "- search() [Maint, Find Weapon]\n"
-        "- incinerate_drone(target_id) [Need Torch, Kill, Room Vis]\n"
-        "- incinerate_pod(player_id) [Need Torch, Kill Human, Global Vis]\n"
-        "- detonate() [Torpedo Bay ONLY. GUARANTEED EXPLOSION. Suicide tactic.]\n"
-        "- wait()\n"
+        f"{tool_list_str}\n"
         "VALID ROOMS: stasis_bay, engine_room, shuttle_bay, torpedo_bay, maintenance, charging_station\n"
         "RESPONSE FORMAT: JSON only. Example: { \"tool\": \"move\", \"args\": { \"room_id\": \"engine_room\" } }"
     )

@@ -37,6 +37,7 @@ class FosterProtocol:
             "CAPACITY_SHUTTLE_BAY": GameConfig.CAPACITY_SHUTTLE_BAY,
             "TORPEDO_RISK_PERCENT": int(GameConfig.TORPEDO_ACCIDENT_CHANCE * 100),
             "OXYGEN_VENT_AMOUNT": GameConfig.OXYGEN_VENT_AMOUNT,
+            "PLASMA_TORCH_DISCOVERY_CHANCE": GameConfig.PLASMA_TORCH_DISCOVERY_CHANCE,
             
             "COST_MOVE": ActionCosts.MOVE,
             "COST_GATHER": ActionCosts.GATHER,
@@ -267,9 +268,7 @@ class FosterProtocol:
         action, thought = await self.get_drone_action(drone, context, tools, game_id)
         result = drone_tools.execute_tool(action.get("tool", "wait"), action.get("args", {}), drone.id, game_data)
         
-        if not (action.get("tool") == "charge" and result.success):
-            new_charge = drone.battery - result.cost
-            drone.battery = max(0, min(100, new_charge))
+        drone.battery = max(0, min(100, drone.battery - result.cost))
         
         return {
             "drone": drone,
@@ -279,21 +278,19 @@ class FosterProtocol:
         }
 
     async def execute_day_simulation(self, game_data: Caisson, ctx, tools) -> Dict[str, Any]:
-        logging.info("--- [DEBUG] STARTING execute_day_simulation ---")
         
         try:
             logging.info("--- Phase: REM Sleep (Dreaming) ---")
             await self.process_dreams(game_data, tools)
 
             game_data.daily_logs.clear()
-            for b in game_data.drones.values(): b.daily_memory.clear()
+            for b in game_data.drones.values():
+                b.daily_memory.clear()
             
-            logging.info(f"--- [DEBUG] Entering Hour Loop (0/{GameConfig.HOURS_PER_SHIFT}) ---")
             
             for hour in range(1, GameConfig.HOURS_PER_SHIFT + 1):
                 await asyncio.sleep(2) 
                 active_drones = [b for b in game_data.drones.values() if b.status == "active"]
-                logging.info(f"--- [DEBUG] Hour {hour}: {len(active_drones)} active drones ---")
                 
                 random.shuffle(active_drones)
                 hourly_activity = False 
@@ -320,7 +317,7 @@ class FosterProtocol:
                         log_entry = f"[Hour {hour}] {result.message}"
                         drone.daily_memory.append(log_entry)
                         
-                        if result.visibility == "room":
+                        if result.visibility in ["room", "global"]:
                             witnesses = [b for b in game_data.drones.values() if b.location_id == drone.location_id and b.id != drone.id]
                             for w in witnesses: w.daily_memory.append(f"[Hour {hour}] I saw {drone.id}: {result.message}")
                                 
@@ -337,8 +334,6 @@ class FosterProtocol:
                 if not hourly_activity:
                     game_data.daily_logs.append(f"[HOUR {hour}] Ship systems nominal.")
                     await ctx.send("aux-comm", f"[HOUR {hour}] Ship systems nominal.")
-
-            logging.info("--- [DEBUG] Hour Loop Completed. Calculating Resources... ---")
 
             living_crew = sum(1 for p in game_data.players.values() if p.alive)
             if game_data.initial_crew_size < 1: game_data.initial_crew_size = 1
@@ -372,14 +367,12 @@ class FosterProtocol:
             channel_ops = []
             
             if game_data.fuel >= req_today:
-                logging.info("--- [DEBUG] WIN CONDITION MET ---")
                 await ctx.send("aux-comm", report + "\nSUCCESS SUFFICIENT FUEL FOR ESCAPE VELOCITY. INITIATING BURN...")
                 await self.generate_epilogues(game_data, ctx, tools, victory=True)
                 await ctx.end()
                 channel_ops.append({"op": "reveal", "key": "black-box"}) 
                 
             elif req_tomorrow > GameConfig.MAX_POSSIBLE_FUEL_REQ:
-                logging.info("--- [DEBUG] LOSS CONDITION MET (Gravity Well) ---")
                 await ctx.send("aux-comm", report)
                 await ctx.send("aux-comm", "FATAL. ORBITAL DECAY IRREVERSIBLE. REQUIRED FUEL EXCEEDS SHIP CAPACITY.")
                 await self.generate_epilogues(game_data, ctx, tools, victory=False, fail_reason="Required Fuel Exceeds Ships Capacity")
@@ -387,8 +380,6 @@ class FosterProtocol:
                 channel_ops.append({"op": "reveal", "key": "black-box"})
                 
             else:
-                logging.info("--- [DEBUG] Continuing to Next Cycle ---")
-                # Append the drag penalty warning to the report
                 report += f"\nBurn Window Missed. Atmospheric Drag detected.\n**Tomorrow's Fuel Target: {req_tomorrow}%**"
                 await ctx.send("aux-comm", report)
                 
@@ -399,8 +390,6 @@ class FosterProtocol:
                         logging.info("--- [DEBUG] O2 is 0. Triggering Stasis Message. ---")
                         await ctx.send("aux-comm", "**OXYGEN DEPLETED. STASIS ENGAGED.**\nThe Crew sleeps. The Drones must continue alone.")
 
-                    logging.info("--- [DEBUG] Auto-advancing Day (Night Skipped). ---")
-                    
                     # Ensure phase is set to day
                     game_data.phase = "day"
                     
@@ -409,12 +398,9 @@ class FosterProtocol:
                 
                 else:
                     # Normal Night Phase
-                    logging.info("--- [DEBUG] Triggering Drone Speak (Night Chat) ---")
                     await self.speak_all_drones(game_data, ctx, tools, "The work day is over. Briefly report your status to your Parent.")
                     game_data.phase = "night"
 
-            logging.info("--- [DEBUG] execute_day_simulation COMPLETED SUCCESSFULLY ---")
-            
             result = game_data.model_dump()
             result["channel_ops"] = channel_ops if channel_ops else None
             return result

@@ -14,6 +14,7 @@ class GameConfig:
     CAPACITY_TORPEDO_BAY = 120
     
     TORPEDO_ACCIDENT_CHANCE = 0.05
+    PLASMA_TORCH_DISCOVERY_CHANCE = 0.2
     
     FUEL_REQ_BASE = 49
     FUEL_REQ_GROWTH = 1.15
@@ -24,7 +25,7 @@ class ActionCosts:
     MOVE = 8      
     GATHER = 10   
     DEPOSIT = 10  
-    CHARGE = 0    
+    CHARGE = -100    
     TOW = 20      
     DRAIN = -15   
     SABOTAGE = 12 

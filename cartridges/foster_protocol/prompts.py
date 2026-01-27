@@ -1,5 +1,6 @@
 import os
 from jinja2 import Environment, FileSystemLoader
+from .board import GameConfig, ActionCosts
 
 # --- JINJA2 SETUP ---
 # We assume templates are in the 'prompts/' subdirectory relative to this file.
@@ -19,6 +20,29 @@ def render(template_name: str, **kwargs) -> str:
     return template.render(**kwargs)
 
 # --- PROMPT ACCESSORS ---
+
+def get_base_prompt() -> str:
+    """
+    Renders the main system prompt with game configuration constants.
+    """
+    return render(
+        "system_prompt_template.md",
+        HOURS_PER_SHIFT=GameConfig.HOURS_PER_SHIFT,
+        CAPACITY_TORPEDO_BAY=GameConfig.CAPACITY_TORPEDO_BAY,
+        CAPACITY_SHUTTLE_BAY=GameConfig.CAPACITY_SHUTTLE_BAY,
+        TORPEDO_RISK_PERCENT=int(GameConfig.TORPEDO_ACCIDENT_CHANCE * 100),
+        OXYGEN_VENT_AMOUNT=GameConfig.OXYGEN_VENT_AMOUNT,
+        PLASMA_TORCH_DISCOVERY_CHANCE=GameConfig.PLASMA_TORCH_DISCOVERY_CHANCE,
+        
+        COST_MOVE=ActionCosts.MOVE,
+        COST_GATHER=ActionCosts.GATHER,
+        COST_DEPOSIT=ActionCosts.DEPOSIT,
+        COST_TOW=ActionCosts.TOW,
+        COST_DRAIN=ActionCosts.DRAIN,
+        COST_SABOTAGE=ActionCosts.SABOTAGE,
+        COST_KILL=ActionCosts.KILL,
+        COST_DETONATE=ActionCosts.DETONATE
+    )
 
 def get_mainframe_prompt() -> str:
     return render("mainframe_persona.md")

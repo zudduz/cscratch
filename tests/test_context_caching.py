@@ -19,7 +19,8 @@ async def test_context_caching_prefix_integrity():
     UNIQUE_ID_2 = "I_AM_UNIT_002"
     
     # 2. Patch the helpers to return our controlled strings
-    with patch.object(FosterProtocol, "_load_base_prompt", return_value=SHARED_RULES), \
+    # UPDATED: We patch the new prompt accessor instead of the old class method
+    with patch("cartridges.foster_protocol.prompts.get_base_prompt", return_value=SHARED_RULES), \
          patch("cartridges.foster_protocol.prompts.get_drone_identity_block", side_effect=[UNIQUE_ID_1, UNIQUE_ID_2]), \
          patch("random.randint", side_effect=[0, 1, 2]): # Force specific IDs
          

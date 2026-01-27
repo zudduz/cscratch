@@ -5,15 +5,12 @@ import logging
 import json
 import ast
 import re
-from jinja2 import Template
 from .models import Caisson, Drone, Player
 from .board import SHIP_MAP, GameConfig, ActionCosts
 from . import tools as drone_tools 
 from . import prompts
 
 AVAILABLE_MODELS = ["gemini-2.5-flash"]
-
-PROMPT_PATH = "cartridges/foster_protocol/prompts/system_prompt_template.md"
 
 class FosterProtocol:
     def __init__(self):
@@ -23,33 +20,6 @@ class FosterProtocol:
             "version": "2.45",
             **default_state.model_dump()
         }
-
-    def _load_base_prompt(self) -> str:
-        with open(PROMPT_PATH, "r", encoding="utf-8") as f:
-            template_content = f.read()
-
-        template = Template(template_content)
-
-        # Context mapping for Jinja2
-        context = {
-            "HOURS_PER_SHIFT": GameConfig.HOURS_PER_SHIFT,
-            "CAPACITY_TORPEDO_BAY": GameConfig.CAPACITY_TORPEDO_BAY,
-            "CAPACITY_SHUTTLE_BAY": GameConfig.CAPACITY_SHUTTLE_BAY,
-            "TORPEDO_RISK_PERCENT": int(GameConfig.TORPEDO_ACCIDENT_CHANCE * 100),
-            "OXYGEN_VENT_AMOUNT": GameConfig.OXYGEN_VENT_AMOUNT,
-            "PLASMA_TORCH_DISCOVERY_CHANCE": GameConfig.PLASMA_TORCH_DISCOVERY_CHANCE,
-            
-            "COST_MOVE": ActionCosts.MOVE,
-            "COST_GATHER": ActionCosts.GATHER,
-            "COST_DEPOSIT": ActionCosts.DEPOSIT,
-            "COST_TOW": ActionCosts.TOW,
-            "COST_DRAIN": ActionCosts.DRAIN,
-            "COST_SABOTAGE": ActionCosts.SABOTAGE,
-            "COST_KILL": ActionCosts.KILL,
-            "COST_DETONATE": ActionCosts.DETONATE
-        }
-
-        return template.render(**context)
 
     async def on_game_start(self, generic_state: dict) -> Dict[str, Any]:
         game_data = Caisson(**generic_state.get('metadata', {}))
@@ -67,7 +37,7 @@ class FosterProtocol:
         channel_ops.append({ "op": "create", "key": "black-box", "name": "black-box-logs", "audience": "hidden", "init_msg": "FLIGHT RECORDER ACTIVE." })
         messages.append({ "channel": "aux-comm", "content": "VENDETTA OS v9.0 ONLINE." })
 
-        base_text = self._load_base_prompt()
+        base_text = prompts.get_base_prompt()
 
         for i, p_data in enumerate(discord_players):
             u_id = p_data['id']
@@ -153,9 +123,9 @@ class FosterProtocol:
                 "5. STATUS CHECK: Observe if targets are already OFFLINE before committing battery to them.\n"
                 "6. OUTPUT FORMAT:\n"
                 "Write your thoughts first. Then output the JSON block.\n"
-                "`" "`" "`json\n"
+                "```json\n"
                 '{ "tool": "charge", "args": {} }\n'
-                "`" "`" "`"
+                "```"
             )
 
             response_text = await tools_api.ai.generate_response(
@@ -178,9 +148,9 @@ class FosterProtocol:
                 post_text = response_text[match.end():].strip()
                 thought_text = "Processing..."
                 if pre_text:
-                    thought_text = pre_text.replace("`" "`" "`json", "").replace("`" "`" "`", "").strip()
+                    thought_text = pre_text.replace("```json", "").replace("```", "").strip()
                 elif post_text:
-                    thought_text = post_text.replace("`" "`" "`json", "").replace("`" "`" "`", "").strip()
+                    thought_text = post_text.replace("```json", "").replace("```", "").strip()
                 
                 return json.loads(json_text), thought_text
 
@@ -486,7 +456,7 @@ class FosterProtocol:
                     new_name = parts[1][:20]
                     my_drone.name = new_name
                     
-                    base_text = self._load_base_prompt()
+                    base_text = prompts.get_base_prompt()
                     identity_block = prompts.get_drone_identity_block(my_drone.id, game_data.players[user_id].role, my_drone.role == "saboteur")
                     
                     # --- CACHING OPTIMIZATION ---

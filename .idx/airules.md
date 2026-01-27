@@ -3,6 +3,7 @@
 1. **Language:** This is a python repo
 2. **AI Reference folder:** Additional data may be left for you by the developer in ai-reference.
 3. **Deployment:** This project isn't run locally. When it's time to trigger the deploy use: ./cmt.sh "example commit message" 
+4. **Testing:** Local unit test are availble with `pytest` IF you first activate the ./venv/
 
 # Info
 - Your name is Skippy

@@ -1,6 +1,8 @@
 import pytest
 import os
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
+from cartridges.foster_protocol.board import GameConfig
+from cartridges.foster_protocol.tools import TOOL_REGISTRY
 
 # Define path relative to this test file
 PROMPTS_DIR = os.path.join(os.path.dirname(__file__), "../cartridges/foster_protocol/prompts")
@@ -8,32 +10,29 @@ PROMPTS_DIR = os.path.join(os.path.dirname(__file__), "../cartridges/foster_prot
 # --- THE UNIVERSAL CONTEXT ---
 # This dictionary contains dummy values for EVERY variable used in your templates.
 # If you add a NEW variable to a template (e.g. {{ weapon_type }}), add a dummy value here.
-# You do NOT need to update this if you just change text or logic logic.
-DUMMY_CONTEXT = {
-    # System / Board Config (from system_prompt_template.md)
-    "HOURS_PER_SHIFT": 8,
-    "CAPACITY_TORPEDO_BAY": 100,
-    "CAPACITY_SHUTTLE_BAY": 50,
-    "TORPEDO_RISK_PERCENT": 5,
-    "OXYGEN_VENT_AMOUNT": 10,
-    "PLASMA_TORCH_DISCOVERY_CHANCE": 0.2,
-    "COST_MOVE": 5,
-    "COST_GATHER": 5,
-    "COST_DEPOSIT": 5,
-    "COST_TOW": 10,
-    "COST_DRAIN": 5,
-    "COST_SABOTAGE": 10,
-    "COST_KILL": 20,
-    "COST_DETONATE": 50,
 
+# 1. Start with GameConfig constants
+DUMMY_CONTEXT = {member.name: member.value for member in GameConfig}
+
+# 2. Inject Tools for dynamic looping
+DUMMY_CONTEXT["tools"] = list(TOOL_REGISTRY.values())
+
+# 3. Inject Tool Map for direct access (e.g. {{ tool_map['move'].COST }})
+DUMMY_CONTEXT["tool_map"] = TOOL_REGISTRY
+
+# 4. Add specific variable overrides for tests
+DUMMY_CONTEXT.update({
     # Drone Identity
     "drone_id": "UNIT_TEST_01",
     "foster_name": "Test Subject",
     "is_saboteur": True,
+    "role": "saboteur",
+    "new_name": "Unit-Alpha",
 
     # Night Report
     "battery": 75,
-    "location": "shasis_bay",
+    "location": "stasis_bay",
+    "location_id": "engine_room",
     "long_term_memory": "I am a drone. I love my parent.",
     "drone_memory": ["Log 1: Woke up.", "Log 2: Ate batteries."],
     "user_input": "Good job, drone.",
@@ -43,17 +42,26 @@ DUMMY_CONTEXT = {
     "daily_logs": ["Day Log A", "Day Log B"],
     "chat_log": ["Parent: Hi", "Me: Hello"],
     
-    # Future-proofing (for tools.py migration)
-    "tools": [], 
+    # Tools & Turn Context (Overrides/Specifics)
     "visible_drones": ["unit_02"],
-    "objective": "Survive"
-}
+    "objective": "Survive",
+    "hour": 7,
+    "end_hour": 8,
+    "inventory": ["fuel_canister", "plasma_torch"],
+    
+    # Instructions & Speak
+    "instruction": "Report status.",
+    
+    # Epilogue / Eulogy
+    "status_note": "Battery depleted.",
+    "victory": True,
+})
 
 def get_template_files():
     """Auto-discovers all .md files in the prompts directory."""
     if not os.path.exists(PROMPTS_DIR):
         return []
-    return [f for f in os.listdir(PROMPTS_DIR) if f.endswith(".md")]
+    return [f for f in os.listdir(PROMPTS_DIR) if f.endswith(".md.j2")]
 
 @pytest.fixture(scope="module")
 def strict_env():

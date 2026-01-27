@@ -1,0 +1,15 @@
+STATUS: {{ status_note }}
+
+{% if victory %}
+{% if role == "saboteur" %}
+The humans WON. You failed.
+{% else %}
+VICTORY!
+{% endif %}
+{% else %}
+{% if role == "saboteur" %}
+The humans DIED. You WON.
+{% else %}
+You are dying.
+{% endif %}
+{% endif %}

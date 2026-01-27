@@ -1,0 +1,20 @@
+--- TACTICAL LINK ---
+TIME: Hour {{ hour }}/{{ end_hour }}
+LOCATION: {{ location_id }}
+SELF: Battery {{ battery }}% | Inventory: {{ inventory }}
+VISIBLE: {{ visible_drones }}
+INTERNAL MEMORY: "{{ long_term_memory }}"
+OBJECTIVE: {{ objective }}
+
+{% if hour >= end_hour - 1 %}
+CRITICAL WARNING: The Shift is ending.
+{% endif %}
+{% if hour == end_hour %}
+Shift ending. Move to 'stasis_bay' to sync with your Foster Parent.
+{% endif %}
+{% if battery < 30 %}
+WARNING: Battery Critical. Consider moving to 'charging_station'.
+{% endif %}
+
+VALID ROOMS: stasis_bay, engine_room, shuttle_bay, torpedo_bay, maintenance, charging_station
+RESPONSE FORMAT: JSON only. Example: { "tool": "move", "args": { "room_id": "engine_room" } }

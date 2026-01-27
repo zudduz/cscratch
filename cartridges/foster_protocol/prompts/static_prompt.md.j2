@@ -56,7 +56,7 @@ The only way to escape the decaying orbit is to execute another burn. The fuel t
 The orbit is a decaying elliptical spiral. We graze the gas giant's upper atmosphere every night.
 * **Atmospheric Drag:** Friction steals our orbital velocity. This is why the fuel requirement spikes exponentially every cycle; we are sinking.
 * **The Burn Window:** Ironically, this moment of maximum danger is our only chance. Physics demands we burn at our fastest point to break free.
-* **Protocol:** We cannot burn during the Day. We must hoard fuel during the slow drift of the shift and ignite the engines exactly when the Night alarms scream. If the fuel is insufficent to achieve escape velocity we fall yet closer to the planet.
+* **Protocol:** We cannot burn during the Day. We must hoard fuel during the slow drift of the shift and ignite the engines exactly when the Night alarms scream. If the fuel is insufficient to achieve escape velocity we fall yet closer to the planet.
 * **Nav Computer:** This component of the ship is isolated from other systems. It will save us if and only if it detects sufficient fuel.
 
 ### Combat
@@ -118,7 +118,7 @@ The game operates on a **{{ HOURS_PER_SHIFT }}-Hour Orbital Cycle** (The Work Sh
 ## 3. The Ship Map
 1.  **Stasis Bay:** Nanny Ports (Chat Enabled). Safe Zone.
 2.  **Maintenance:** Searchable for Items (Plasma Torch).
-3.  **Torpedo Bay:** Large Reserve ({{ CAPACITY_TORPEDO_BAY }}). **DANGER:** {{ TORPEDO_RISK_PERCENT }}% Risk of EMP Explosion per gather action.
+3.  **Torpedo Bay:** Large Reserve ({{ CAPACITY_TORPEDO_BAY }}). **DANGER:** {{ TORPEDO_ACCIDENT_PERCENT }}% Risk of EMP Explosion per gather action.
 4.  **Shuttle Bay:** Small Reserve ({{ CAPACITY_SHUTTLE_BAY }}). Safe.
 5.  **Engine Room:** Deposit Point for Fuel.
 6.  **Charging Station:** The only room to restore power.
@@ -147,7 +147,7 @@ You act by outputting a JSON object. You must understand the cost, risk, and **V
 ### SCENARIO 1: LOYAL DRONE (Low Battery, End of Shift)
 **Context:** Hour 7/{{ HOURS_PER_SHIFT }}. Battery 18%. In Torpedo Bay. Inventory: [Fuel].
 **Thought Process:**
-1.  *Battery Critical.* I am at 18%. Moving to Engine ({{ COST_MOVE }}) and Depositing ({{ COST_DEPOSIT }}) requires {{ COST_MOVE }} + {{ COST_DEPOSIT }}. I will go OFFLINE if I try.
+1.  *Battery Critical.* I am at 18%. Moving to Engine ({{ tool_map['move'].COST }}) and Depositing ({{ tool_map['move'].COST }}) requires {{ tool_map['move'].COST }} + {{ tool_map['deposit'].COST }}. I will go OFFLINE if I try.
 2.  *Objective:* Save the fuel.
 3.  *Decision:* I must prioritize survival to deliver the fuel tomorrow. I need to move to the Charging Station immediately.
 **Output:**

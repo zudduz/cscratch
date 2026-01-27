@@ -406,8 +406,11 @@ def execute_tool(tool_name: str, args: Dict, drone_id: str, game: Caisson) -> To
     context = ToolContext(game, actor, args)
     return tool_instance.run(context)
 
-def build_turn_context(drone: Drone, game_data: Caisson, hour: int = 1) -> str:
-    """Generates the prompt/context for the LLM drone."""
+def gather_turn_context_data(drone: Drone, game_data: Caisson, hour: int = 1) -> Dict[str, Any]:
+    """
+    Gathers raw data for the turn context prompt.
+    Did NOT return a string. Returns a dictionary for Jinja2.
+    """
     visible_drones = get_visible_drones(game_data, drone.location_id)
     
     # Filter out self from visible
@@ -417,25 +420,13 @@ def build_turn_context(drone: Drone, game_data: Caisson, hour: int = 1) -> str:
     if drone.role == "saboteur":
         objective = "Waste resources. Hoard fuel. Vent Oxygen. Kill if armed."
 
-    time_warning = ""
-    end_hour = GameConfig.HOURS_PER_SHIFT
-    
-    if hour >= end_hour - 1:
-        time_warning = "CRITICAL WARNING: The Shift is ending."
-    
-    if hour == end_hour:
-        time_warning += "\nShift ending. Move to 'stasis_bay' to sync with your Foster Parent."
-
-    context = (
-        "--- TACTICAL LINK ---\n"
-        f"TIME: Hour {hour}/{end_hour}\n"
-        f"LOCATION: {drone.location_id}\n"
-        f"SELF: Battery {drone.battery}% | Inventory: {drone.inventory}\n"
-        f"VISIBLE: {visible_drones}\n"
-        f"INTERNAL MEMORY: \"{drone.long_term_memory}\"\n"
-        f"OBJECTIVE: {objective}\n"
-        f"{time_warning}\n"
-        "VALID ROOMS: stasis_bay, engine_room, shuttle_bay, torpedo_bay, maintenance, charging_station\n"
-        "RESPONSE FORMAT: JSON only. Example: { \"tool\": \"move\", \"args\": { \"room_id\": \"engine_room\" } }"
-    )
-    return context
+    return {
+        "hour": hour,
+        "end_hour": GameConfig.HOURS_PER_SHIFT,
+        "location_id": drone.location_id,
+        "battery": drone.battery,
+        "inventory": drone.inventory,
+        "visible_drones": visible_drones,
+        "long_term_memory": drone.long_term_memory,
+        "objective": objective
+    }

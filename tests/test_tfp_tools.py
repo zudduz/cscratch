@@ -1,8 +1,8 @@
 import pytest
 from unittest.mock import MagicMock, patch
-from cartridges.foster_protocol.tools import execute_tool, TOOL_REGISTRY
+from cartridges.foster_protocol.tools import execute_tool, TOOL_REGISTRY, MoveTool, GatherTool, WaitTool
 from cartridges.foster_protocol.models import Caisson, Drone, Player, ChargingStation
-from cartridges.foster_protocol.board import GameConfig, ActionCosts
+from cartridges.foster_protocol.board import GameConfig
 
 # --- FIXTURES ---
 
@@ -28,7 +28,7 @@ def test_tool_move_success(game_state):
     
     assert result.success is True
     assert drone.location_id == "engine_room"
-    assert result.cost == ActionCosts.MOVE
+    assert result.cost == MoveTool.COST
 
 def test_tool_move_invalid_room(game_state):
     result = execute_tool("move", {"room_id": "void"}, "unit_01", game_state)
@@ -45,7 +45,7 @@ def test_tool_gather_shuttle_bay(game_state):
     assert result.success is True
     assert "fuel_canister" in drone.inventory
     assert game_state.shuttle_bay_fuel == 10
-    assert result.cost == ActionCosts.GATHER
+    assert result.cost == GatherTool.COST
 
 def test_tool_gather_torpedo_bay_explosion(game_state):
     drone = game_state.drones["unit_01"]
@@ -197,4 +197,4 @@ def test_tool_detonate(game_state):
 def test_tool_wait(game_state):
     result = execute_tool("wait", {}, "unit_01", game_state)
     assert result.success is True
-    assert result.cost == ActionCosts.WAIT
+    assert result.cost == WaitTool.COST

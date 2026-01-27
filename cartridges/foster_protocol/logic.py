@@ -6,7 +6,7 @@ import json
 import ast
 import re
 from .models import Caisson, Drone, Player
-from .board import SHIP_MAP, GameConfig, ActionCosts
+from .board import GameConfig
 from . import tools as drone_tools 
 from . import prompts
 
@@ -308,16 +308,13 @@ class FosterProtocol:
             
             game_data.consume_oxygen(drop_calc)
             
-            # --- ORBITAL MECHANICS UPDATE ---
             current_cycle = game_data.cycle
-            base = GameConfig.FUEL_REQ_BASE
-            growth = GameConfig.FUEL_REQ_GROWTH
             
             # Requirement for the cycle that JUST finished
-            req_today = int(base * (growth ** (current_cycle - 1)))
+            req_today = int(GameConfig.FUEL_REQ_BASE * ((GameConfig.FUEL_REQ_GROWTH_PERCENT / 100) ** (current_cycle - 1)))
             
             # Requirement for the UPCOMING cycle (The Oberth penalty)
-            req_tomorrow = int(base * (growth ** current_cycle))
+            req_tomorrow = int(GameConfig.FUEL_REQ_BASE * ((GameConfig.FUEL_REQ_GROWTH_PERCENT / 100) ** current_cycle))
             
             logging.info(f"--- [DEBUG] Cycle {current_cycle} | Fuel: {game_data.fuel}/{req_today} | O2: {game_data.oxygen} ---")
 

@@ -1,6 +1,7 @@
 import os
 from jinja2 import Environment, FileSystemLoader
-from .board import GameConfig, ActionCosts
+from .board import GameConfig
+from .tools import *
 
 # --- JINJA2 SETUP ---
 # We assume templates are in the 'prompts/' subdirectory relative to this file.
@@ -30,9 +31,9 @@ def get_base_prompt() -> str:
         HOURS_PER_SHIFT=GameConfig.HOURS_PER_SHIFT,
         CAPACITY_TORPEDO_BAY=GameConfig.CAPACITY_TORPEDO_BAY,
         CAPACITY_SHUTTLE_BAY=GameConfig.CAPACITY_SHUTTLE_BAY,
-        TORPEDO_RISK_PERCENT=int(GameConfig.TORPEDO_ACCIDENT_CHANCE * 100),
+        TORPEDO_RISK_PERCENT=GameConfig.TORPEDO_ACCIDENT_PERCENT,
         OXYGEN_VENT_AMOUNT=GameConfig.OXYGEN_VENT_AMOUNT,
-        PLASMA_TORCH_DISCOVERY_CHANCE=GameConfig.PLASMA_TORCH_DISCOVERY_CHANCE,
+        PLASMA_TORCH_DISCOVERY_PERCENT=GameConfig.PLASMA_TORCH_DISCOVERY_PERCENT,
         
         COST_MOVE=ActionCosts.MOVE,
         COST_GATHER=ActionCosts.GATHER,

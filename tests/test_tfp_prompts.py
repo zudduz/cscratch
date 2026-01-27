@@ -12,7 +12,8 @@ PROMPTS_DIR = os.path.join(os.path.dirname(__file__), "../cartridges/foster_prot
 # If you add a NEW variable to a template (e.g. {{ weapon_type }}), add a dummy value here.
 
 # 1. Start with GameConfig constants
-DUMMY_CONTEXT = {member.name: member.value for member in GameConfig}
+# Updated to extract from Class instead of Enum
+DUMMY_CONTEXT = {k: v for k, v in vars(GameConfig).items() if not k.startswith("__")}
 
 # 2. Inject Tools for dynamic looping
 DUMMY_CONTEXT["tools"] = list(TOOL_REGISTRY.values())

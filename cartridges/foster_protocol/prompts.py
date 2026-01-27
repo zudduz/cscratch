@@ -27,8 +27,9 @@ def get_base_prompt() -> str:
     """
     Renders the main system prompt with game configuration constants.
     """
-    # 1. GameConfig constants
-    context = {member.name: member.value for member in GameConfig}
+    # 1. GameConfig constants (Refactored for Class)
+    # We iterate over class attributes, ignoring internal dunder methods
+    context = {k: v for k, v in vars(GameConfig).items() if not k.startswith("__")}
 
     # 2. Inject Tools for dynamic looping (Step 2 Prep)
     # We convert values to a list so Jinja can iterate easily

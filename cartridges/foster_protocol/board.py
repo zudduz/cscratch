@@ -1,6 +1,6 @@
 from enum import Enum
 
-class GameConfig(int, Enum):
+class GameConfig:
     HOURS_PER_SHIFT = 8
     INITIAL_OXYGEN = 100
     OXYGEN_BASE_LOSS = 20

@@ -53,7 +53,7 @@ def test_tool_gather_torpedo_bay_explosion(game_state):
     game_state.torpedo_bay_fuel = 20
     
     # Mock random to trigger explosion (return < 0.05)
-    with patch("random.random", return_value=0.01):
+    with patch("random.randint", return_value=0):
         result = execute_tool("gather", {}, "unit_01", game_state)
         
     assert result.success is False
@@ -156,7 +156,7 @@ def test_tool_search_found(game_state):
     drone = game_state.drones["unit_01"]
     drone.location_id = "maintenance"
     
-    with patch("random.random", return_value=0.0): # Force success (chance is 0.2)
+    with patch("random.randint", return_value=0): # Force success
         result = execute_tool("search", {}, "unit_01", game_state)
         
     assert result.success is True

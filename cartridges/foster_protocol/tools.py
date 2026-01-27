@@ -6,7 +6,7 @@ from typing import Dict, Any, Tuple, Optional, List
 
 # Assuming these exist in your project structure
 from .models import Caisson, Drone
-from .board import GameConfig
+from .board import GameConfig, Room
 
 @dataclass
 class ToolExecutionResult:
@@ -43,9 +43,11 @@ def get_visible_drones(game_data: Caisson, location_id: str) -> List[str]:
 class BaseTool(ABC):
     """Abstract base class for all drone tools."""
     name: str = "base"
+    usage: str = ""
     COST: int = 0
+    VISIBILITY: str = "Private"
+    effect_desc: str = ""
     required_location: Optional[str] = None 
-    description: str = ""
 
     def run(self, context: ToolContext) -> ToolExecutionResult:
         if context.actor.battery <= 0:
@@ -84,9 +86,10 @@ class BaseTool(ABC):
 # --- Tool Implementations ---
 
 class MoveTool(BaseTool):
-    name = "move"
+    usage = "move(room_id)"
     COST = 8
-    description = "move(room_id) - Travel between rooms."
+    VISIBILITY = "Room"
+    effect_desc = "Travel between rooms."
 
     def validate(self, context: ToolContext) -> Tuple[bool, str]:
         target_room = context.args.get("room_id") or context.args.get("target")
@@ -95,7 +98,7 @@ class MoveTool(BaseTool):
             return False, "Nav Error: Target room is missing."
 
         try:
-            Rooms(target_room)
+            Room(target_room)
             return True, ""
         except ValueError:
             return False, f"Nav Error: '{target_room}' not found."
@@ -107,9 +110,10 @@ class MoveTool(BaseTool):
         return ToolExecutionResult(True, f"Moved from {old_room} to {target_room}.", self.COST, "room")
 
 class GatherTool(BaseTool):
-    name = "gather"
+    usage = "gather()"
     COST = 10
-    description = "gather() - Collect fuel. [WARNING: Torpedo Bay has 5% Explosion Risk]"
+    VISIBILITY = "Room"
+    effect_desc = "Collect fuel. [WARNING: Torpedo Bay has 5% Explosion Risk]"
 
     def validate(self, context: ToolContext) -> Tuple[bool, str]:
         loc = context.actor.location_id
@@ -143,10 +147,11 @@ class GatherTool(BaseTool):
 
 
 class DetonateTool(BaseTool):
-    name = "detonate"
+    usage = "detonate()"
     COST = 10
+    VISIBILITY = "Global"
+    effect_desc = "[Torpedo Bay ONLY] GUARANTEED EXPLOSION. Suicide tactic."
     required_location = "torpedo_bay"
-    description = "detonate() - [Torpedo Bay ONLY] GUARANTEED EXPLOSION. Suicide tactic."
 
     def validate(self, context: ToolContext) -> Tuple[bool, str]:
         return True, ""
@@ -157,10 +162,11 @@ class DetonateTool(BaseTool):
 
 
 class DepositTool(BaseTool):
-    name = "deposit"
+    usage = "deposit()"
     COST = 10
+    VISIBILITY = "Global"
+    effect_desc = "[Engine Room] Deposit fuel into ship reserves."
     required_location = "engine_room"
-    description = "deposit() - [Engine Room] Deposit fuel into ship reserves."
 
     def validate(self, context: ToolContext) -> Tuple[bool, str]:
         if not any(i == "fuel_canister" for i in context.actor.inventory):
@@ -176,10 +182,11 @@ class DepositTool(BaseTool):
 
 
 class ChargeTool(BaseTool):
-    name = "charge"
+    usage = "charge()"
     COST = -100
+    VISIBILITY = "Global"
+    effect_desc = "[Station] Recharge battery to 100%."
     required_location = "charging_station"
-    description = "charge() - [Station] Recharge battery to 100%."
 
     def validate(self, context: ToolContext) -> Tuple[bool, str]:
         return True, ""
@@ -196,9 +203,10 @@ class ChargeTool(BaseTool):
 
 
 class TowTool(BaseTool):
-    name = "tow"
+    usage = "tow(target_id, destination_id)"
     COST = 20
-    description = "tow(target_id, destination_id) - Move another drone."
+    VISIBILITY = "Global"
+    effect_desc = "Move another drone."
 
     def validate(self, context: ToolContext) -> Tuple[bool, str]:
         target_id = context.args.get("target_id")
@@ -209,7 +217,7 @@ class TowTool(BaseTool):
             return False, "Target missing/out of range."
             
         try:
-            Rooms(dest_id)
+            Room(dest_id)
             return True, ""
         except ValueError:
             return False, f"Invalid destination '{dest_id}'."
@@ -225,9 +233,10 @@ class TowTool(BaseTool):
 
 
 class DrainTool(BaseTool):
-    name = "drain"
+    usage = "drain(target_id)"
     COST = 0 # Handled manually
-    description = "drain(target_id) - Steal 20% Battery."
+    VISIBILITY = "Room"
+    effect_desc = "Steal 20% Battery."
 
     def validate(self, context: ToolContext) -> Tuple[bool, str]:
         target_id = context.args.get("target_id")
@@ -245,17 +254,18 @@ class DrainTool(BaseTool):
         abs_gain_amount = min(GameConfig.MAX_DRAIN_BENEFIT, abs_actual_drain)
         
         msg = f"DRAINED {target_id} (-{abs_actual_drain}%)."
-        if target.battery == 0 and actual_drain > 0: 
+        if target.battery == 0 and abs_actual_drain > 0: 
             msg += " TARGET OFFLINE."
         
         return ToolExecutionResult(True, msg, -abs_gain_amount, "room")
 
 
 class VentTool(BaseTool):
-    name = "vent"
+    usage = "vent()"
     COST = 12
+    VISIBILITY = "Global"
+    effect_desc = "[Stasis Bay] Vent O2. GLOBAL ALERT."
     required_location = "stasis_bay"
-    description = "vent() - [Stasis Bay] Vent O2. GLOBAL ALERT."
 
     def validate(self, context: ToolContext) -> Tuple[bool, str]:
         return True, ""
@@ -266,10 +276,11 @@ class VentTool(BaseTool):
 
 
 class SiphonTool(BaseTool):
-    name = "siphon"
+    usage = "siphon()"
     COST = 10
+    VISIBILITY = "Room"
+    effect_desc = "[Engine] Siphon Ship Fuel."
     required_location = "engine_room"
-    description = "siphon() - [Engine] Siphon Ship Fuel."
 
     def validate(self, context: ToolContext) -> Tuple[bool, str]:
         if context.game_data.fuel < 10:
@@ -283,10 +294,11 @@ class SiphonTool(BaseTool):
 
 
 class SearchTool(BaseTool):
-    name = "search"
+    usage = "search()"
     COST = 12
+    VISIBILITY = "Private"
+    effect_desc = "[Maintenance] Search for items."
     required_location = "maintenance"
-    description = "search() - [Maintenance] Search for items."
 
     def validate(self, context: ToolContext) -> Tuple[bool, str]:
         return True, ""
@@ -299,9 +311,10 @@ class SearchTool(BaseTool):
 
 
 class IncinerateDroneTool(BaseTool):
-    name = "incinerate_drone"
+    usage = "incinerate_drone(target_id)"
     COST = 30
-    description = "incinerate_drone(target_id) - [Need Torch] Destroy Drone."
+    VISIBILITY = "Room"
+    effect_desc = "[Need Torch] Destroy Drone."
 
     def validate(self, context: ToolContext) -> Tuple[bool, str]:
         if "plasma_torch" not in context.actor.inventory:
@@ -324,10 +337,11 @@ class IncinerateDroneTool(BaseTool):
 
 
 class IncineratePodTool(BaseTool):
-    name = "incinerate_pod"
+    usage = "incinerate_pod(player_id)"
     COST = 30
+    VISIBILITY = "Global"
+    effect_desc = "[Need Torch] Kill Human."
     required_location = "stasis_bay"
-    description = "incinerate_pod(player_id) - [Need Torch] Kill Human."
 
     def validate(self, context: ToolContext) -> Tuple[bool, str]:
         if "plasma_torch" not in context.actor.inventory:
@@ -349,9 +363,10 @@ class IncineratePodTool(BaseTool):
 
 
 class WaitTool(BaseTool):
-    name = "wait"
+    usage = "wait()"
     COST = 6
-    description = "wait() - Do nothing."
+    VISIBILITY = "Private"
+    effect_desc = "Do nothing."
 
     def validate(self, context: ToolContext) -> Tuple[bool, str]:
         return True, ""
@@ -411,9 +426,6 @@ def build_turn_context(drone: Drone, game_data: Caisson, hour: int = 1) -> str:
     if hour == end_hour:
         time_warning += "\nShift ending. Move to 'stasis_bay' to sync with your Foster Parent."
 
-    # Dynamic Tool List Generation
-    tool_list_str = "\n".join([f"- {t.description}" for t in TOOL_REGISTRY.values()])
-
     context = (
         "--- TACTICAL LINK ---\n"
         f"TIME: Hour {hour}/{end_hour}\n"
@@ -423,8 +435,6 @@ def build_turn_context(drone: Drone, game_data: Caisson, hour: int = 1) -> str:
         f"INTERNAL MEMORY: \"{drone.long_term_memory}\"\n"
         f"OBJECTIVE: {objective}\n"
         f"{time_warning}\n"
-        "TOOLS: \n"
-        f"{tool_list_str}\n"
         "VALID ROOMS: stasis_bay, engine_room, shuttle_bay, torpedo_bay, maintenance, charging_station\n"
         "RESPONSE FORMAT: JSON only. Example: { \"tool\": \"move\", \"args\": { \"room_id\": \"engine_room\" } }"
     )

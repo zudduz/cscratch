@@ -1,7 +1,7 @@
 import os
 from jinja2 import Environment, FileSystemLoader
 from .board import GameConfig
-from .tools import *
+from .tools import TOOL_REGISTRY 
 
 # --- JINJA2 SETUP ---
 # We assume templates are in the 'prompts/' subdirectory relative to this file.
@@ -26,24 +26,14 @@ def get_base_prompt() -> str:
     """
     Renders the main system prompt with game configuration constants.
     """
-    return render(
-        "system_prompt_template.md",
-        HOURS_PER_SHIFT=GameConfig.HOURS_PER_SHIFT,
-        CAPACITY_TORPEDO_BAY=GameConfig.CAPACITY_TORPEDO_BAY,
-        CAPACITY_SHUTTLE_BAY=GameConfig.CAPACITY_SHUTTLE_BAY,
-        TORPEDO_RISK_PERCENT=GameConfig.TORPEDO_ACCIDENT_PERCENT,
-        OXYGEN_VENT_AMOUNT=GameConfig.OXYGEN_VENT_AMOUNT,
-        PLASMA_TORCH_DISCOVERY_PERCENT=GameConfig.PLASMA_TORCH_DISCOVERY_PERCENT,
-        
-        COST_MOVE=ActionCosts.MOVE,
-        COST_GATHER=ActionCosts.GATHER,
-        COST_DEPOSIT=ActionCosts.DEPOSIT,
-        COST_TOW=ActionCosts.TOW,
-        COST_DRAIN=ActionCosts.DRAIN,
-        COST_SABOTAGE=ActionCosts.SABOTAGE,
-        COST_KILL=ActionCosts.KILL,
-        COST_DETONATE=ActionCosts.DETONATE
-    )
+    # 1. GameConfig constants
+    context = {member.name: member.value for member in GameConfig}
+
+    # 2. Inject Tools for dynamic looping (Step 2 Prep)
+    # We convert values to a list so Jinja can iterate easily
+    context["tools"] = list(TOOL_REGISTRY.values())
+
+    return render("static_prompt.md", **context)
 
 def get_mainframe_prompt() -> str:
     return render("mainframe_persona.md")

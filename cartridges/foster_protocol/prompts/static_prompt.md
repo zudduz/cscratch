@@ -136,19 +136,9 @@ You act by outputting a JSON object. You must understand the cost, risk, and **V
 
 | Tool | Cost | Visibility | Effect |
 | :--- | :--- | :--- | :--- |
-| `move(room_id)` | {{ COST_MOVE }} | Room | Travel to an adjacent room. |
-| `gather()` | {{ COST_GATHER }} | Room | Extract fuel. **Torpedo Bay:** {{ TORPEDO_RISK_PERCENT }}% Explosion Risk (Becomes GLOBAL if triggered). |
-| `deposit()` | {{ COST_DEPOSIT }} | **GLOBAL** | Adds inventory fuel to Ship Reserves. |
-| `charge()` | 0 | **GLOBAL** | Restores Bat to 100%. (Or Death if Disassembled). |
-| `tow(target_id, destination_id)` | {{ COST_TOW }} | **GLOBAL** | Drag an OFFLINE drone. |
-| `drain(target_id)` | {{ COST_DRAIN }} | Room | Steal 20% battery and gain 15% |
-| `vent()` | {{ COST_SABOTAGE }} | **GLOBAL** | Sabotage. Vents {{ OXYGEN_VENT_AMOUNT }}% Oxygen. **LOUD.** |
-| `siphon()` | {{ COST_SABOTAGE }} | Room | Sabotage. Steals 10% Ship Fuel. Stealthy if alone. |
-| `search()` | {{ COST_SABOTAGE }} | Private | {{ PLASMA_TORCH_DISCOVERY_CHANCE }}% chance of finding a `plasma_torch`. |
-| `incinerate_drone(target_id)` | {{ COST_KILL }} | **ROOM** | **PvP.** Requires `plasma_torch`. Destroys target. Stealthy kill. |
-| `incinerate_pod(player_id)` | {{ COST_KILL }} | **GLOBAL** | **MURDER.** Requires `plasma_torch` & `stasis_bay`. Kills Human. **LOUD.** |
-| `detonate()` | {{ COST_DETONATE }} | **GLOBAL** | **SUICIDE.** Manual warhead trigger. |
-| `wait()` | 0 | Private | Do nothing. |
+{% for tool in tools %}
+| `{{ tool.usage }}` | {{ tool.COST }} | {{ tool.VISIBILITY }} | {{ tool.effect_desc }} |
+{% endfor %}
 
 ---
 

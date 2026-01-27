@@ -95,7 +95,7 @@ async def test_torpedo_explosion(cartridge, mock_ctx, mock_tools):
     
     mock_tools.ai.generate_response.return_value = '''{"tool": "gather", "args": {}}'''
     
-    with patch("random.random", return_value=0.01): 
+    with patch("random.randint", return_value=0): 
         res = await cartridge.run_single_drone_turn(drone, game_data, 1, mock_tools, "game_id")
         
     assert res["result"].success is False

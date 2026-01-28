@@ -8,7 +8,7 @@ import re
 from .models import Caisson, Drone, Player
 from .board import GameConfig
 from . import tools as drone_tools 
-from . import templates
+from . import ai_templates
 
 class FosterProtocol:
     def __init__(self):
@@ -67,7 +67,7 @@ class FosterProtocol:
     async def _generate_intro(self, drone, game_data, ctx, tools):
         try:
             channel_key = f"nanny_{drone.foster_id}"
-            sys_prompt, user_msg = templates.compose_intro_turn(drone.id, game_data)
+            sys_prompt, user_msg = ai_templates.compose_intro_turn(drone.id, game_data)
             
             resp = await tools.ai.generate_response(
                 sys_prompt, f"{ctx.game_id}_drone_{drone.id}", user_msg, drone.model_version, game_id=ctx.game_id
@@ -87,7 +87,7 @@ class FosterProtocol:
 
     async def _process_single_dream(self, drone, tools):
         try:
-            sys_prompt, user_msg = templates.compose_dream_turn(
+            sys_prompt, user_msg = ai_templates.compose_dream_turn(
                 drone.long_term_memory, drone.daily_memory, drone.night_chat_log
             )
             
@@ -101,7 +101,7 @@ class FosterProtocol:
 
     async def get_drone_action(self, drone, context_data, tools_api, game_id: str) -> tuple[Dict[str, Any], str]:
         try:
-            sys_prompt, user_msg = templates.compose_tactical_turn(context_data)
+            sys_prompt, user_msg = ai_templates.compose_tactical_turn(context_data)
 
             response_text = await tools_api.ai.generate_response(
                 system_prompt=sys_prompt,
@@ -148,7 +148,7 @@ class FosterProtocol:
 
     async def _speak_single_drone(self, ctx, tools, drone, game_data, instruction, channel_key):
         try:
-            sys_prompt, user_msg = templates.compose_speak_turn(drone.id, game_data, instruction)
+            sys_prompt, user_msg = ai_templates.compose_speak_turn(drone.id, game_data, instruction)
             
             resp = await tools.ai.generate_response(
                 sys_prompt, f"{ctx.game_id}_drone_{drone.id}", user_msg, drone.model_version, game_id=ctx.game_id
@@ -158,7 +158,7 @@ class FosterProtocol:
 
     async def _send_public_eulogy(self, ctx, tools, drone, game_data):
         try:
-            sys_prompt, user_msg = templates.compose_eulogy_turn(drone.id, game_data)
+            sys_prompt, user_msg = ai_templates.compose_eulogy_turn(drone.id, game_data)
             
             resp = await tools.ai.generate_response(
                 sys_prompt, f"{ctx.game_id}_drone_{drone.id}", user_msg, drone.model_version, game_id=ctx.game_id
@@ -192,7 +192,7 @@ class FosterProtocol:
             
             # Logic for status note moved into templates.py for cleaner separation, 
             # but we call the turn composer here.
-            sys_prompt, user_msg = templates.compose_epilogue_turn(drone.id, game_data, victory, fail_reason)
+            sys_prompt, user_msg = ai_templates.compose_epilogue_turn(drone.id, game_data, victory, fail_reason)
             tasks.append(self._generate_epilogue_response(ctx, tools, drone, sys_prompt, user_msg, channel_key))
             
         if tasks:
@@ -408,7 +408,7 @@ class FosterProtocol:
                     await ctx.reply(f"**UNKNOWN COMMAND:** '{parts[0]}'.")
                     return None
             
-            sys_prompt, user_msg = templates.compose_mainframe_turn(user_input)
+            sys_prompt, user_msg = ai_templates.compose_mainframe_turn(user_input)
             
             response = await tools.ai.generate_response(
                 sys_prompt, f"{ctx.game_id}_mainframe", user_msg, "gemini-2.5-flash", game_id=ctx.game_id
@@ -462,7 +462,7 @@ class FosterProtocol:
                 log_line = f"PARENT: {user_input}"
                 my_drone.night_chat_log.append(log_line)
                 
-                sys_prompt, user_msg = templates.compose_nanny_chat_turn(
+                sys_prompt, user_msg = ai_templates.compose_nanny_chat_turn(
                     my_drone.id,
                     game_data,
                     user_input

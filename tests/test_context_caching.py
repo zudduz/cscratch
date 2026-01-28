@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import MagicMock, patch
 from cartridges.foster_protocol.logic import FosterProtocol
 from cartridges.foster_protocol.models import Caisson
-from cartridges.foster_protocol import templates
+from cartridges.foster_protocol import ai_templates
 
 @pytest.mark.asyncio
 async def test_context_caching_prefix_integrity():
@@ -21,8 +21,8 @@ async def test_context_caching_prefix_integrity():
     
     # 2. Patch the helpers to return our controlled strings
     # We patch the new prompt accessor instead of the old class method
-    with patch("cartridges.foster_protocol.templates._get_base_prompt", return_value=SHARED_RULES), \
-         patch("cartridges.foster_protocol.templates._get_identity_block", side_effect=[UNIQUE_ID_1, UNIQUE_ID_2]), \
+    with patch("cartridges.foster_protocol.ai_templates._get_base_prompt", return_value=SHARED_RULES), \
+         patch("cartridges.foster_protocol.ai_templates._get_identity_block", side_effect=[UNIQUE_ID_1, UNIQUE_ID_2]), \
          patch("random.randint", side_effect=[0, 1, 2]): # Force specific IDs
          
         cartridge = FosterProtocol()
@@ -41,8 +41,8 @@ async def test_context_caching_prefix_integrity():
         # --- GENERATE PROMPTS DYNAMICALLY ---
         # Since 'system_prompt' is no longer stored on the model, 
         # we invoke the template generator to see what the AI would actually see.
-        prompt_1 = templates._compose_dynamic_system_prompt(d1.id, game_data)
-        prompt_2 = templates._compose_dynamic_system_prompt(d2.id, game_data)
+        prompt_1 = ai_templates._compose_dynamic_system_prompt(d1.id, game_data)
+        prompt_2 = ai_templates._compose_dynamic_system_prompt(d2.id, game_data)
         
         # --- ASSERTION 1: PREFIX MATCH ---
         # Both drones MUST start with the exact same shared block

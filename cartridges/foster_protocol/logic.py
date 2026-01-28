@@ -36,22 +36,20 @@ class FosterProtocol:
         for i, p_data in enumerate(discord_players):
             u_id = p_data['id']
             u_name = p_data['name']
-            is_saboteur = (i == saboteur_index)
-            role = "saboteur" if is_saboteur else "loyal"
             
             channel_key = f"nanny_{u_id}"
             channel_ops.append({ "op": "create", "key": channel_key, "name": f"nanny-port-{u_name}", "audience": "private", "user_id": u_id })
             
-            # TODO this needs to be hardcoded to loyal. We have not yet introduced saboteur players. we only have saboteur bots.
-            #  We need to find all places where the role look up is being done against a drone's player instead of the drone's role itself
-            game_data.players[u_id] = Player(role=role, name=u_name)
+            game_data.players[u_id] = Player(role="loyal", name=u_name)
             
             while True:
                 drone_id = f"unit_{random.randint(0, 999):03d}"
-                if drone_id not in game_data.drones: break
+                if drone_id not in game_data.drones:
+                    break
             
-            system_prompt = templates.compose_initial_system_prompt(drone_id, u_name, is_saboteur)
             
+            role = "saboteur" if (i == saboteur_index) else "loyal"
+            system_prompt = templates.compose_initial_system_prompt(drone_id, u_name, (i == saboteur_index))
             game_data.drones[drone_id] = Drone(
                 id=drone_id, foster_id=u_id, role=role, 
                 system_prompt=system_prompt, model_version="gemini-2.5-flash"
@@ -174,16 +172,16 @@ class FosterProtocol:
             logging.error(f"Eulogy failed for {drone.id}: {e}")
 
     async def generate_epilogues(self, game_data: Caisson, ctx, tools, victory: bool, fail_reason: str = ""):
-        saboteur_id = next((pid for pid, p in game_data.players.items() if p.role == "saboteur"), None)
-        saboteur_drone = next((b for b in game_data.drones.values() if b.foster_id == saboteur_id), None)
-        drone_name = f"{saboteur_drone.name} ({saboteur_drone.id})" if (saboteur_drone and saboteur_drone.name) else (saboteur_drone.id if saboteur_drone else "UNKNOWN")
+        saboteur_drone = next((b for b in game_data.drones.values() if b.role == "saboteur"), None)
+        foster_of_saboteur = game_data.players[saboteur_drone.foster_id]
         
         await ctx.send("black-box", "MISSION ENDED. DECLASSIFYING LOGS...")
         
         if victory:
-            final_report = f"SUBSPACE DRIVE ENGAGED\nMISSION: SUCCESS\nSECURITY AUDIT: Sabotage detected. Traitor: Drone {drone_name} (Bonded to <@{saboteur_id}>)."
+            final_report = f"MISSION: SUCCESS"
         else:
-            final_report = f"CRITICAL SYSTEM FAILURE\nREASON: {fail_reason}\nSECURITY ALERT: Traitor: Drone {drone_name} (Bonded to <@{saboteur_id}>)."
+            final_report = f"MISSION: FAILURE\nREASON: {fail_reason}"
+        final_report += f"\nTraitor: Drone {saboteur_drone.id} (Bonded to <@{foster_of_saboteur.name}>)."
         await ctx.send("aux-comm", final_report)
         
         tasks = []

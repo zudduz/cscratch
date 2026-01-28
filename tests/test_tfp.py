@@ -37,13 +37,35 @@ def mock_tools():
 
 @pytest.mark.asyncio
 async def test_game_initialization(cartridge):
+    """
+    Verifies that while players are always Loyal, the Drone role is assigned
+    correctly based on the random index.
+    """
     players = [{"id": "p1", "name": "Alice"}, {"id": "p2", "name": "Bob"}]
     state = {"players": players}
+    
+    # Mocks:
+    # 1. randint(0, 1) -> 0 (p1 is the saboteur owner)
+    # 2. randint(0, 999) -> 100 (Drone ID for p1)
+    # 3. randint(0, 999) -> 101 (Drone ID for p2)
     with patch("random.randint", side_effect=[0, 100, 101]): 
         result = await cartridge.on_game_start(state)
+        
     game_data = Caisson(**result["metadata"])
     assert len(game_data.players) == 2
-    assert game_data.players["p1"].role == "saboteur"
+    
+    # 1. Player Assertion: Players are always loyal now (unaware of their drone's nature)
+    assert game_data.players["p1"].role == "loyal"
+    assert game_data.players["p2"].role == "loyal"
+    
+    # 2. Drone Assertion: The drone bonded to p1 (unit_100) should be the saboteur
+    saboteur_drone = game_data.drones["unit_100"]
+    assert saboteur_drone.foster_id == "p1"
+    assert saboteur_drone.role == "saboteur"
+    
+    # 3. Drone Assertion: The other drone is loyal
+    loyal_drone = game_data.drones["unit_101"]
+    assert loyal_drone.role == "loyal"
 
 @pytest.mark.asyncio
 async def test_oxygen_depletion_math(cartridge, mock_ctx, mock_tools):

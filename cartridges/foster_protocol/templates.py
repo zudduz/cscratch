@@ -14,6 +14,10 @@ _ENV = Environment(
     lstrip_blocks=True
 )
 
+# --- CACHE STORAGE ---
+# We store the compiled prompt here after the first generation.
+_CACHED_BASE_PROMPT = None
+
 def render(template_name: str, **kwargs) -> str:
     template = _ENV.get_template(template_name)
     return template.render(**kwargs)
@@ -21,10 +25,19 @@ def render(template_name: str, **kwargs) -> str:
 # --- INTERNAL HELPERS (Private) ---
 
 def _get_base_prompt() -> str:
-    context = {k: v for k, v in vars(GameConfig).items() if not k.startswith("__")}
-    context["tools"] = list(TOOL_REGISTRY.values())
-    context["tool_map"] = TOOL_REGISTRY
-    return render("static_prompt.md.j2", **context)
+    """
+    Returns the static base prompt.
+    Generates it once and caches it for the lifetime of the process.
+    """
+    global _CACHED_BASE_PROMPT
+    
+    if _CACHED_BASE_PROMPT is None:
+        context = {k: v for k, v in vars(GameConfig).items() if not k.startswith("__")}
+        context["tools"] = list(TOOL_REGISTRY.values())
+        context["tool_map"] = TOOL_REGISTRY
+        _CACHED_BASE_PROMPT = render("static_prompt.md.j2", **context)
+        
+    return _CACHED_BASE_PROMPT
 
 def _get_identity_block(drone_id: str, foster_name: str, is_saboteur: bool) -> str:
     return render(

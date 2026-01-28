@@ -9,7 +9,7 @@ from cartridges.foster_protocol.board import GameConfig
 
 @pytest.fixture
 def cartridge():
-    with patch("cartridges.foster_protocol.prompts.get_base_prompt", return_value="MOCK PROMPT"):
+    with patch("cartridges.foster_protocol.templates._get_base_prompt", return_value="MOCK PROMPT"):
         return FosterProtocol()
 
 @pytest.fixture

@@ -20,8 +20,8 @@ async def test_context_caching_prefix_integrity():
     
     # 2. Patch the helpers to return our controlled strings
     # UPDATED: We patch the new prompt accessor instead of the old class method
-    with patch("cartridges.foster_protocol.prompts.get_base_prompt", return_value=SHARED_RULES), \
-         patch("cartridges.foster_protocol.prompts.get_drone_identity_block", side_effect=[UNIQUE_ID_1, UNIQUE_ID_2]), \
+    with patch("cartridges.foster_protocol.templates._get_base_prompt", return_value=SHARED_RULES), \
+         patch("cartridges.foster_protocol.templates._get_identity_block", side_effect=[UNIQUE_ID_1, UNIQUE_ID_2]), \
          patch("random.randint", side_effect=[0, 1, 2]): # Force specific IDs
          
         cartridge = FosterProtocol()
@@ -51,4 +51,4 @@ async def test_context_caching_prefix_integrity():
         # The unique ID of drone 2 should NOT appear in drone 1
         assert UNIQUE_ID_2 not in d1.system_prompt
         
-        print("\n✅ CACHE CHECK PASSED: System Prompts share common prefix.")
+        print("\nCACHE CHECK PASSED: System Prompts share common prefix.")

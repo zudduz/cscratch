@@ -28,9 +28,9 @@ class Drone(BaseModel):
     battery: int = 100        
     
     destroyed: bool = False
-    system_prompt: str = "You are a helpful drone."
+    system_prompt: str = ""
     
-    long_term_memory: str = "System Online. Mission: Maintain Ship. Await Orders."
+    long_term_memory: str = ""
     night_chat_log: List[str] = Field(default_factory=list)
     
     inventory: List[str] = Field(default_factory=list)

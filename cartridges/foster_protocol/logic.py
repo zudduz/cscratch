@@ -8,16 +8,14 @@ import re
 from .models import Caisson, Drone, Player
 from .board import GameConfig
 from . import tools as drone_tools 
-from . import prompts
-
-AVAILABLE_MODELS = ["gemini-2.5-flash"]
+from . import templates
 
 class FosterProtocol:
     def __init__(self):
         default_state = Caisson()
         self.meta = {
             "name": "The Foster Protocol",
-            "version": "2.45",
+            "version": "2.46",
             **default_state.model_dump()
         }
 
@@ -37,8 +35,6 @@ class FosterProtocol:
         channel_ops.append({ "op": "create", "key": "black-box", "name": "black-box-logs", "audience": "hidden", "init_msg": "FLIGHT RECORDER ACTIVE." })
         messages.append({ "channel": "aux-comm", "content": "VENDETTA OS v9.0 ONLINE." })
 
-        base_text = prompts.get_base_prompt()
-
         for i, p_data in enumerate(discord_players):
             u_id = p_data['id']
             u_name = p_data['name']
@@ -54,10 +50,8 @@ class FosterProtocol:
                 drone_id = f"unit_{random.randint(0, 999):03d}"
                 if drone_id not in game_data.drones: break
             
-            identity_block = prompts.get_drone_identity_block(drone_id, u_name, is_saboteur)
-            
-            # --- CACHING OPTIMIZATION ---
-            system_prompt = base_text + "\n\n" + "--- IDENTITY OVERRIDE ---\n" + identity_block
+            # --- UPDATED: Use Composer ---
+            system_prompt = templates.compose_initial_system_prompt(drone_id, u_name, is_saboteur)
             
             game_data.drones[drone_id] = Drone(
                 id=drone_id, foster_id=u_id, role=role, 
@@ -77,10 +71,10 @@ class FosterProtocol:
     async def _generate_intro(self, drone, ctx, tools):
         try:
             channel_key = f"nanny_{drone.foster_id}"
-            prompt = prompts.get_intro_prompt()
+            sys_prompt, user_msg = templates.compose_intro_turn(drone.system_prompt)
             
             resp = await tools.ai.generate_response(
-                drone.system_prompt, f"{ctx.game_id}_drone_{drone.id}", prompt, drone.model_version, game_id=ctx.game_id
+                sys_prompt, f"{ctx.game_id}_drone_{drone.id}", user_msg, drone.model_version, game_id=ctx.game_id
             )
             await ctx.send(channel_key, resp)
             drone.night_chat_log.append(f"SELF (Intro): {resp}")
@@ -97,27 +91,26 @@ class FosterProtocol:
 
     async def _process_single_dream(self, drone, tools):
         try:
-            dream_prompt = prompts.get_dream_prompt(drone.long_term_memory, drone.daily_memory, drone.night_chat_log)
+            sys_prompt, user_msg = templates.compose_dream_turn(
+                drone.long_term_memory, drone.daily_memory, drone.night_chat_log
+            )
+            
             new_memory = await tools.ai.generate_response(
-                "You are an archival system.", f"dream_{drone.id}", dream_prompt, "gemini-2.5-flash"
+                sys_prompt, f"dream_{drone.id}", user_msg, "gemini-2.5-flash"
             )
             drone.long_term_memory = new_memory.replace("\n", " ").strip()
             drone.night_chat_log = [] 
         except Exception as e:
             logging.error(f"Dream failed for {drone.id}: {e}")
 
-    async def get_drone_action(self, drone, context_str, tools_api, game_id: str) -> tuple[Dict[str, Any], str]:
+    async def get_drone_action(self, drone, context_data, tools_api, game_id: str) -> tuple[Dict[str, Any], str]:
         try:
-            enhanced_context = (
-                context_str +
-                "\n\n" + 
-                prompts.get_thought_protocol()
-            )
+            sys_prompt, user_msg = templates.compose_tactical_turn(context_data)
 
             response_text = await tools_api.ai.generate_response(
-                system_prompt="You are a tactical drone. THINK BEFORE ACTING.",
+                system_prompt=sys_prompt,
                 conversation_id=f"tactical_{drone.id}",
-                user_input=enhanced_context,
+                user_input=user_msg,
                 model_version=drone.model_version,
                 game_id=game_id
             )
@@ -144,7 +137,6 @@ class FosterProtocol:
             return {"tool": "wait", "args": {}}, "System Error: Neural Link Unstable (No JSON)."
 
         except Exception as e:
-            # Capture the raw text to debug specific JSON syntax errors
             raw_text = locals().get('response_text', 'NO_RESPONSE_GENERATED')
             logging.error(f"Drone {drone.id} brain freeze: {e}\nCaused by Input:\n{raw_text}")
             return {"tool": "wait", "args": {}}, f"Brain Freeze: {str(e)}"
@@ -160,20 +152,20 @@ class FosterProtocol:
 
     async def _speak_single_drone(self, ctx, tools, drone, instruction, channel_key):
         try:
-            full_prompt = prompts.get_speak_prompt(instruction, drone.battery)
+            sys_prompt, user_msg = templates.compose_speak_turn(drone.system_prompt, instruction, drone.battery)
             
             resp = await tools.ai.generate_response(
-                drone.system_prompt, f"{ctx.game_id}_drone_{drone.id}", full_prompt, drone.model_version, game_id=ctx.game_id
+                sys_prompt, f"{ctx.game_id}_drone_{drone.id}", user_msg, drone.model_version, game_id=ctx.game_id
             )
             await ctx.send(channel_key, resp)
         except Exception: pass
 
     async def _send_public_eulogy(self, ctx, tools, drone):
         try:
-            prompt = prompts.get_eulogy_prompt()
+            sys_prompt, user_msg = templates.compose_eulogy_turn(drone.system_prompt)
             
             resp = await tools.ai.generate_response(
-                drone.system_prompt, f"{ctx.game_id}_drone_{drone.id}", prompt, drone.model_version, game_id=ctx.game_id
+                sys_prompt, f"{ctx.game_id}_drone_{drone.id}", user_msg, drone.model_version, game_id=ctx.game_id
             )
             display_name = drone.name if drone.name else drone.id
             role_reveal = f"**ANALYSIS:** DRONE WAS [{drone.role.upper()}]."
@@ -205,16 +197,23 @@ class FosterProtocol:
             if drone.battery <= 0:
                  context_note = "STATUS: BATTERY DEAD. Final transmission."
 
-            sys_prompt = prompts.get_epilogue_prompt(victory, drone.role, context_note)
+            sys_prompt, user_msg = templates.compose_epilogue_turn(drone.system_prompt, victory, drone.role, context_note)
+            tasks.append(self._generate_epilogue_response(ctx, tools, drone, sys_prompt, user_msg, channel_key))
             
-            tasks.append(self._speak_single_drone(ctx, tools, drone, sys_prompt, channel_key))
-        if tasks: await asyncio.gather(*tasks)
+        if tasks:
+            await asyncio.gather(*tasks)
+
+    # Helper for the loop above
+    async def _generate_epilogue_response(self, ctx, tools, drone, sys, user, channel_key):
+        try:
+             resp = await tools.ai.generate_response(sys, f"{ctx.game_id}_epilogue_{drone.id}", user, drone.model_version, game_id=ctx.game_id)
+             await ctx.send(channel_key, resp)
+        except:
+            pass
 
     async def run_single_drone_turn(self, drone, game_data, hour, tools, game_id):
         context_data = drone_tools.gather_turn_context_data(drone, game_data, hour)
-        context_str = prompts.get_turn_context(context_data)
-        
-        action, thought = await self.get_drone_action(drone, context_str, tools, game_id)
+        action, thought = await self.get_drone_action(drone, context_data, tools, game_id)
         result = drone_tools.execute_tool(action.get("tool", "wait"), action.get("args", {}), drone.id, game_data)
         
         return {
@@ -413,9 +412,11 @@ class FosterProtocol:
                 else:
                     await ctx.reply(f"**UNKNOWN COMMAND:** '{parts[0]}'.")
                     return None
-
+            
+            sys_prompt, user_msg = templates.compose_mainframe_turn(user_input)
+            
             response = await tools.ai.generate_response(
-                prompts.get_mainframe_prompt(), f"{ctx.game_id}_mainframe", user_input, "gemini-2.5-flash", game_id=ctx.game_id
+                sys_prompt, f"{ctx.game_id}_mainframe", user_msg, "gemini-2.5-flash", game_id=ctx.game_id
             )
             await ctx.reply(response)
             
@@ -433,15 +434,12 @@ class FosterProtocol:
                         return None
                     new_name = parts[1][:20]
                     my_drone.name = new_name
-                    
-                    base_text = prompts.get_base_prompt()
-                    identity_block = prompts.get_drone_identity_block(my_drone.id, game_data.players[user_id].role, my_drone.role == "saboteur")
-                    
-                    # --- CACHING OPTIMIZATION ---
-                    identity_patch = "\n\n" + prompts.get_identity_update_prompt(new_name)
-                    final_identity = identity_block + identity_patch
-                    
-                    my_drone.system_prompt = base_text + "\n\n" + "--- IDENTITY OVERRIDE ---\n" + final_identity
+                    my_drone.system_prompt = templates.compose_identity_update(
+                        my_drone.id,
+                        user_id,
+                        my_drone.role == "saboteur",
+                        new_name
+                    )
                     
                     await ctx.reply(f"Identity Updated. Hello, **{new_name}**.")
                     return {f"drones.{my_drone.id}.name": new_name, f"drones.{my_drone.id}.system_prompt": my_drone.system_prompt}
@@ -464,7 +462,6 @@ class FosterProtocol:
                         return {f"players.{user_id}.requested_sleep": True}
                 
                 else:
-                    # Rejects any other !command instead of sending it as a message
                     await ctx.reply(f"Unknown Nanny Command: '{cmd_text}'.\nAvailable: !name <name>, !sleep")
                     return None
 
@@ -476,13 +473,20 @@ class FosterProtocol:
                 log_line = f"PARENT: {user_input}"
                 my_drone.night_chat_log.append(log_line)
                 
-                current_identity = f"NAME: {my_drone.name}" if my_drone.name else f"ID: {my_drone.id}"
-                
-                full_prompt = prompts.get_night_context(my_drone.daily_memory, my_drone.battery, my_drone.location_id, my_drone.long_term_memory, user_input)
-                full_prompt = f"IDENTITY: {current_identity}\n" + full_prompt
+                # --- UPDATED: Use Composer ---
+                sys_prompt, user_msg = templates.compose_nanny_chat_turn(
+                    my_drone.system_prompt,
+                    my_drone.daily_memory,
+                    my_drone.battery,
+                    my_drone.location_id,
+                    my_drone.long_term_memory,
+                    user_input,
+                    drone_name=my_drone.name,
+                    drone_id=my_drone.id
+                )
                 
                 response = await tools.ai.generate_response(
-                    my_drone.system_prompt, f"{ctx.game_id}_{my_drone.id}", full_prompt, my_drone.model_version, game_id=ctx.game_id
+                    sys_prompt, f"{ctx.game_id}_{my_drone.id}", user_msg, my_drone.model_version, game_id=ctx.game_id
                 )
                 await ctx.reply(response)
                 return {f"drones.{my_drone.id}.night_chat_log": my_drone.night_chat_log}

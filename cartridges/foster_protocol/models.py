@@ -1,7 +1,6 @@
 from typing import List, Dict, Optional, Any, Literal
 from pydantic import BaseModel, Field, ConfigDict
 from .board import GameConfig
-# --- GAME SPECIFIC STATE ---
 
 class ChargingStation(BaseModel):
     pending_deactivation: List[str] = Field(default_factory=list)
@@ -28,7 +27,6 @@ class Drone(BaseModel):
     battery: int = 100        
     
     destroyed: bool = False
-    system_prompt: str = ""
     
     long_term_memory: str = ""
     night_chat_log: List[str] = Field(default_factory=list)

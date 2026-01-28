@@ -6,7 +6,7 @@ from .tools import TOOL_REGISTRY
 
 # --- JINJA2 SETUP ---
 _CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-_TEMPLATES_DIR = os.path.join(_CURRENT_DIR, "templates")
+_TEMPLATES_DIR = os.path.join(_CURRENT_DIR, "ai_templates")
 
 _ENV = Environment(
     loader=FileSystemLoader(_TEMPLATES_DIR),

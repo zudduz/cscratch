@@ -83,6 +83,36 @@ class GameEngine:
         await persistence.db.set_game_active(game_id)
         return result
 
+    async def trigger_post_start(self, game_id: str):
+        """
+        Lifecycle hook called by the Interface (Discord) AFTER channels are created.
+        This runs the cartridge's post_game_start logic (e.g. Wake Up Protocol).
+        """
+        game = await persistence.db.get_game_by_id(game_id)
+        if not game: return
+
+        cartridge = await self._load_cartridge(game.story_id)
+        
+        if hasattr(cartridge, 'post_game_start'):
+            # Create a System Context (No specific user/channel)
+            trigger_data = {
+                "user_id": "system",
+                "channel_id": "system",
+                "interface": game.interface.model_dump(),
+                "metadata": game.metadata
+            }
+            
+            ctx = EngineContext(
+                game_id=game.id,
+                _dispatcher=self._dispatch_message_to_interfaces,
+                _scheduler=self._schedule_background_task,
+                _ender=self.end_game,
+                trigger_data=trigger_data
+            )
+            
+            # Pass Toolbox (wrapper for AI engine) just like handle_input does
+            await cartridge.post_game_start(game.metadata, ctx, Toolbox(self.ai))
+
     async def find_game_by_channel(self, channel_id: str) -> GameState | None:
         return await persistence.db.get_game_by_channel_id(channel_id)
 

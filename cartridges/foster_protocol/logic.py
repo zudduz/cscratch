@@ -57,6 +57,11 @@ class FosterProtocol:
 
         return { "metadata": game_data.model_dump(), "channel_ops": channel_ops, "messages": messages }
 
+    async def post_game_start(self, metadata: dict, ctx, tools):
+        """Lifecycle hook called by the engine after all channels are created."""
+        game_data = Caisson(**metadata)
+        await self.run_wake_up_routine(game_data, ctx, tools)
+
     # --- WAKE UP ROUTINE ---
     async def run_wake_up_routine(self, game_data, ctx, tools):
         logging.info("--- Waking up Drones for Introductions ---")

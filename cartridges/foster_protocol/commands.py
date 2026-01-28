@@ -24,13 +24,6 @@ class BaseCommand(ABC):
 
 # --- AUX COMM COMMANDS ---
 
-class ExecWakeupProtocolCommand(BaseCommand):
-    allowed_contexts = ["aux"]
-
-    async def execute(self, args: List[str], context: CommandContext) -> Optional[Dict[str, Any]]:
-        context.ctx.schedule(context.cartridge.run_wake_up_routine(context.game_data, context.ctx, context.tools))
-        return None
-
 class DestroyDroneCommand(BaseCommand):
     allowed_contexts = ["aux"]
 
@@ -126,7 +119,6 @@ class SleepCommand(BaseCommand):
 # --- REGISTRY ---
 
 REGISTRY = {
-    "!exec_wakeup_protocol": ExecWakeupProtocolCommand(),
     "!destroy": DestroyDroneCommand(),
     "!abort": AbortCommand(),
     "!cancel": AbortCommand(),

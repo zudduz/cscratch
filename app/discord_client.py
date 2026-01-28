@@ -237,26 +237,23 @@ class LobbyView(discord.ui.View):
         if not game or str(interaction.user.id) != game.host_id:
             return await interaction.followup.send("Only the host may start the game")
         
+        # 1. Start game and get initial metadata/messages
         res = await game_engine.engine.launch_match(self.game_id)
         if not res:
             return await interaction.followup.send("Error")
         
+        # 2. CREATE CHANNELS (Ops)
         if res.get('channel_ops'):
             await client.execute_channel_ops(self.game_id, res['channel_ops'])
 
+        # 3. Send immediate messages (Intro messages)
         await game_engine.engine.dispatch_immediate_result(self.game_id, res)
         self.stop()
         await interaction.followup.send(f"Starting game")
         
-        updated_game = await persistence.db.get_game_by_id(self.game_id)
-        aux_comm_id = updated_game.interface.channels.get('aux-comm')
-        if aux_comm_id:
-            await game_engine.engine.dispatch_input(
-                aux_comm_id, 
-                "SYSTEM", 
-                "Mainframe", 
-                "!exec_wakeup_protocol"
-            )
+        # 4. LIFECYCLE HOOK: Post-Start
+        # Channels exist, messages sent. Now we trigger the "Wake Up Protocol" logic.
+        await game_engine.engine.trigger_post_start(self.game_id)
 
 @client.event
 async def on_message(message):

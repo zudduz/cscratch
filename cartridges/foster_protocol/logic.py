@@ -9,6 +9,7 @@ from .models import Caisson, Drone, Player
 from .board import GameConfig
 from . import tools as drone_tools 
 from . import ai_templates
+from . import commands
 
 class FosterProtocol:
     def __init__(self):
@@ -354,124 +355,75 @@ class FosterProtocol:
         user_id = ctx.trigger_data.get('user_id')
         interface_channels = ctx.trigger_data.get('interface', {}).get('channels', {})
         
+        # 1. Block Input During Day
         if game_data.phase == "day":
             await ctx.reply("Day Cycle in progress. You are sleeping now. Pretend to snore or something.")
             return None
         
-        if channel_id == interface_channels.get('aux-comm'):
-            if user_input.strip().startswith("!"):
-                cmd_text = user_input.strip().lower()
-                parts = cmd_text.split()
-                if parts[0] == "!exec_wakeup_protocol":
-                    ctx.schedule(self.run_wake_up_routine(game_data, ctx, tools))
-                    return None
+        # 2. Command Dispatcher
+        if user_input.strip().startswith("!"):
+            parts = user_input.strip().split()
+            cmd_name = parts[0].lower()
+            args = parts[1:]
+            
+            is_aux = channel_id == interface_channels.get('aux-comm')
+            is_nanny = channel_id == interface_channels.get(f"nanny_{user_id}")
+            
+            # Access Control Lists
+            allowed_in_aux = ["!exec_wakeup_protocol", "!destroy", "!abort", "!cancel"]
+            allowed_in_nanny = ["!name", "!sleep"]
+            
+            cmd_ctx = commands.CommandContext(self, game_data, ctx, tools, user_id, channel_id)
+            
+            if is_aux and cmd_name in allowed_in_aux:
+                return await commands.dispatch(cmd_name, args, cmd_ctx)
+                
+            elif is_nanny and cmd_name in allowed_in_nanny:
+                return await commands.dispatch(cmd_name, args, cmd_ctx)
+                
+            elif is_aux:
+                await ctx.reply(f"**UNKNOWN COMMAND:** '{cmd_name}'.")
+                return None
+            elif is_nanny:
+                await ctx.reply(f"Unknown Nanny Command: '{cmd_name}'.\nAvailable: !name <name>, !sleep")
+                return None
 
-                if parts[0] == "!destroy":
-                    if len(parts) < 2:
-                        await ctx.reply("USAGE: !destroy <drone_id>")
-                        return None
-                    target_id = parts[1]
-                    target_drone = game_data.drones.get(target_id)
-                    if not target_drone:
-                        await ctx.reply(f"Unit '{target_id}' not found.")
-                        return None
-                    
-                    owner_id = target_drone.foster_id
-                    owner_state = game_data.players.get(owner_id)
-                    is_orphan = False
-                    if owner_state and not owner_state.alive:
-                        is_orphan = True
-                    
-                    if target_drone.foster_id != user_id and not is_orphan:
-                        await ctx.reply("DENIED. You are not the bonded supervisor.")
-                        return None
-                    
-                    if target_id not in game_data.station.pending_deactivation:
-                        game_data.station.pending_deactivation.append(target_drone.id)
-                        await ctx.reply(f"**DESTRUCTION AUTHORIZED.**\nDrone {target_id} will be destroyed upon next Charging Cycle.")
-                        return {"station": game_data.station.model_dump()}
-                    else:
-                        await ctx.reply(f"Drone {target_id} is already scheduled for destruction.")
-                        return None
-                        
-                elif parts[0] in ["!abort", "!cancel"]:
-                    if len(parts) < 2: return None
-                    target_id = parts[1]
-                    if target_id in game_data.station.pending_deactivation:
-                        target_drone = game_data.drones.get(target_id)
-                        if target_drone.foster_id == user_id:
-                            game_data.station.pending_deactivation.remove(target_id)
-                            await ctx.reply(f"**ORDER RESCINDED.** Drone {target_id} is safe.")
-                            return {"station": game_data.station.model_dump()}
-                    return None
-                else:
-                    await ctx.reply(f"**UNKNOWN COMMAND:** '{parts[0]}'.")
-                    return None
-            
-            sys_prompt, user_msg = ai_templates.compose_mainframe_turn(user_input)
-            
-            response = await tools.ai.generate_response(
-                sys_prompt, f"{ctx.game_id}_mainframe", user_msg, "gemini-2.5-flash", game_id=ctx.game_id
-            )
-            await ctx.reply(response)
+        # 3. Chat Routing
+        if channel_id == interface_channels.get('aux-comm'):
+            return await self._handle_mainframe_chat(user_input, ctx, tools)
             
         elif channel_id == interface_channels.get(f"nanny_{user_id}"):
-            my_drone = next((b for b in game_data.drones.values() if b.foster_id == user_id), None)
+            return await self._handle_drone_chat(user_input, ctx, tools, game_data, user_id)
+
+        return None
+
+    async def _handle_mainframe_chat(self, user_input, ctx, tools):
+        sys_prompt, user_msg = ai_templates.compose_mainframe_turn(user_input)
+        response = await tools.ai.generate_response(
+            sys_prompt, f"{ctx.game_id}_mainframe", user_msg, "gemini-2.5-flash", game_id=ctx.game_id
+        )
+        await ctx.reply(response)
+        return None
+
+    async def _handle_drone_chat(self, user_input, ctx, tools, game_data, user_id):
+        my_drone = next((b for b in game_data.drones.values() if b.foster_id == user_id), None)
+        if my_drone:
+            if not my_drone.can_talk:
+                await ctx.reply("**NO DRONE PRESENT.**")
+                return None
+
+            log_line = f"PARENT: {user_input}"
+            my_drone.night_chat_log.append(log_line)
             
-            if user_input.strip().startswith("!"):
-                cmd_text = user_input.strip().lower()
-
-                if cmd_text.startswith("!name"):
-                    if not my_drone: return None
-                    parts = user_input.strip().split(maxsplit=1)
-                    if len(parts) < 2:
-                        await ctx.reply("USAGE: !name <new_name>")
-                        return None
-                    new_name = parts[1][:20]
-                    my_drone.name = new_name
-                    
-                    await ctx.reply(f"Identity Updated. Hello, **{new_name}**.")
-                    return {f"drones.{my_drone.id}.name": new_name}
-                
-                elif cmd_text == "!sleep":
-                    if user_id in game_data.players:
-                        game_data.players[user_id].requested_sleep = True
-                        
-                        if game_data.is_ready_for_day:
-                            logging.info(f"--- [DEBUG] Consensus Reached via !sleep. User {user_id} triggered Day Cycle. ---")
-                            await ctx.send("aux-comm", "**CREW ASLEEP. DAY CYCLE INITIATED.**")
-                            await ctx.reply("Consensus Reached. Initiating Day Cycle...")
-                            game_data.phase = "day"
-                            for p in game_data.players.values():
-                                p.requested_sleep = False
-                            ctx.schedule(self.execute_day_simulation(game_data, ctx, tools))
-                            return {"metadata": game_data.model_dump()}
-                        
-                        await ctx.reply(f"**SLEEP REQUEST LOGGED.**")
-                        return {f"players.{user_id}.requested_sleep": True}
-                
-                else:
-                    await ctx.reply(f"Unknown Nanny Command: '{cmd_text}'.\nAvailable: !name <name>, !sleep")
-                    return None
-
-            if my_drone:
-                if not my_drone.can_talk:
-                    await ctx.reply("**NO DRONE PRESENT.**")
-                    return None
-
-                log_line = f"PARENT: {user_input}"
-                my_drone.night_chat_log.append(log_line)
-                
-                sys_prompt, user_msg = ai_templates.compose_nanny_chat_turn(
-                    my_drone.id,
-                    game_data,
-                    user_input
-                )
-                
-                response = await tools.ai.generate_response(
-                    sys_prompt, f"{ctx.game_id}_{my_drone.id}", user_msg, my_drone.model_version, game_id=ctx.game_id
-                )
-                await ctx.reply(response)
-                return {f"drones.{my_drone.id}.night_chat_log": my_drone.night_chat_log}
-
+            sys_prompt, user_msg = ai_templates.compose_nanny_chat_turn(
+                my_drone.id,
+                game_data,
+                user_input
+            )
+            
+            response = await tools.ai.generate_response(
+                sys_prompt, f"{ctx.game_id}_{my_drone.id}", user_msg, my_drone.model_version, game_id=ctx.game_id
+            )
+            await ctx.reply(response)
+            return {f"drones.{my_drone.id}.night_chat_log": my_drone.night_chat_log}
         return None

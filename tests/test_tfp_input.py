@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import MagicMock, AsyncMock, patch
 from cartridges.foster_protocol.logic import FosterProtocol
 from cartridges.foster_protocol.models import Caisson, Player, Drone
 from app.engine_context import EngineContext
@@ -132,16 +132,17 @@ async def test_sleep_consensus_complete(cartridge, mock_ctx, mock_tools, base_st
     mock_ctx.trigger_data["user_id"] = "u1"
     mock_ctx.trigger_data["channel_id"] = "nanny_u1_id"
     
-    result = await cartridge.handle_input({"metadata": serialized_state}, "!sleep", mock_ctx, mock_tools)
+    with patch.object(cartridge, "execute_day_simulation", new_callable=MagicMock) as mock_sim:
+        result = await cartridge.handle_input({"metadata": serialized_state}, "!sleep", mock_ctx, mock_tools)
     
-    # Should trigger consensus message
-    assert "Consensus Reached" in mock_ctx.reply.call_args[0][0]
-    
-    # Should return full metadata update (phase change)
-    assert result["metadata"]["phase"] == "day"
-    
-    # Should schedule the simulation
-    mock_ctx.schedule.assert_called_once()
+        # Should trigger consensus message
+        assert "Consensus Reached" in mock_ctx.reply.call_args[0][0]
+        
+        # Should return full metadata update (phase change)
+        assert result["metadata"]["phase"] == "day"
+        
+        # Should schedule the simulation (which is now the mock result)
+        mock_ctx.schedule.assert_called_once_with(mock_sim.return_value)
 
 @pytest.mark.asyncio
 async def test_mainframe_chat_routing(cartridge, mock_ctx, mock_tools, base_state):
@@ -168,8 +169,4 @@ async def test_nanny_chat_routing(cartridge, mock_ctx, mock_tools, base_state):
     assert "d1" in call_args[0][1] # conversation_id should contain drone id
     
     # Check log update returned
-    # Result is a dict with dot-notation key
-    # We can't easily check the return value key name dynamically without knowing it, 
-    # but we know it should start with 'drones.d1'
-    # Actually we can just check mock_ctx reply
     mock_ctx.reply.assert_called_with("AI_RESPONSE")

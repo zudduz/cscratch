@@ -15,6 +15,9 @@ class CommandContext:
         self.channel_id = channel_id
 
 class BaseCommand(ABC):
+    # Source of Truth: Define which channels this command works in
+    allowed_contexts: List[str] = [] 
+
     @abstractmethod
     async def execute(self, args: List[str], context: CommandContext) -> Optional[Dict[str, Any]]:
         pass
@@ -22,11 +25,15 @@ class BaseCommand(ABC):
 # --- AUX COMM COMMANDS ---
 
 class ExecWakeupProtocolCommand(BaseCommand):
+    allowed_contexts = ["aux"]
+
     async def execute(self, args: List[str], context: CommandContext) -> Optional[Dict[str, Any]]:
         context.ctx.schedule(context.cartridge.run_wake_up_routine(context.game_data, context.ctx, context.tools))
         return None
 
 class DestroyDroneCommand(BaseCommand):
+    allowed_contexts = ["aux"]
+
     async def execute(self, args: List[str], context: CommandContext) -> Optional[Dict[str, Any]]:
         if len(args) < 1:
             await context.ctx.reply("USAGE: !destroy <drone_id>")
@@ -59,6 +66,8 @@ class DestroyDroneCommand(BaseCommand):
             return None
 
 class AbortCommand(BaseCommand):
+    allowed_contexts = ["aux"]
+
     async def execute(self, args: List[str], context: CommandContext) -> Optional[Dict[str, Any]]:
         if len(args) < 1: return None
         target_id = args[0]
@@ -74,6 +83,8 @@ class AbortCommand(BaseCommand):
 # --- NANNY COMMANDS ---
 
 class NameDroneCommand(BaseCommand):
+    allowed_contexts = ["nanny"]
+
     async def execute(self, args: List[str], context: CommandContext) -> Optional[Dict[str, Any]]:
         my_drone = next((b for b in context.game_data.drones.values() if b.foster_id == context.user_id), None)
         if not my_drone: return None
@@ -90,6 +101,8 @@ class NameDroneCommand(BaseCommand):
         return {f"drones.{my_drone.id}.name": new_name}
 
 class SleepCommand(BaseCommand):
+    allowed_contexts = ["nanny"]
+
     async def execute(self, args: List[str], context: CommandContext) -> Optional[Dict[str, Any]]:
         user_id = context.user_id
         if user_id in context.game_data.players:
@@ -137,23 +150,30 @@ async def handle_command(user_input: str, context: CommandContext) -> Optional[D
     # Recover interface channels from the context trigger data
     interface_channels = context.ctx.trigger_data.get('interface', {}).get('channels', {})
     
-    is_aux = context.channel_id == interface_channels.get('aux-comm')
-    is_nanny = context.channel_id == interface_channels.get(f"nanny_{context.user_id}")
+    # Determine Context Type
+    current_context_type = None
+    if context.channel_id == interface_channels.get('aux-comm'):
+        current_context_type = "aux"
+    elif context.channel_id == interface_channels.get(f"nanny_{context.user_id}"):
+        current_context_type = "nanny"
     
-    # Access Control Lists
-    allowed_in_aux = ["!exec_wakeup_protocol", "!destroy", "!abort", "!cancel"]
-    allowed_in_nanny = ["!name", "!sleep"]
+    # Dispatch Logic
+    cmd_instance = REGISTRY.get(cmd_name)
     
-    if is_aux and cmd_name in allowed_in_aux:
-        return await dispatch(cmd_name, args, context)
-        
-    elif is_nanny and cmd_name in allowed_in_nanny:
-        return await dispatch(cmd_name, args, context)
-        
-    elif is_aux:
+    if cmd_instance:
+        if current_context_type in cmd_instance.allowed_contexts:
+            return await cmd_instance.execute(args, context)
+        # Fall-through to "Unknown Command" logic below if context doesn't match
+        # to prevent leaking existence of commands in wrong channels (optional security through obscurity)
+        else:
+             pass
+
+    # Error Handling / Fallback
+    if current_context_type == "aux":
         await context.ctx.reply(f"**UNKNOWN COMMAND:** '{cmd_name}'.")
         return None
-    elif is_nanny:
+        
+    elif current_context_type == "nanny":
         await context.ctx.reply(f"Unknown Nanny Command: '{cmd_name}'.\nAvailable: !name <name>, !sleep")
         return None
         

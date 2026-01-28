@@ -362,31 +362,8 @@ class FosterProtocol:
         
         # 2. Command Dispatcher
         if user_input.strip().startswith("!"):
-            parts = user_input.strip().split()
-            cmd_name = parts[0].lower()
-            args = parts[1:]
-            
-            is_aux = channel_id == interface_channels.get('aux-comm')
-            is_nanny = channel_id == interface_channels.get(f"nanny_{user_id}")
-            
-            # Access Control Lists
-            allowed_in_aux = ["!exec_wakeup_protocol", "!destroy", "!abort", "!cancel"]
-            allowed_in_nanny = ["!name", "!sleep"]
-            
             cmd_ctx = commands.CommandContext(self, game_data, ctx, tools, user_id, channel_id)
-            
-            if is_aux and cmd_name in allowed_in_aux:
-                return await commands.dispatch(cmd_name, args, cmd_ctx)
-                
-            elif is_nanny and cmd_name in allowed_in_nanny:
-                return await commands.dispatch(cmd_name, args, cmd_ctx)
-                
-            elif is_aux:
-                await ctx.reply(f"**UNKNOWN COMMAND:** '{cmd_name}'.")
-                return None
-            elif is_nanny:
-                await ctx.reply(f"Unknown Nanny Command: '{cmd_name}'.\nAvailable: !name <name>, !sleep")
-                return None
+            return await commands.handle_command(user_input, cmd_ctx)
 
         # 3. Chat Routing
         if channel_id == interface_channels.get('aux-comm'):

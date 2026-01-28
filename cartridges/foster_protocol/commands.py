@@ -128,3 +128,33 @@ async def dispatch(command_name: str, args: List[str], context: CommandContext) 
     if cmd:
         return await cmd.execute(args, context)
     return None
+
+async def handle_command(user_input: str, context: CommandContext) -> Optional[Dict[str, Any]]:
+    parts = user_input.strip().split()
+    cmd_name = parts[0].lower()
+    args = parts[1:]
+    
+    # Recover interface channels from the context trigger data
+    interface_channels = context.ctx.trigger_data.get('interface', {}).get('channels', {})
+    
+    is_aux = context.channel_id == interface_channels.get('aux-comm')
+    is_nanny = context.channel_id == interface_channels.get(f"nanny_{context.user_id}")
+    
+    # Access Control Lists
+    allowed_in_aux = ["!exec_wakeup_protocol", "!destroy", "!abort", "!cancel"]
+    allowed_in_nanny = ["!name", "!sleep"]
+    
+    if is_aux and cmd_name in allowed_in_aux:
+        return await dispatch(cmd_name, args, context)
+        
+    elif is_nanny and cmd_name in allowed_in_nanny:
+        return await dispatch(cmd_name, args, context)
+        
+    elif is_aux:
+        await context.ctx.reply(f"**UNKNOWN COMMAND:** '{cmd_name}'.")
+        return None
+    elif is_nanny:
+        await context.ctx.reply(f"Unknown Nanny Command: '{cmd_name}'.\nAvailable: !name <name>, !sleep")
+        return None
+        
+    return None

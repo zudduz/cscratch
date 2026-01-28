@@ -22,10 +22,8 @@ class FosterProtocol:
     async def on_game_start(self, generic_state: dict) -> Dict[str, Any]:
         game_data = Caisson(**generic_state.get('metadata', {}))
         discord_players = generic_state.get('players', [])
-        if not discord_players: return { "metadata": game_data.model_dump() }
-
-        game_data.initial_crew_size = len(discord_players)
-        if game_data.initial_crew_size == 0: game_data.initial_crew_size = 1
+        if not discord_players:
+            return { "metadata": game_data.model_dump() }
 
         saboteur_index = random.randint(0, len(discord_players) - 1)
         channel_ops = []
@@ -44,13 +42,14 @@ class FosterProtocol:
             channel_key = f"nanny_{u_id}"
             channel_ops.append({ "op": "create", "key": channel_key, "name": f"nanny-port-{u_name}", "audience": "private", "user_id": u_id })
             
-            game_data.players[u_id] = Player(role=role)
+            # TODO this needs to be hardcoded to loyal. We have not yet introduced saboteur players. we only have saboteur bots.
+            #  We need to find all places where the role look up is being done against a drone's player instead of the drone's role itself
+            game_data.players[u_id] = Player(role=role, name=u_name)
             
             while True:
                 drone_id = f"unit_{random.randint(0, 999):03d}"
                 if drone_id not in game_data.drones: break
             
-            # --- UPDATED: Use Composer ---
             system_prompt = templates.compose_initial_system_prompt(drone_id, u_name, is_saboteur)
             
             game_data.drones[drone_id] = Drone(
@@ -282,9 +281,9 @@ class FosterProtocol:
                     await ctx.send("aux-comm", f"[HOUR {hour}] Ship systems nominal.")
 
             living_crew = sum(1 for p in game_data.players.values() if p.alive)
-            if game_data.initial_crew_size < 1: game_data.initial_crew_size = 1
+            total_crew = len(game_data.players)
             
-            drop_calc = int(GameConfig.OXYGEN_BASE_LOSS * (living_crew / game_data.initial_crew_size))
+            drop_calc = int(GameConfig.OXYGEN_BASE_LOSS * (living_crew / total_crew))
             
             game_data.consume_oxygen(drop_calc)
             
@@ -436,7 +435,7 @@ class FosterProtocol:
                     my_drone.name = new_name
                     my_drone.system_prompt = templates.compose_identity_update(
                         my_drone.id,
-                        user_id,
+                        game_data[user_id].name,
                         my_drone.role == "saboteur",
                         new_name
                     )

@@ -3,10 +3,9 @@ from typing import List, Dict, Optional, Any, Literal
 from pydantic import BaseModel, Field, ConfigDict
 
 # --- Discord Models ---
-class Player(BaseModel):
+class LobbyPlayer(BaseModel):
     id: str
     name: str
-    joined_at: str
 
 class GameInterface(BaseModel):
     type: str = "discord"
@@ -28,7 +27,7 @@ class GameState(BaseModel):
     started_at: Optional[datetime] = None
     ended_at: Optional[datetime] = None
     metadata: Dict[str, Any] = {}
-    players: List[Player] = []
+    players: List[LobbyPlayer] = []
     interface: GameInterface = Field(default_factory=GameInterface)
     schema_version: int = 2
     

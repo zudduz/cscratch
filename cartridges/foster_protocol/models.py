@@ -9,9 +9,9 @@ class ChargingStation(BaseModel):
 class Player(BaseModel):
     role: Literal["loyal", "saboteur"] = "loyal"
     alive: bool = True
-    location_id: str = "stasis_bay"
     requested_sleep: bool = False
     nanny_channel_id: Optional[str] = None
+    name: str = ""
 
     @property
     def ready_for_sleep(self) -> bool:
@@ -50,10 +50,8 @@ class Drone(BaseModel):
 
 
 class Caisson(BaseModel):
-    version: str = "2.43"
+    version: str = "2.44"
     oxygen: int = GameConfig.INITIAL_OXYGEN
-    
-    initial_crew_size: int = 1
     
     fuel: int = GameConfig.INITIAL_FUEL
     

@@ -6,7 +6,7 @@ from typing import Dict, Any, List, Optional
 from collections import defaultdict
 
 from . import persistence
-from .models import GameState, Player, GameInterface
+from .models import GameState, LobbyPlayer, GameInterface
 from .engine_context import EngineContext
 from .ai_engine import AIEngine
 
@@ -61,7 +61,7 @@ class GameEngine:
         if game:
             for p in game.players:
                 if p.id == user_id: return
-        player = Player(id=user_id, name=user_name, joined_at=str(uuid.uuid1()))
+        player = LobbyPlayer(id=user_id, name=user_name)
         await persistence.db.add_player_to_game(game_id, player)
 
     async def register_interface_data(self, game_id: str, interface_data: dict):
@@ -87,7 +87,6 @@ class GameEngine:
         return await persistence.db.get_game_by_channel_id(channel_id)
 
     async def end_game(self, game_id: str):
-        """Ends the game state and locks all interfaces."""
         await persistence.db.mark_game_ended(game_id)
         
         game = await persistence.db.get_game_by_id(game_id)

@@ -47,7 +47,7 @@ async def test_game_initialization(cartridge):
 
 @pytest.mark.asyncio
 async def test_oxygen_depletion_math(cartridge, mock_ctx, mock_tools):
-    game_data = Caisson(initial_crew_size=5, oxygen=100)
+    game_data = Caisson(oxygen=100)
     for i in range(5):
         game_data.players[f"p{i}"] = Player(is_alive=True)
         
@@ -67,8 +67,12 @@ async def test_oxygen_depletion_math(cartridge, mock_ctx, mock_tools):
 
 @pytest.mark.asyncio
 async def test_lifeboat_dilemma(cartridge, mock_ctx, mock_tools):
-    game_data = Caisson(initial_crew_size=5, oxygen=100)
-    game_data.players["p1"] = Player(is_alive=True) 
+    game_data = Caisson(oxygen=100)
+    game_data.players["p1"] = Player(alive=True) 
+    game_data.players["p2"] = Player(alive=False) 
+    game_data.players["p3"] = Player(alive=False) 
+    game_data.players["p4"] = Player(alive=False) 
+    game_data.players["p5"] = Player(alive=False) 
     
     # FIX: Use new_callable=PropertyMock
     with patch("asyncio.sleep", AsyncMock()), \

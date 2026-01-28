@@ -117,7 +117,7 @@ async def test_sleep_consensus_partial(cartridge, mock_ctx, mock_tools, base_sta
     assert result["players.u1.requested_sleep"] is True
     
     # Should confirm logging
-    assert "SLEEP REQUEST LOGGED" in mock_ctx.reply.call_args[0][0]
+    assert "Sleep request logged" in mock_ctx.reply.call_args[0][0]
     # Should NOT have scheduled simulation
     mock_ctx.schedule.assert_not_called()
 
@@ -135,8 +135,7 @@ async def test_sleep_consensus_complete(cartridge, mock_ctx, mock_tools, base_st
     with patch.object(cartridge, "execute_day_simulation", new_callable=MagicMock) as mock_sim:
         result = await cartridge.handle_input({"metadata": serialized_state}, "!sleep", mock_ctx, mock_tools)
     
-        # Should trigger consensus message
-        assert "Consensus Reached" in mock_ctx.reply.call_args[0][0]
+        assert "Sleep request logged" in mock_ctx.reply.call_args[0][0]
         
         # Should return full metadata update (phase change)
         assert result["metadata"]["phase"] == "day"

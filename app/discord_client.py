@@ -230,17 +230,23 @@ class LobbyView(discord.ui.View):
 
     @discord.ui.button(label="Start", style=discord.ButtonStyle.danger, custom_id="start_btn")
     async def start_button(self, interaction, button):
-        if not await safe_defer(interaction): return
+        if not await safe_defer(interaction):
+            return
+
         game = await persistence.db.get_game_by_id(self.game_id)
-        if not game or str(interaction.user.id) != game.host_id: return await interaction.followup.send("Denied. Host only.")
+        if not game or str(interaction.user.id) != game.host_id:
+            return await interaction.followup.send("Only the host may start the game")
         
         res = await game_engine.engine.launch_match(self.game_id)
-        if not res: return await interaction.followup.send("Error.")
+        if not res:
+            return await interaction.followup.send("Error")
         
-        if res.get('channel_ops'): await client.execute_channel_ops(self.game_id, res['channel_ops'])
+        if res.get('channel_ops'):
+            await client.execute_channel_ops(self.game_id, res['channel_ops'])
+
         await game_engine.engine.dispatch_immediate_result(self.game_id, res)
         self.stop()
-        await interaction.followup.send(f"**SEQUENCE INITIATED**")
+        await interaction.followup.send(f"Starting game")
         
         updated_game = await persistence.db.get_game_by_id(self.game_id)
         aux_comm_id = updated_game.interface.channels.get('aux-comm')

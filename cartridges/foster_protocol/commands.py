@@ -108,10 +108,9 @@ class SleepCommand(BaseCommand):
         if user_id in context.game_data.players:
             context.game_data.players[user_id].requested_sleep = True
             
+            await context.ctx.reply(f"Sleep request logged")
             if context.game_data.is_ready_for_day:
-                logging.info(f"--- [DEBUG] Consensus Reached via !sleep. User {user_id} triggered Day Cycle. ---")
-                await context.ctx.send("aux-comm", "**CREW ASLEEP. DAY CYCLE INITIATED.**")
-                await context.ctx.reply("Consensus Reached. Initiating Day Cycle...")
+                await context.ctx.send("aux-comm", "Crew asleep")
                 
                 context.game_data.phase = "day"
                 for p in context.game_data.players.values():
@@ -121,7 +120,6 @@ class SleepCommand(BaseCommand):
                 context.ctx.schedule(context.cartridge.execute_day_simulation(context.game_data, context.ctx, context.tools))
                 return {"metadata": context.game_data.model_dump()}
             
-            await context.ctx.reply(f"**SLEEP REQUEST LOGGED.**")
             return {f"players.{user_id}.requested_sleep": True}
         return None
 
@@ -151,30 +149,24 @@ async def handle_command(user_input: str, context: CommandContext) -> Optional[D
     interface_channels = context.ctx.trigger_data.get('interface', {}).get('channels', {})
     
     # Determine Context Type
-    current_context_type = None
+    channel = None
     if context.channel_id == interface_channels.get('aux-comm'):
-        current_context_type = "aux"
+        channel = "aux"
     elif context.channel_id == interface_channels.get(f"nanny_{context.user_id}"):
-        current_context_type = "nanny"
+        channel = "nanny"
     
     # Dispatch Logic
     cmd_instance = REGISTRY.get(cmd_name)
     
     if cmd_instance:
-        if current_context_type in cmd_instance.allowed_contexts:
+        if channel in cmd_instance.allowed_contexts:
             return await cmd_instance.execute(args, context)
-        # Fall-through to "Unknown Command" logic below if context doesn't match
-        # to prevent leaking existence of commands in wrong channels (optional security through obscurity)
-        else:
-             pass
 
     # Error Handling / Fallback
-    if current_context_type == "aux":
-        await context.ctx.reply(f"**UNKNOWN COMMAND:** '{cmd_name}'.")
-        return None
-        
-    elif current_context_type == "nanny":
-        await context.ctx.reply(f"Unknown Nanny Command: '{cmd_name}'.\nAvailable: !name <name>, !sleep")
+    if channel in ["aux", "nanny"]:
+        available_commands = [cmd for cmd, instance in REGISTRY.items() if channel in instance.allowed_contexts]
+        available_str = ", ".join(available_commands)
+        await context.ctx.reply(f"Unknown Command: '{cmd_name}'.\nAvailable: {available_str}")
         return None
         
     return None

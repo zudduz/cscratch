@@ -5,7 +5,7 @@ from cartridges.foster_protocol.board import GameConfig
 from cartridges.foster_protocol.tools import TOOL_REGISTRY
 
 # Define path relative to this test file
-PROMPTS_DIR = os.path.join(os.path.dirname(__file__), "../cartridges/foster_protocol/prompts")
+TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "../cartridges/foster_protocol/ai_templates")
 
 # --- THE UNIVERSAL CONTEXT ---
 # This dictionary contains dummy values for EVERY variable used in your templates.
@@ -59,10 +59,10 @@ DUMMY_CONTEXT.update({
 })
 
 def get_template_files():
-    """Auto-discovers all .md files in the prompts directory."""
-    if not os.path.exists(PROMPTS_DIR):
+    """Auto-discovers all .md files in the templates directory."""
+    if not os.path.exists(TEMPLATES_DIR):
         return []
-    return [f for f in os.listdir(PROMPTS_DIR) if f.endswith(".md.j2")]
+    return [f for f in os.listdir(TEMPLATES_DIR) if f.endswith(".md.j2")]
 
 @pytest.fixture(scope="module")
 def strict_env():
@@ -71,7 +71,7 @@ def strict_env():
     This catches typos like {{ batery }} instead of {{ battery }}.
     """
     return Environment(
-        loader=FileSystemLoader(PROMPTS_DIR),
+        loader=FileSystemLoader(TEMPLATES_DIR),
         undefined=StrictUndefined,  # <--- The magic safety switch
         trim_blocks=True,
         lstrip_blocks=True

@@ -6,10 +6,10 @@ from .tools import TOOL_REGISTRY
 
 # --- JINJA2 SETUP ---
 _CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-_PROMPTS_DIR = os.path.join(_CURRENT_DIR, "prompts")
+_TEMPLATES_DIR = os.path.join(_CURRENT_DIR, "templates")
 
 _ENV = Environment(
-    loader=FileSystemLoader(_PROMPTS_DIR),
+    loader=FileSystemLoader(_TEMPLATES_DIR),
     trim_blocks=True,
     lstrip_blocks=True
 )
@@ -48,21 +48,15 @@ def compose_initial_system_prompt(drone_id: str, foster_name: str, is_saboteur: 
     # The "Glue" is now here, not in logic.py
     return f"{base}\n\n--- IDENTITY OVERRIDE ---\n{identity}"
 
-def compose_identity_update(drone_id: str, role: str, is_saboteur: bool, new_name: str) -> str:
+def compose_identity_update(drone_id: str, user_id: str, is_saboteur: bool, new_name: str) -> str:
     """
     Reconstructs the system prompt when a drone is renamed.
     """
     # Note: We rely on logic.py to provide the base, or we reconstruct it.
     # For safety/simplicity, we just rebuild the whole thing + the patch.
     # In a real app, you might want to strip the old identity, but rebuilding is safer.
-    
-    # However, logic.py was doing a patch append. Let's replicate that behavior safely.
     base = _get_base_prompt()
-    identity_block = _get_identity_block(drone_id, role, is_saboteur) # foster_name passed as role? Logic was fuzzy here.
-    
-    # In logic.py: identity_block = prompts.get_drone_identity_block(my_drone.id, game_data.players[user_id].role, ...)
-    # Wait, the second arg is foster_name. logic.py was passing role. That might be a bug in logic.py, 
-    # but we will stick to the Composer pattern.
+    identity_block = _get_identity_block(drone_id, user_id, is_saboteur)
     
     update_patch = render("drone_identity_update.md.j2", new_name=new_name)
     

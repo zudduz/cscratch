@@ -120,7 +120,6 @@ class SleepCommand(BaseCommand):
 
 REGISTRY = {
     "!destroy": DestroyDroneCommand(),
-    "!abort": AbortCommand(),
     "!cancel": AbortCommand(),
     "!name": NameDroneCommand(),
     "!sleep": SleepCommand()
@@ -158,7 +157,7 @@ async def handle_command(user_input: str, context: CommandContext) -> Optional[D
     if channel in ["aux", "nanny"]:
         available_commands = [cmd for cmd, instance in REGISTRY.items() if channel in instance.allowed_contexts]
         available_str = ", ".join(available_commands)
-        await context.ctx.reply(f"Unknown Command: '{cmd_name}'.\nAvailable: {available_str}")
+        await context.ctx.reply(f"Unknown Command: '{cmd_name}'\nAvailable: {available_str}")
         return None
         
     return None

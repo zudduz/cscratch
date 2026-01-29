@@ -132,7 +132,7 @@ class FosterProtocol:
                 return json.loads(json_text), thought_text
 
             logging.warning(f"Drone {drone.id} Brain freeze. Full Response:\n{response_text}")
-            return {"tool": "wait", "args": {}}, "System Error: Neural Link Unstable (No JSON)."
+            return {"tool": "wait", "args": {}}, "System Error: (No JSON)."
 
         except Exception as e:
             raw_text = locals().get('response_text', 'NO_RESPONSE_GENERATED')
@@ -221,10 +221,10 @@ class FosterProtocol:
             physics_report = self._calculate_physics(game_data)
 
             # 4. Arbitration Phase (Rules)
-            game_status = self._evaluate_arbitration(game_data, physics_report)
+            game_status, status_reason = self._evaluate_arbitration(game_data, physics_report)
 
             # 5. Transition Phase (Routing)
-            result_payload = await self._handle_transition(game_data, game_status, physics_report, ctx, tools)
+            result_payload = await self._handle_transition(game_data, game_status, status_reason, physics_report, ctx, tools)
 
             return result_payload
             
@@ -316,7 +316,7 @@ class FosterProtocol:
             return "FAILURE", "Required fuel exceeds ship capacity."
         return "CONTINUE", ""
 
-    async def _handle_transition(self, game_data: Caisson, status: str, physics: Dict[str, int], ctx, tools) -> Dict[str, Any]:
+    async def _handle_transition(self, game_data: Caisson, status: str, status_reason: str, physics: Dict[str, int], ctx, tools) -> Dict[str, Any]:
         """Handles the outcome of arbitration and returns the state patch."""
         
         # Report Status

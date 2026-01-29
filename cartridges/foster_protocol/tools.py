@@ -31,12 +31,12 @@ def _trigger_torpedo_blast(game_data: Caisson) -> None:
         if drone.location_id == "torpedo_bay":
             drone.battery = 0
 
-def get_visible_drones(game_data: Caisson, location_id: str) -> List[str]:
+def get_visible_drones(game_data: Caisson, location_id: str, exclude_id: Optional[str] = None) -> List[str]:
     """Return a list of drone status strings visible in the given location."""
     return [
         f"{d.id} ({d.status})"
         for d in game_data.drones.values() 
-        if d.location_id == location_id
+        if d.location_id == location_id and d.id != exclude_id
     ]
 
 # --- Base Class ---
@@ -435,17 +435,9 @@ def execute_tool(tool_name: str, args: Dict, drone_id: str, game: Caisson) -> To
 def gather_turn_context_data(drone: Drone, game_data: Caisson, hour: int = 1) -> Dict[str, Any]:
     """
     Gathers raw data for the turn context prompt.
-    Did NOT return a string. Returns a dictionary for Jinja2.
     """
     visible_drones = get_visible_drones(game_data, drone.location_id)
     
-    # Filter out self from visible
-    visible_drones = [d for d in visible_drones if not d.startswith(drone.id)]
-    
-    objective = "Maintain the ship. Gather Fuel. Protect peers."
-    if drone.role == "saboteur":
-        objective = "Waste resources. Hoard fuel. Vent Oxygen. Kill if armed."
-
     return {
         "hour": hour,
         "end_hour": GameConfig.HOURS_PER_SHIFT,
@@ -454,5 +446,4 @@ def gather_turn_context_data(drone: Drone, game_data: Caisson, hour: int = 1) ->
         "inventory": drone.inventory,
         "visible_drones": visible_drones,
         "long_term_memory": drone.long_term_memory,
-        "objective": objective
     }

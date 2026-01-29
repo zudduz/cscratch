@@ -131,7 +131,7 @@ class FosterProtocol:
                 
                 return json.loads(json_text), thought_text
 
-            logging.warning(f"Drone {drone.id} BRAIN FREEZE. Full Response:\n{response_text}")
+            logging.warning(f"Drone {drone.id} Brain freeze. Full Response:\n{response_text}")
             return {"tool": "wait", "args": {}}, "System Error: Neural Link Unstable (No JSON)."
 
         except Exception as e:

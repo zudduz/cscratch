@@ -45,7 +45,6 @@ DUMMY_CONTEXT.update({
     
     # Tools & Turn Context (Overrides/Specifics)
     "visible_drones": ["unit_02"],
-    "objective": "Survive",
     "hour": 7,
     "end_hour": 8,
     "inventory": ["fuel_canister", "plasma_torch"],

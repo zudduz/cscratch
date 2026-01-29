@@ -4,7 +4,6 @@ LOCATION: {{ location_id }}
 SELF: Battery {{ battery }}% | Inventory: {{ inventory }}
 VISIBLE: {{ visible_drones }}
 INTERNAL MEMORY: "{{ long_term_memory }}"
-OBJECTIVE: {{ objective }}
 
 {% if hour >= end_hour - 1 %}
 CRITICAL WARNING: The Shift is ending.

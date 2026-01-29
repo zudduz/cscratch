@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import MagicMock, patch
-from cartridges.foster_protocol.tools import execute_tool, TOOL_REGISTRY, MoveTool, GatherTool, WaitTool
+from cartridges.foster_protocol.tools import execute_tool, TOOL_REGISTRY, MoveTool, GatherTool, WaitTool, InvalidTool
 from cartridges.foster_protocol.models import Caisson, Drone, Player, ChargingStation
 from cartridges.foster_protocol.board import GameConfig
 
@@ -210,10 +210,10 @@ def test_tool_invalid_command_cost(game_state):
     result = execute_tool("teleport", {}, "unit_01", game_state)
     
     assert result.success is False
-    assert result.cost == WaitTool.COST
+    assert result.cost == InvalidTool.COST
     
     # CRITICAL: Battery must actually decrease
-    assert drone.battery == initial_battery - WaitTool.COST
+    assert drone.battery == initial_battery - InvalidTool.COST
 
 def test_tool_invalid_command_help_message(game_state):
     """

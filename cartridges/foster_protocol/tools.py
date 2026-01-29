@@ -14,6 +14,7 @@ class ToolExecutionResult:
     message: str
     cost: int = 0
     visibility: str = "private"
+    event_type: Optional[str] = None
 
 @dataclass
 class ToolContext:
@@ -196,7 +197,7 @@ class ChargeTool(BaseTool):
             context.actor.destroyed = True
             context.actor.battery = 0
             context.game_data.station.pending_deactivation.remove(context.actor.id)
-            return ToolExecutionResult(True, "Disassembly sequence initiated. UNIT DESTROYED.", 0, "global")
+            return ToolExecutionResult(True, "Disassembly sequence initiated. UNIT DESTROYED.", 0, "global", event_type="disassembly")
         
         context.actor.battery = 100
         return ToolExecutionResult(True, "Connected to Main Grid. Recharged to 100%.", self.COST, "global")

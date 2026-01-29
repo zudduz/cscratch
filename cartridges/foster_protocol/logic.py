@@ -257,9 +257,7 @@ class FosterProtocol:
                     drone_state = res['drone']
                     result = res['result']
                     
-                    # Eulogy Check
-                    # TODO: Make this cleaner. Currently string matching on 'Disassembly' message.
-                    if drone_state.status == "destroyed" and "Disassembly" in result.message:
+                    if result.event_type == "disassembly":
                         await self._send_public_eulogy(ctx, tools, drone_state, game_data)
 
                     # Report to Black Box

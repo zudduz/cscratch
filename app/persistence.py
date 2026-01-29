@@ -9,6 +9,7 @@ class PersistenceLayer:
         # Explicitly use the 'sandbox' database to match existing data
         self.db = firestore.AsyncClient(database="sandbox")
         self.games_collection = self.db.collection('games')
+        self.channels_collection = self.db.collection('channels')
 
     async def create_game_record(self, game: GameState):
         await self.games_collection.document(game.id).set(game.model_dump())
@@ -91,20 +92,43 @@ class PersistenceLayer:
         })
 
     async def get_active_game_channels(self):
-        # Scan for active games to rehydrate listeners on bot restart
-        active_channels = set()
-        # Query: status != 'ended'
+        # This hydrates the in-memory cache on startup
+        active_map = {}
         async for doc in self.games_collection.stream():
             data = doc.to_dict()
             if data.get('status') == 'active':
+                g_id = data.get('id')
                 interface = data.get('interface', {})
+                
                 # Add main channel
                 if interface.get('main_channel_id'):
-                    active_channels.add(str(interface['main_channel_id']))
+                    active_map[str(interface['main_channel_id'])] = g_id
+                
                 # Add sub channels
                 for cid in interface.get('channels', {}).values():
-                    active_channels.add(str(cid))
-        return active_channels
+                    active_map[str(cid)] = g_id
+        return active_map
+
+    async def register_channel_association(self, channel_id: str, game_id: str):
+        """Write the O(1) index entry."""
+        try:
+            await self.channels_collection.document(str(channel_id)).set({"game_id": game_id})
+        except Exception as e:
+            logging.error(f"Failed to register channel index: {e}")
+
+    async def remove_channel_association(self, channel_id: str):
+        """Remove the index entry (Clean up)."""
+        try:
+            await self.channels_collection.document(str(channel_id)).delete()
+        except Exception as e:
+            logging.warning(f"Failed to remove channel index: {e}")
+
+    async def get_game_id_by_channel_index(self, channel_id: str) -> str:
+        """Fast O(1) Lookup."""
+        doc = await self.channels_collection.document(str(channel_id)).get()
+        if doc.exists:
+            return doc.to_dict().get("game_id")
+        return None
 
     # Basic Redis-like Lock using Firestore (Simulated for this context)
     async def lock_event(self, event_id: str) -> bool:

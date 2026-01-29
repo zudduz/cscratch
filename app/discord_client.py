@@ -32,10 +32,11 @@ class ChickenBot(commands.Bot):
         intents.message_content = True 
         intents.members = True
         super().__init__(command_prefix="!", intents=intents)
-        self.active_game_channels = set()
+        self.active_game_channels = {}
 
     async def setup_hook(self):
         logging.info(presentation.LOG_HYDRATING)
+        # Load the cache map from active games
         self.active_game_channels = await persistence.db.get_active_game_channels()
         self.tree.add_command(cscratch_group)
         self.tree.add_command(version_cmd)
@@ -126,7 +127,11 @@ class ChickenBot(commands.Bot):
                     if key: interface.channels[key] = str(new_chan.id)
                     if str(new_chan.id) not in interface.listener_ids:
                         interface.listener_ids.append(str(new_chan.id))
-                    self.active_game_channels.add(str(new_chan.id))
+                    
+                    # UPDATE CACHE & INDEX
+                    self.active_game_channels[str(new_chan.id)] = game_id
+                    await persistence.db.register_channel_association(str(new_chan.id), game_id)
+                    
                     changes = True
                     
                 elif op['op'] == 'reveal':
@@ -165,7 +170,10 @@ async def start(interaction: discord.Interaction, cartridge: str = "foster-proto
             "main_channel_id": str(chan.id),
             "listener_ids": [str(chan.id)]
         })
-        client.active_game_channels.add(str(chan.id))
+        
+        # UPDATE CACHE & INDEX (Lobby Channel)
+        client.active_game_channels[str(chan.id)] = game_id
+        await persistence.db.register_channel_association(str(chan.id), game_id)
         
         embed = discord.Embed(
             title=presentation.format_lobby_title(cartridge),
@@ -210,7 +218,11 @@ async def end(interaction: discord.Interaction):
             if cat:
                 for c in cat.channels: 
                     await c.delete()
-                    if str(c.id) in client.active_game_channels: client.active_game_channels.remove(str(c.id))
+                    cid = str(c.id)
+                    # CLEANUP CACHE & INDEX
+                    if cid in client.active_game_channels: 
+                        del client.active_game_channels[cid]
+                    await persistence.db.remove_channel_association(cid)
                 await cat.delete()
         except: pass
     await game_engine.engine.end_game(game.id)
@@ -259,8 +271,23 @@ class LobbyView(discord.ui.View):
 async def on_message(message):
     if system_state.shutting_down: return
     if message.author == client.user: return
-    if str(message.channel.id) not in client.active_game_channels: return
+    
+    channel_id = str(message.channel.id)
+    
+    # 1. MEMORY CHECK (Instant)
+    game_id = client.active_game_channels.get(channel_id)
+    
+    # 2. INDEX LOOKUP (Fast Failover)
+    if not game_id:
+        game_id = await persistence.db.get_game_id_by_channel_index(channel_id)
+        if game_id:
+            # Cache Hit! Update memory for next time.
+            client.active_game_channels[channel_id] = game_id
+            
+    if not game_id: return # Not a game message
+
     if not await persistence.db.lock_event(message.id): return
     try:
-        await game_engine.engine.dispatch_input(str(message.channel.id), str(message.author.id), message.author.name, message.content)
+        # Pass the resolved game_id to skip the O(N) scan
+        await game_engine.engine.dispatch_input(channel_id, str(message.author.id), message.author.name, message.content, known_game_id=game_id)
     except Exception as e: logging.error(f"Input Error: {e}")

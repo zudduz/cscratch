@@ -131,8 +131,12 @@ class GameEngine:
             if hasattr(interface, 'lock_channels'):
                 await interface.lock_channels(game_id, game.interface.model_dump())
 
-    async def dispatch_input(self, channel_id: str, user_id: str, user_name: str, user_input: str):
-        game = await persistence.db.get_game_by_channel_id(channel_id)
+    async def dispatch_input(self, channel_id: str, user_id: str, user_name: str, user_input: str, known_game_id: str = None):
+        if known_game_id:
+            game = await persistence.db.get_game_by_id(known_game_id)
+        else:
+            game = await persistence.db.get_game_by_channel_id(channel_id)
+            
         if not game or game.status != 'active': return
 
         async with self.locks[game.id]:

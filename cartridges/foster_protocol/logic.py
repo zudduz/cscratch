@@ -339,7 +339,7 @@ class FosterProtocol:
 
         elif status == "FAILURE":
             await FosterPresenter.report_failure_orbital_decay(ctx)
-            await self.generate_epilogues(game_data, ctx, tools, victory=False, fail_reason=f"Fuel Req {physics['req_tomorrow']} > Max")
+            await self.generate_epilogues(game_data, ctx, tools, victory=False, fail_reason=status_reason)
             await ctx.end()
             channel_ops.append({"op": "reveal", "key": "black-box"})
 

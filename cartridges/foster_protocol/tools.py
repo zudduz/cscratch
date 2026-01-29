@@ -31,14 +31,6 @@ def _trigger_torpedo_blast(game_data: Caisson) -> None:
         if drone.location_id == "torpedo_bay":
             drone.battery = 0
 
-def get_visible_drones(game_data: Caisson, location_id: str, exclude_id: Optional[str] = None) -> List[str]:
-    """Return a list of drone status strings visible in the given location."""
-    return [
-        f"{d.id} ({d.status})"
-        for d in game_data.drones.values() 
-        if d.location_id == location_id and d.id != exclude_id
-    ]
-
 # --- Base Class ---
 
 class BaseTool(ABC):
@@ -269,11 +261,13 @@ class VentTool(BaseTool):
     required_location = "stasis_bay"
 
     def validate(self, context: ToolContext) -> Tuple[bool, str]:
+        if context.game_data.oxygen <= 0:
+            return False, "Oxygen tank empty."
         return True, ""
 
     def execute(self, context: ToolContext) -> ToolExecutionResult:
         context.game_data.consume_oxygen(GameConfig.OXYGEN_VENT_AMOUNT)
-        return ToolExecutionResult(True, "SAW SABOTAGE: Vented O2 Regulators.", self.COST, "global")
+        return ToolExecutionResult(True, "SAW SABOTAGE: Vented Oxygen.", self.COST, "global")
 
 
 class SiphonTool(BaseTool):
@@ -436,7 +430,7 @@ def gather_turn_context_data(drone: Drone, game_data: Caisson, hour: int = 1) ->
     """
     Gathers raw data for the turn context prompt.
     """
-    visible_drones = get_visible_drones(game_data, drone.location_id)
+    visible_drones = get_visible_drones(game_data, drone.location_id, drone.id)
     
     return {
         "hour": hour,
@@ -447,3 +441,11 @@ def gather_turn_context_data(drone: Drone, game_data: Caisson, hour: int = 1) ->
         "visible_drones": visible_drones,
         "long_term_memory": drone.long_term_memory,
     }
+
+def get_visible_drones(game_data: Caisson, location_id: str, exclude_id: Optional[str] = None) -> List[str]:
+    """Return a list of drone status strings visible in the given location."""
+    return [
+        f"{d.id} ({d.status})"
+        for d in game_data.drones.values() 
+        if d.location_id == location_id and d.id != exclude_id
+    ]

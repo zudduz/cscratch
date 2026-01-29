@@ -21,7 +21,8 @@ class GameConfig:
     MAX_POSSIBLE_FUEL_REQ = 100 
 
     MAX_TARGET_DRAIN_AMOUNT = 20
-    MAX_DRAIN_BENEFIT = 15   
+    MAX_DRAIN_BENEFIT = 15
+    INVALID_COMMAND_COST = 10
 
 class Room(str, Enum):
     STASIS_BAY = "stasis_bay"

@@ -31,7 +31,7 @@ class FosterPresenter:
         """Generates the initial channel creation operations."""
         ops = [
             {"op": "create", "key": cls.CHANNEL_AUX, "name": "aux-comm", "audience": "public"},
-            {"op": "create", "key": cls.CHANNEL_BLACKBOX, "name": "black-box-logs", "audience": "hidden", "init_msg": "Flight recorder active."}
+            {"op": "create", "key": cls.CHANNEL_BLACKBOX, "name": "black-box-logs", "audience": "hidden", "init_msg": "Flight recorder active"}
         ]
         
         for i, p_data in enumerate(players):

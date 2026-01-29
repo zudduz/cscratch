@@ -62,7 +62,7 @@ class BaseTool(ABC):
             )
         
         if context.actor.battery < self.COST:
-            return ToolExecutionResult(False, "Insufficient Battery Level.", WaitTool.COST)
+            return ToolExecutionResult(False, "Insufficient Battery Level.", GameConfig.INVALID_COMMAND_COST)
 
         is_valid, error_msg = self.validate(context)
         if not is_valid:
@@ -375,6 +375,19 @@ class WaitTool(BaseTool):
     def execute(self, context: ToolContext) -> ToolExecutionResult:
         return ToolExecutionResult(True, "Idling.", self.COST)
 
+class InvalidTool(BaseTool):
+    usage = ""
+    COST = GameConfig.INVALID_COMMAND_COST
+    VISIBILITY = "Private"
+    effect_desc = "System Error - Hallucination Penalty."
+
+    def validate(self, context: ToolContext) -> Tuple[bool, str]:
+        return True, ""
+
+    def execute(self, context: ToolContext) -> ToolExecutionResult:
+        cmd_name = context.args.get("_command", "unknown")
+        return ToolExecutionResult(False, f"Unknown command '{cmd_name}'", self.COST)
+
 
 # --- Registry & Dispatcher ---
 
@@ -402,7 +415,9 @@ def execute_tool(tool_name: str, args: Dict, drone_id: str, game: Caisson) -> To
 
     tool_instance = TOOL_REGISTRY.get(tool_name)
     if not tool_instance:
-        return ToolExecutionResult(False, f"Unknown command '{tool_name}'", WaitTool.COST)
+        tool_instance = InvalidTool()
+        args = args.copy()
+        args["_command"] = tool_name
 
     context = ToolContext(game, actor, args)
     return tool_instance.run(context)

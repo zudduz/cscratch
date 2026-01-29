@@ -198,3 +198,19 @@ def test_tool_wait(game_state):
     result = execute_tool("wait", {}, "unit_01", game_state)
     assert result.success is True
     assert result.cost == WaitTool.COST
+
+def test_tool_invalid_command_cost(game_state):
+    """
+    Ensures that if a drone hallucinates a command, they are still
+    penalized the standard 'Wait' cost for the wasted cycle.
+    """
+    drone = game_state.drones["unit_01"]
+    initial_battery = drone.battery
+    
+    result = execute_tool("teleport", {}, "unit_01", game_state)
+    
+    assert result.success is False
+    assert result.cost == WaitTool.COST
+    
+    # CRITICAL: Battery must actually decrease
+    assert drone.battery == initial_battery - WaitTool.COST

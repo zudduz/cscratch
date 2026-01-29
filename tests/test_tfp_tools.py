@@ -214,3 +214,17 @@ def test_tool_invalid_command_cost(game_state):
     
     # CRITICAL: Battery must actually decrease
     assert drone.battery == initial_battery - WaitTool.COST
+
+def test_tool_invalid_command_help_message(game_state):
+    """
+    Verifies that the invalid tool returns helpful grounding information
+    listing available commands.
+    """
+    result = execute_tool("fly", {}, "unit_01", game_state)
+    
+    assert result.success is False
+    assert "Unknown command 'fly'" in result.message
+    assert "Valid commands:" in result.message
+    # Check for a few expected commands to ensure list is populated
+    assert "move(room_id)" in result.message
+    assert "gather()" in result.message

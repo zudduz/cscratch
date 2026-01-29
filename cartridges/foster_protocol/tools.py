@@ -386,7 +386,17 @@ class InvalidTool(BaseTool):
 
     def execute(self, context: ToolContext) -> ToolExecutionResult:
         cmd_name = context.args.get("_command", "unknown")
-        return ToolExecutionResult(False, f"Unknown command '{cmd_name}'", self.COST)
+        
+        # Runtime reflection: Access the global registry to find what IS valid
+        valid_usages = []
+        for tool in TOOL_REGISTRY.values():
+            if tool.usage:
+                valid_usages.append(tool.usage)
+        
+        usage_str = ", ".join(valid_usages)
+        msg = f"Unknown command '{cmd_name}'. Valid commands: {usage_str}"
+        
+        return ToolExecutionResult(False, msg, self.COST)
 
 
 # --- Registry & Dispatcher ---

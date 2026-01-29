@@ -297,7 +297,7 @@ class FosterProtocol:
                     ctx.schedule(self.execute_day_simulation(game_data, ctx, tools))
                 
                 else:
-                    await self.speak_all_drones(game_data, ctx, tools, format_drone_checkin())
+                    await self.speak_all_drones(game_data, ctx, tools, ai_templates.format_drone_checkin())
                     game_data.phase = "night"
 
             result = game_data.model_dump()

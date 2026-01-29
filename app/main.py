@@ -9,11 +9,11 @@ from google.cloud import secretmanager
 from .discord_client import client as discord_client
 from . import game_engine
 from .state import sys as system_state
-from .gcp_log import setup_logging  # <--- NEW IMPORT
+from .gcp_log import setup_logging
+from . import presentation
 
 # 1. SETUP STRUCTURED LOGGING IMMEDIATELY
 setup_logging()
-# Note: We removed logging.basicConfig as setup_logging handles the root logger
 
 nest_asyncio.apply()
 
@@ -46,7 +46,7 @@ async def lifespan(app: FastAPI):
     
     # 2. Announce Death
     if not discord_client.is_closed():
-        await discord_client.announce_state("**System Offline**")
+        await discord_client.announce_state(presentation.SYSTEM_OFFLINE)
         
     # 3. Kill Engine Loop
     game_engine.engine.stop()

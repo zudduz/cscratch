@@ -8,12 +8,9 @@ from discord.ext import commands
 from . import game_engine
 from . import persistence
 from .state import sys as system_state
+from . import presentation
 
 DEBUG_CHANNEL_ID = 1460557810545856725
-
-# --- PRICING CONSTANTS (Gemini 2.5 Flash) ---
-COST_PER_1M_INPUT = 0.30
-COST_PER_1M_OUTPUT = 2.50
 
 async def safe_defer(interaction: discord.Interaction, ephemeral: bool = False) -> bool:
     if system_state.shutting_down: return False
@@ -38,25 +35,26 @@ class ChickenBot(commands.Bot):
         self.active_game_channels = set()
 
     async def setup_hook(self):
-        logging.info("System: Hydrating Game Channel Cache...")
+        logging.info(presentation.LOG_HYDRATING)
         self.active_game_channels = await persistence.db.get_active_game_channels()
         self.tree.add_command(cscratch_group)
         self.tree.add_command(version_cmd)
-        logging.info("System: Syncing Slash Commands...")
+        logging.info(presentation.LOG_SYNCING)
         await self.tree.sync()
         await game_engine.engine.register_interface(self)
         await game_engine.engine.start()
 
     async def on_ready(self):
         logging.info(f"Logged in as {self.user} (ID: {self.user.id})")
-        await self.announce_state("**System Online**")
+        await self.announce_state(presentation.SYSTEM_ONLINE)
 
     async def announce_state(self, message: str):
         if not DEBUG_CHANNEL_ID: return
         try:
-            rev = os.environ.get('K_REVISION', 'Local-Dev')
             channel = self.get_channel(DEBUG_CHANNEL_ID)
-            if channel: await channel.send(f"{message}: `{rev}`")
+            text = presentation.format_announcement(message)
+            if channel:
+                 await channel.send(text)
         except Exception as e: logging.error(f"Announce failed: {e}")
 
     async def send_message(self, channel_id: str, text: str):
@@ -76,16 +74,19 @@ class ChickenBot(commands.Bot):
             overwrite = channel.overwrites_for(guild.default_role)
             overwrite.read_messages = True
             await channel.set_permissions(guild.default_role, overwrite=overwrite)
-            await channel.send("**BLACK BOX DECLASSIFIED. LOGS AVAILABLE.**")
+            await channel.send(presentation.BLACK_BOX_OPEN)
         except Exception as e:
             logging.error(f"Unlock Failed: {e}")
 
     async def execute_channel_ops(self, game_id: str, ops: list):
-        if not ops: return
+        if not ops:
+           return
         game = await persistence.db.get_game_by_id(game_id)
-        if not game or not game.interface.guild_id: return
+        if not game or not game.interface.guild_id:
+            return
         guild = self.get_guild(int(game.interface.guild_id))
-        if not guild: return
+        if not guild:
+            return
         
         category = None
         if game.interface.category_id:
@@ -114,8 +115,10 @@ class ChickenBot(commands.Bot):
                         overwrites[guild.default_role] = discord.PermissionOverwrite(read_messages=False)
                         overwrites[guild.me] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
 
-                    channel_name = op.get('name', 'unknown')
-                    c_name = "".join(c for c in channel_name if c.isalnum() or c == "-").lower()
+                    # Use presentation logic for safe naming
+                    raw_name = op.get('name', presentation.CHANNEL_UNKNOWN)
+                    c_name = presentation.safe_channel_name(raw_name)
+                    
                     new_chan = await guild.create_text_channel(c_name, category=category, overwrites=overwrites)
 
                     if op.get('init_msg'): await new_chan.send(op['init_msg'])
@@ -139,21 +142,14 @@ class ChickenBot(commands.Bot):
 client = ChickenBot()
 
 # --- COMMANDS ---
-@app_commands.command(name="version", description="Check container")
+@app_commands.command(name="version", description=presentation.CMD_VERSION_DESC)
 async def version_cmd(interaction: discord.Interaction):
     rev = os.environ.get('K_REVISION', 'Local-Dev')
-    await interaction.response.send_message(f"**Active Node:** `{rev}`")
+    await interaction.response.send_message(presentation.format_version_response(rev))
 
-cscratch_group = app_commands.Group(name="cscratch", description="Engine Controls")
+cscratch_group = app_commands.Group(name="cscratch", description=presentation.CMD_GRP_SCRATCH)
 
-ADMIN_WARNING_TEXT = (
-    "**FAIR PLAY NOTICE**\n"
-    "To the Administrator: You have permissions to view ALL private channels.\n"
-    "**FOR A FAIR GAME:** Please **MUTE** or **COLLAPSE** the private channels of other players.\n"
-    "*The Protocol relies on trust.*"
-)
-
-@cscratch_group.command(name="start", description="Open Lobby")
+@cscratch_group.command(name="start", description=presentation.CMD_START_DESC)
 async def start(interaction: discord.Interaction, cartridge: str = "foster-protocol"):
     if not await safe_defer(interaction): return
     try:
@@ -171,37 +167,41 @@ async def start(interaction: discord.Interaction, cartridge: str = "foster-proto
         })
         client.active_game_channels.add(str(chan.id))
         
-        embed = discord.Embed(title=f"Lobby: {cartridge}", description="Click to join.", color=0x00ff00)
+        embed = discord.Embed(
+            title=presentation.format_lobby_title(cartridge),
+            description=presentation.LOBBY_DESC,
+            color=0x00ff00
+        )
         view = LobbyView(game_id=game_id)
         await chan.send(embed=embed, view=view)
         
         if isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator:
-            await chan.send(ADMIN_WARNING_TEXT)
+            await chan.send(presentation.ADMIN_WARNING)
 
-        await interaction.followup.send(f"Lobby: {chan.mention}")
+        await interaction.followup.send(presentation.format_lobby_created_msg(chan.mention))
 
-    except Exception as e: await interaction.followup.send(f"Failed: {e}")
+    except Exception as e:
+        await interaction.followup.send(presentation.CMD_FAILED.format(error=e))
 
-@cscratch_group.command(name="end", description="Cleanup")
+@cscratch_group.command(name="end", description=presentation.CMD_END_DESC)
 async def end(interaction: discord.Interaction):
-    if not await safe_defer(interaction): return
+    if not await safe_defer(interaction):
+        return
     game = await game_engine.engine.find_game_by_channel(interaction.channel_id)
-    if not game: return await interaction.followup.send("No game.")
-    if str(interaction.user.id) != game.host_id: return await interaction.followup.send("Denied. Host only.")
+    if not game:
+        return await interaction.followup.send(presentation.ERR_NO_GAME)
+    if str(interaction.user.id) != game.host_id:
+        return await interaction.followup.send(presentation.ERR_NOT_HOST)
     
-    await interaction.followup.send("**Teardown.**")
+    await interaction.followup.send(presentation.MSG_TEARDOWN)
     
-    # --- REPORT COST ---
-    input_cost = (game.usage_input_tokens / 1_000_000) * COST_PER_1M_INPUT
-    output_cost = (game.usage_output_tokens / 1_000_000) * COST_PER_1M_OUTPUT
-    total_cost = input_cost + output_cost
-    
-    report = (
-        f"**GAME {game.id} COST REPORT**\n"
-        f"Input: {game.usage_input_tokens} tok (${input_cost:.4f})\n"
-        f"Output: {game.usage_output_tokens} tok (${output_cost:.4f})\n"
-        f"**TOTAL: ${total_cost:.4f}**"
+    # Use presentation logic for cost reporting
+    report = presentation.build_cost_report(
+        game_id=game.id,
+        input_tokens=game.usage_input_tokens,
+        output_tokens=game.usage_output_tokens
     )
+
     await client.announce_state(report)
     
     if game.interface.category_id:
@@ -218,29 +218,29 @@ async def end(interaction: discord.Interaction):
 class LobbyView(discord.ui.View):
     def __init__(self, game_id): super().__init__(timeout=None); self.game_id = game_id
     
-    @discord.ui.button(label="Join", style=discord.ButtonStyle.green, custom_id="join_btn")
+    @discord.ui.button(label=presentation.BTN_JOIN, style=discord.ButtonStyle.green, custom_id="join_btn")
     async def join_button(self, interaction, button):
         if not await safe_defer(interaction): return
         try:
             await game_engine.engine.join_game(self.game_id, str(interaction.user.id), interaction.user.name)
-            await interaction.followup.send(f"**{interaction.user.name}** joined!")
+            await interaction.followup.send(presentation.format_player_joined(interaction.user.name))
             if isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator:
-                await interaction.channel.send(ADMIN_WARNING_TEXT)
+                await interaction.channel.send(presentation.ADMIN_WARNING)
         except Exception as e: await interaction.followup.send(f"Error {e}", ephemeral=True)
 
-    @discord.ui.button(label="Start", style=discord.ButtonStyle.danger, custom_id="start_btn")
+    @discord.ui.button(label=presentation.BTN_START, style=discord.ButtonStyle.danger, custom_id="start_btn")
     async def start_button(self, interaction, button):
         if not await safe_defer(interaction):
             return
 
         game = await persistence.db.get_game_by_id(self.game_id)
         if not game or str(interaction.user.id) != game.host_id:
-            return await interaction.followup.send("Only the host may start the game")
+            return await interaction.followup.send(presentation.ERR_NOT_HOST_START)
         
         # 1. Start game and get initial metadata/messages
         res = await game_engine.engine.launch_match(self.game_id)
         if not res:
-            return await interaction.followup.send("Error")
+            return await interaction.followup.send(presentation.ERR_GENERIC)
         
         # 2. CREATE CHANNELS (Ops)
         if res.get('channel_ops'):
@@ -249,7 +249,7 @@ class LobbyView(discord.ui.View):
         # 3. Send immediate messages (Intro messages)
         await game_engine.engine.dispatch_immediate_result(self.game_id, res)
         self.stop()
-        await interaction.followup.send(f"Starting game")
+        await interaction.followup.send(presentation.MSG_STARTING)
         
         # 4. LIFECYCLE HOOK: Post-Start
         # Channels exist, messages sent. Now we trigger the "Wake Up Protocol" logic.

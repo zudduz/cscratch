@@ -10,15 +10,17 @@ from .board import GameConfig
 from . import tools as drone_tools 
 from . import ai_templates
 from . import commands
+from .ui_templates import FosterPresenter
 
 class FosterProtocol:
     def __init__(self):
         default_state = Caisson()
         self.meta = {
             "name": "The Foster Protocol",
-            "version": "2.47",
+            "version": "2.48",
             **default_state.model_dump()
         }
+        self.presenter = FosterPresenter()
 
     async def on_game_start(self, generic_state: dict) -> Dict[str, Any]:
         game_data = Caisson(**generic_state.get('metadata', {}))
@@ -27,19 +29,16 @@ class FosterProtocol:
             return { "metadata": game_data.model_dump() }
 
         saboteur_index = random.randint(0, len(discord_players) - 1)
-        channel_ops = []
-        messages = []
-
-        channel_ops.append({ "op": "create", "key": "aux-comm", "name": "aux-comm", "audience": "public" })
-        channel_ops.append({ "op": "create", "key": "black-box", "name": "black-box-logs", "audience": "hidden", "init_msg": "FLIGHT RECORDER ACTIVE." })
-        messages.append({ "channel": "aux-comm", "content": "VENDETTA OS v9.0 ONLINE." })
+        
+        # Logic calculates roles, Presenter defines the channel ops
+        channel_ops = await self.presenter.list_channel_ops(discord_players, saboteur_index)
+        
+        # Initial Message buffer (Engine handles these differently than direct sends)
+        messages = [{ "channel": "aux-comm", "content": "VENDETTA OS v9.0 ONLINE" }]
 
         for i, p_data in enumerate(discord_players):
             u_id = p_data['id']
             u_name = p_data['name']
-            
-            channel_key = f"nanny_{u_id}"
-            channel_ops.append({ "op": "create", "key": channel_key, "name": f"nanny-port-{u_name}", "audience": "private", "user_id": u_id })
             
             game_data.players[u_id] = Player(role="loyal", name=u_name)
             
@@ -47,7 +46,6 @@ class FosterProtocol:
                 drone_id = f"unit_{random.randint(0, 999):03d}"
                 if drone_id not in game_data.drones:
                     break
-            
             
             drone_role = "saboteur" if (i == saboteur_index) else "loyal"
             game_data.drones[drone_id] = Drone(
@@ -73,13 +71,12 @@ class FosterProtocol:
 
     async def _generate_intro(self, drone, game_data, ctx, tools):
         try:
-            channel_key = f"nanny_{drone.foster_id}"
             sys_prompt, user_msg = ai_templates.compose_intro_turn(drone.id, game_data)
             
             resp = await tools.ai.generate_response(
                 sys_prompt, f"{ctx.game_id}_drone_{drone.id}", user_msg, drone.model_version, game_id=ctx.game_id
             )
-            await ctx.send(channel_key, resp)
+            await self.presenter.send_private_message(ctx, drone.foster_id, resp)
             drone.night_chat_log.append(f"SELF (Intro): {resp}")
         except Exception as e:
             logging.error(f"Intro failed for {drone.id}: {e}")
@@ -118,7 +115,6 @@ class FosterProtocol:
                 game_id=game_id
             )
 
-            # --- PARSING FIX: Handle Python List Output ---
             # The model sometimes returns a list of strings instead of a single string.
             if isinstance(response_text, list):
                 response_text = "\n".join(str(item) for item in response_text)
@@ -149,18 +145,17 @@ class FosterProtocol:
         for drone in game_data.drones.values():
             if not drone.can_talk:
                 continue
-            channel_key = f"nanny_{drone.foster_id}"
-            tasks.append(self._speak_single_drone(ctx, tools, drone, game_data, instruction, channel_key))
+            tasks.append(self._speak_single_drone(ctx, tools, drone, game_data, instruction))
         if tasks: await asyncio.gather(*tasks)
 
-    async def _speak_single_drone(self, ctx, tools, drone, game_data, instruction, channel_key):
+    async def _speak_single_drone(self, ctx, tools, drone, game_data, instruction):
         try:
             sys_prompt, user_msg = ai_templates.compose_speak_turn(drone.id, game_data, instruction)
             
             resp = await tools.ai.generate_response(
                 sys_prompt, f"{ctx.game_id}_drone_{drone.id}", user_msg, drone.model_version, game_id=ctx.game_id
             )
-            await ctx.send(channel_key, resp)
+            await self.presenter.send_private_message(ctx, drone.foster_id, resp)
         except Exception: pass
 
     async def _send_public_eulogy(self, ctx, tools, drone, game_data):
@@ -170,10 +165,7 @@ class FosterProtocol:
             resp = await tools.ai.generate_response(
                 sys_prompt, f"{ctx.game_id}_drone_{drone.id}", user_msg, drone.model_version, game_id=ctx.game_id
             )
-            display_name = drone.name if drone.name else drone.id
-            role_reveal = f"**ANALYSIS:** DRONE WAS [{drone.role.upper()}]."
-            msg = f"**DECOMMISSION LOG - {display_name}:**\n{role_reveal}\n*\"{resp}\"*"
-            await ctx.send("aux-comm", msg)
+            await self.presenter.report_drone_eulogy(ctx, drone, resp)
         except Exception as e:
             logging.error(f"Eulogy failed for {drone.id}: {e}")
 
@@ -181,35 +173,26 @@ class FosterProtocol:
         saboteur_drone = next((b for b in game_data.drones.values() if b.role == "saboteur"), None)
         foster_of_saboteur = game_data.players[saboteur_drone.foster_id]
         
-        await ctx.send("black-box", "MISSION ENDED. DECLASSIFYING LOGS...")
-        
-        if victory:
-            final_report = f"MISSION: SUCCESS"
-        else:
-            final_report = f"MISSION: FAILURE\nREASON: {fail_reason}"
-        final_report += f"\nTraitor: Drone {saboteur_drone.id} (Bonded to <@{foster_of_saboteur.name}>)."
-        await ctx.send("aux-comm", final_report)
+        await self.presenter.announce_mission_end_log_reveal(ctx)
+        await self.presenter.report_mission_summary(ctx, victory, fail_reason, saboteur_drone, foster_of_saboteur.name)
         
         tasks = []
         for drone in game_data.drones.values():
             if drone.status == "destroyed":
                  continue
             
-            channel_key = f"nanny_{drone.foster_id}"
-            
-            # Logic for status note moved into templates.py for cleaner separation, 
-            # but we call the turn composer here.
+            # Logic for status note handled in templates
             sys_prompt, user_msg = ai_templates.compose_epilogue_turn(drone.id, game_data, victory, fail_reason)
-            tasks.append(self._generate_epilogue_response(ctx, tools, drone, sys_prompt, user_msg, channel_key))
+            tasks.append(self._generate_epilogue_response(ctx, tools, drone, sys_prompt, user_msg))
             
         if tasks:
             await asyncio.gather(*tasks)
 
     # Helper for the loop above
-    async def _generate_epilogue_response(self, ctx, tools, drone, sys, user, channel_key):
+    async def _generate_epilogue_response(self, ctx, tools, drone, sys, user):
         try:
              resp = await tools.ai.generate_response(sys, f"{ctx.game_id}_epilogue_{drone.id}", user, drone.model_version, game_id=ctx.game_id)
-             await ctx.send(channel_key, resp)
+             await self.presenter.send_private_message(ctx, drone.foster_id, resp)
         except:
             pass
 
@@ -226,20 +209,16 @@ class FosterProtocol:
         }
 
     async def execute_day_simulation(self, game_data: Caisson, ctx, tools) -> Dict[str, Any]:
-        
         try:
-            logging.info("--- Phase: REM Sleep (Dreaming) ---")
             await self.process_dreams(game_data, tools)
 
             game_data.daily_logs.clear()
             for b in game_data.drones.values():
                 b.daily_memory.clear()
             
-            
             for hour in range(1, GameConfig.HOURS_PER_SHIFT + 1):
                 await asyncio.sleep(2) 
                 active_drones = [b for b in game_data.drones.values() if b.status == "active"]
-                
                 random.shuffle(active_drones)
                 hourly_activity = False 
                 
@@ -251,16 +230,11 @@ class FosterProtocol:
                         drone = res['drone']
                         result = res['result']
                         
+                        # TODO this is janky. Fix it.
                         if drone.status == "destroyed" and "Disassembly" in result.message:
                             await self._send_public_eulogy(ctx, tools, drone, game_data)
 
-                        role_icon = "[SABOTEUR]" if drone.role == "saboteur" else "[LOYAL]"
-                        display_id = f"{drone.name} ({drone.id})" if drone.name else drone.id
-                        inv_str = str(drone.inventory) if drone.inventory else "[]"
-                        status_str = f"[Bat:{drone.battery}% | Loc:{drone.location_id} | Inv:{inv_str}]"
-                        
-                        bb_msg = f"**[H{hour}] {role_icon} {display_id}** {status_str}\n*{res['thought']}*\n>> `{res['action'].get('tool')}` -> {result.message}"
-                        await ctx.send("black-box", bb_msg)
+                        await self.presenter.report_blackbox_event(ctx, hour, drone, result, res['thought'])
 
                         log_entry = f"[Hour {hour}] {result.message}"
                         drone.daily_memory.append(log_entry)
@@ -270,80 +244,60 @@ class FosterProtocol:
                             for w in witnesses: w.daily_memory.append(f"[Hour {hour}] I saw {drone.id}: {result.message}")
                                 
                         if result.visibility == "global":
-                            public_msg = f"[HOUR {hour}] {result.message}"
-                            
+                            public_msg = await self.presenter.report_public_event(ctx, hour, result.message)
                             game_data.daily_logs.append(public_msg)
-                            await ctx.send("aux-comm", public_msg) 
                             hourly_activity = True
                             
                     except Exception as e:
-                        logging.error(f"--- [CRITICAL] Error running turn for drone {drone.id}: {e}", exc_info=True)
+                        logging.error(f"Error running turn for drone {drone.id}: {e}", exc_info=True)
 
                 if not hourly_activity:
-                    game_data.daily_logs.append(f"[HOUR {hour}] Ship systems nominal.")
-                    await ctx.send("aux-comm", f"[HOUR {hour}] Ship systems nominal.")
+                    msg = await self.presenter.report_hourly_status_nominal(ctx, hour)
+                    game_data.daily_logs.append(msg)
 
             living_crew = sum(1 for p in game_data.players.values() if p.alive)
             total_crew = len(game_data.players)
             
             drop_calc = int(GameConfig.OXYGEN_BASE_LOSS * (living_crew / total_crew))
-            
             game_data.consume_oxygen(drop_calc)
             
             current_cycle = game_data.cycle
-            
-            # Requirement for the cycle that JUST finished
             req_today = int(GameConfig.FUEL_REQ_BASE * ((GameConfig.FUEL_REQ_GROWTH_PERCENT / 100) ** (current_cycle - 1)))
-            
-            # Requirement for the UPCOMING cycle (The Oberth penalty)
             req_tomorrow = int(GameConfig.FUEL_REQ_BASE * ((GameConfig.FUEL_REQ_GROWTH_PERCENT / 100) ** current_cycle))
             
-            logging.info(f"--- [DEBUG] Cycle {current_cycle} | Fuel: {game_data.fuel}/{req_today} | O2: {game_data.oxygen} ---")
-
-            # Increment Cycle
             game_data.cycle += 1
             
-            report = (
-                f"**CYCLE {current_cycle} REPORT**\n"
-                f"Oxygen: {game_data.oxygen}% (-{drop_calc}%/day)\n"
-                f"Fuel Status: {game_data.fuel}% / {req_today}% Required"
+            await self.presenter.report_cycle_status(
+                ctx, current_cycle, game_data.oxygen, drop_calc, game_data.fuel, req_today
             )
 
             channel_ops = []
             
             if game_data.fuel >= req_today:
-                await ctx.send("aux-comm", report + "\nSUCCESS SUFFICIENT FUEL FOR ESCAPE VELOCITY. INITIATING BURN...")
+                await self.presenter.report_victory(ctx)
                 await self.generate_epilogues(game_data, ctx, tools, victory=True)
                 await ctx.end()
                 channel_ops.append({"op": "reveal", "key": "black-box"}) 
                 
             elif req_tomorrow > GameConfig.MAX_POSSIBLE_FUEL_REQ:
-                await ctx.send("aux-comm", report)
-                await ctx.send("aux-comm", "FATAL. ORBITAL DECAY IRREVERSIBLE. REQUIRED FUEL EXCEEDS SHIP CAPACITY.")
-                await self.generate_epilogues(game_data, ctx, tools, victory=False, fail_reason="Required Fuel Exceeds Ships Capacity")
+                await self.presenter.report_failure_orbital_decay(ctx)
+                await self.generate_epilogues(game_data, ctx, tools, victory=False, fail_reason="Required fuel exceeds ships capacity")
                 await ctx.end()
                 channel_ops.append({"op": "reveal", "key": "black-box"})
                 
             else:
-                report += f"\nBurn Window Missed. Atmospheric Drag detected.\n**Tomorrow's Fuel Target: {req_tomorrow}%**"
-                await ctx.send("aux-comm", report)
+                await self.presenter.report_cycle_continuation(ctx, req_tomorrow)
                 
                 # --- AUTO-CONTINUE CHECK ---
                 if game_data.is_ready_for_day:
-                    # If O2 is gone, we announce it once here.
                     if game_data.oxygen <= 0:
-                        logging.info("--- [DEBUG] O2 is 0. Triggering Stasis Message. ---")
-                        await ctx.send("aux-comm", "**OXYGEN DEPLETED. STASIS ENGAGED.**\nThe Crew sleeps. The Drones must continue alone.")
+                        await self.presenter.report_stasis_engaged(ctx)
 
-                    # Ensure phase is set to day
                     game_data.phase = "day"
-                    
-                    # Schedule next day immediately
                     ctx.schedule(self.execute_day_simulation(game_data, ctx, tools))
                 
                 else:
-                    # Normal Night Phase
-                    await self.speak_all_drones(game_data, ctx, tools, "The work day is over. Briefly report your status to your Parent.")
+                    await self.speak_all_drones(game_data, ctx, tools, format_drone_checkin())
                     game_data.phase = "night"
 
             result = game_data.model_dump()
@@ -351,8 +305,8 @@ class FosterProtocol:
             return result
             
         except Exception as e:
-            logging.error(f"--- [FATAL CRASH] execute_day_simulation died: {e}", exc_info=True)
-            await ctx.send("aux-comm", f"SYSTEM ERROR. Simulation Halted: {str(e)}")
+            logging.error(f"execute_day_simulation died: {e}", exc_info=True)
+            await self.presenter.send_system_error(ctx, str(e))
             return None
 
     async def handle_input(self, generic_state: dict, user_input: str, ctx, tools) -> Dict[str, Any]:
@@ -363,7 +317,7 @@ class FosterProtocol:
         
         # 1. Block Input During Day
         if game_data.phase == "day":
-            await ctx.reply("Day Cycle in progress. You are sleeping now. Pretend to snore or something.")
+            await self.presenter.reply_day_phase_active(ctx)
             return None
         
         # 2. Command Dispatcher
@@ -392,10 +346,10 @@ class FosterProtocol:
         my_drone = next((b for b in game_data.drones.values() if b.foster_id == user_id), None)
         if my_drone:
             if not my_drone.can_talk:
-                await ctx.reply("**NO DRONE PRESENT.**")
+                await self.presenter.reply_no_drone_present(ctx)
                 return None
 
-            log_line = f"PARENT: {user_input}"
+            log_line = ai_templates.format_parent_log_line(user_input)
             my_drone.night_chat_log.append(log_line)
             
             sys_prompt, user_msg = ai_templates.compose_nanny_chat_turn(

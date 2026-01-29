@@ -169,3 +169,9 @@ def compose_epilogue_turn(drone_id: str, game_data: Caisson, victory: bool, fail
         status_note=context_note
     )
     return system_prompt, user_input
+
+def format_parent_log_line(input: str) -> str:
+    return f"PARENT: {input}"
+
+def format_drone_checkin() -> str:
+    return "The work day is over. Briefly report your status to your Parent."

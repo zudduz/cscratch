@@ -63,7 +63,7 @@ async def test_input_blocked_during_day_phase(cartridge, mock_ctx, mock_tools, b
     await cartridge.handle_input({"metadata": base_state}, "!destroy d1", mock_ctx, mock_tools)
     
     # Should reply with snarky message, not execute command
-    mock_ctx.reply.assert_called_with("Day Cycle in progress. You are sleeping now. Pretend to snore or something.")
+    mock_ctx.reply.assert_called_with("Day cycle in progress\nYou are sleeping now\nPretend to snore or something")
     assert "d1" not in base_state['station']['pending_deactivation'] # Should not have triggered
 
 @pytest.mark.asyncio

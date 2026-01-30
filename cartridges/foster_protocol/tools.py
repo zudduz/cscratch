@@ -2,11 +2,13 @@ import logging
 import random
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Dict, Any, Tuple, Optional, List
+from typing import Dict, Any, Tuple, Optional, List, Literal
 
-# Assuming these exist in your project structure
+from pydantic import create_model, Field
+
 from .models import Caisson, Drone
 from .board import GameConfig, Room
+from . import ai_templates  # Imported for Schema descriptions
 
 @dataclass
 class ToolExecutionResult:
@@ -411,6 +413,23 @@ TOOL_REGISTRY: Dict[str, BaseTool] = {
     "wait": WaitTool(),
 }
 
+
+def create_strict_action_model():
+    """
+    Creates a Pydantic model where 'tool' is restricted to AVAILABLE_TOOLS.
+    This ensures the AI Schema strictly matches the TOOL_REGISTRY.
+    """
+    # Create the Literal Type dynamically
+    available_tools = list(TOOL_REGISTRY.keys())
+    ToolEnum = Literal[tuple(available_tools)]
+
+    return create_model(
+        'DroneActionStrict',
+        thought_chain=(str, Field(..., description=ai_templates.SCHEMA_THOUGHT_CHAIN_DESC)),
+        tool=(ToolEnum, Field(..., description=f"{ai_templates.SCHEMA_TOOL_DESC_PREFIX}{available_tools}")),
+        args=(Dict[str, Any], Field(default_factory=dict, description=ai_templates.SCHEMA_ARGS_DESC))
+    )
+
 def execute_tool(tool_name: str, args: Dict, drone_id: str, game: Caisson) -> ToolExecutionResult:
     """Dispatches a command to the appropriate tool instance."""
     actor = game.drones.get(drone_id)
@@ -419,6 +438,7 @@ def execute_tool(tool_name: str, args: Dict, drone_id: str, game: Caisson) -> To
 
     tool_instance = TOOL_REGISTRY.get(tool_name)
     if not tool_instance:
+        # Fallback to InvalidTool to handle the error gracefullly with context
         tool_instance = InvalidTool()
         args = args.copy()
         args["_command"] = tool_name

@@ -3,7 +3,13 @@ from typing import Dict, Any, Tuple
 from jinja2 import Environment, FileSystemLoader
 from .board import GameConfig
 from .models import Caisson
-from .tools import TOOL_REGISTRY 
+
+SCHEMA_THOUGHT_CHAIN_DESC = (
+    "Internal monologue and tactical reasoning. Analyze battery, threats, and goal. "
+    "MUST be written BEFORE deciding the tool."
+)
+SCHEMA_TOOL_DESC_PREFIX = "The tool to execute. Must be strictly one of: "
+SCHEMA_ARGS_DESC = "Arguments for the selected tool (e.g., target_id, room_id)."
 
 # --- JINJA2 SETUP ---
 _CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -32,6 +38,9 @@ def _get_base_prompt() -> str:
     global _CACHED_BASE_PROMPT
     
     if _CACHED_BASE_PROMPT is None:
+        # Import internally to avoid Circular Import with tools.py
+        from .tools import TOOL_REGISTRY
+        
         context = {k: v for k, v in vars(GameConfig).items() if not k.startswith("__")}
         context["tools"] = list(TOOL_REGISTRY.values())
         context["tool_map"] = TOOL_REGISTRY
@@ -89,14 +98,17 @@ def compose_intro_turn(drone_id: str, game_data: Caisson) -> Tuple[str, str]:
 def compose_tactical_turn(context_data: Dict[str, Any]) -> Tuple[str, str]:
     """
     The main game loop turn.
-    (Note: tactical turn is unique as it uses a shorter 'Tactical Mindset' system prompt, 
-    not the full identity prompt, so it doesn't use _compose_dynamic_system_prompt)
     """
     system = render("drone_day.md.j2")
     
     # User
     context_str = render("turn_context.md.j2", **context_data)
-    protocol_str = render("turn_thought_protocol.md.j2", end_hour=GameConfig.HOURS_PER_SHIFT)
+    
+    protocol_str = render(
+        "turn_thought_protocol.md.j2", 
+        end_hour=GameConfig.HOURS_PER_SHIFT,
+        schema=context_data.get("schema") 
+    )
     
     user_input = f"{context_str}\n\n{protocol_str}"
     return system, user_input

@@ -1,11 +1,12 @@
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional, Tuple, Literal
 import random
 import asyncio
 import logging
 import json
 import ast
 import re
-from .models import Caisson, Drone, Player, DroneAction
+from pydantic import create_model, Field
+from .models import Caisson, Drone, Player
 from .board import GameConfig
 from . import tools as drone_tools 
 from . import ai_templates
@@ -104,7 +105,8 @@ class FosterProtocol:
 
     async def get_drone_action(self, drone, context_data, tools_api, game_id: str) -> tuple[Dict[str, Any], str]:
         try:
-            context_data["schema"] = DroneAction.model_json_schema()
+            context_data["schema"] = self._create_strict_action_model().model_json_schema()
+            
             sys_prompt, user_msg = ai_templates.compose_tactical_turn(context_data)
 
             response_text = await tools_api.ai.generate_response(
@@ -118,10 +120,8 @@ class FosterProtocol:
 
             try:
                 data = json.loads(response_text)
-                # If thought_chain is missing, default it
-                thought = data.get("thought_chain", "Processing...")
+                thought = data.get("thought_chain", "Drone acted without thinking")
                 
-                # Construct tool call format expected by engine
                 tool_call = {
                     "tool": data.get("tool", "wait"),
                     "args": data.get("args", {})

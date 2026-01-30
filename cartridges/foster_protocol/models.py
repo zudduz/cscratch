@@ -46,12 +46,6 @@ class Drone(BaseModel):
     def can_talk(self) -> bool:
         return self.status == "active" and self.location_id == "stasis_bay"
 
-class DroneAction(BaseModel):
-    thought_chain: str = Field(
-        description="Internal monologue and tactical reasoning. MUST be written BEFORE deciding the tool.")
-    tool: str = Field(description="The name of the tool to execute (e.g., 'move', 'gather').")
-    args: Dict[str, Any] = Field(default_factory=dict, description="Arguments for the tool.")
-
 class Caisson(BaseModel):
     version: str = "2.44"
     oxygen: int = GameConfig.INITIAL_OXYGEN

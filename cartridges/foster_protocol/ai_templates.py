@@ -4,7 +4,7 @@ from jinja2 import Environment, FileSystemLoader
 from .board import GameConfig
 from .models import Caisson
 
-SCHEMA_THOUGHT_CHAIN_DESC = "Room for your thoughts"
+SCHEMA_THOUGHT_CHAIN_DESC = "Room for your thoughts."
 SCHEMA_TOOL_DESC_PREFIX = "The tool to execute. Must be strictly one of: "
 SCHEMA_ARGS_DESC = "Arguments for the selected tool (e.g., target_id, room_id)."
 

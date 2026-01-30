@@ -46,23 +46,21 @@ class BaseTool(ABC):
 
     def run(self, context: ToolContext) -> ToolExecutionResult:
         if context.actor.battery <= 0:
-            return ToolExecutionResult(False, "UNIT OFFLINE. Battery 0%.", 0)
-        
-        if self.required_location and self.required_location != context.actor.location_id:
-            return ToolExecutionResult(
+            result = ToolExecutionResult(False, "UNIT OFFLINE. Battery 0%.", 0)
+        elif self.required_location and self.required_location != context.actor.location_id:
+            result = ToolExecutionResult(
                 False, 
                 f"Action requires being in {self.required_location}.", 
                 WaitTool.COST
             )
-        
-        if context.actor.battery < self.COST:
-            return ToolExecutionResult(False, "Insufficient Battery Level.", GameConfig.INVALID_COMMAND_COST)
-
-        is_valid, error_msg = self.validate(context)
-        if not is_valid:
-             return ToolExecutionResult(False, error_msg, self.COST)
-
-        result = self.execute(context)
+        elif context.actor.battery < self.COST:
+            result = ToolExecutionResult(False, "Insufficient Battery Level.", GameConfig.INVALID_COMMAND_COST)
+        else:
+            is_valid, error_msg = self.validate(context)
+            if is_valid:
+                result = self.execute(context)
+            else:
+                result = ToolExecutionResult(False, error_msg, self.COST)
         
         context.actor.battery = max(0, min(100, context.actor.battery - result.cost))
              

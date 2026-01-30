@@ -55,7 +55,15 @@ class AIEngine:
                 _SHARED_MODEL = ChatVertexAI(model_name=model_name, **self.base_config)
             return _SHARED_MODEL
 
-    async def generate_response(self, system_prompt: str, conversation_id: str, user_input: str, model_version: str = "gemini-2.5-flash", game_id: str = None) -> str:
+    async def generate_response(
+        self, 
+        system_prompt: str, 
+        conversation_id: str, 
+        user_input: str, 
+        model_version: str = "gemini-2.5-flash", 
+        game_id: str = None,
+        response_schema: dict = None
+    ) -> str:
         try:
             messages = [
                 SystemMessage(content=system_prompt),
@@ -74,7 +82,18 @@ class AIEngine:
             if target_id:
                 logging.info(f"AI Request: {model.model_name} (Game: {target_id})")
             
-            result = await model.ainvoke(messages)
+            # --- STRUCTURED OUTPUT BINDING ---
+            # If a schema is provided, we bind it to the model for this specific invocation.
+            # This enables "Controlled Generation" (JSON Mode) on Vertex AI.
+            if response_schema:
+                invocation_model = model.bind(
+                    response_mime_type="application/json",
+                    response_schema=response_schema
+                )
+            else:
+                invocation_model = model
+
+            result = await invocation_model.ainvoke(messages)
             
             metadata = result.response_metadata
             finish_reason = metadata.get('finish_reason')

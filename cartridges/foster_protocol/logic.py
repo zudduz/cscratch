@@ -114,7 +114,8 @@ class FosterProtocol:
                 conversation_id=f"tactical_{drone.id}",
                 user_input=user_msg,
                 model_version=drone.model_version,
-                game_id=game_id
+                game_id=game_id,
+                response_schema=context_data["schema"]
             )
 
             # The model sometimes returns a list of strings instead of a single string.

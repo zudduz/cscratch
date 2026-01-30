@@ -55,7 +55,7 @@ class AIEngine:
                 _SHARED_MODEL = ChatVertexAI(model_name=model_name, **self.base_config)
             return _SHARED_MODEL
 
-    async def generate_response(self, system_prompt: str, conversation_id: str, user_input: str, model_version: str = "gemini-2.5-flash", game_id: str = None) -> str:
+    async def generate_response(self, system_prompt: str, conversation_id: str, user_input: str, model_version: str = "gemini-2.5-flash", game_id: str = None, json_mode: bool = False) -> str:
         try:
             messages = [
                 SystemMessage(content=system_prompt),
@@ -65,6 +65,10 @@ class AIEngine:
             # Reuse the shared model/connection pool for Auth caching
             model = await self._get_model(model_version)
             
+            # Configure JSON mode if requested
+            if json_mode:
+                 model = model.bind(generation_config={"response_mime_type": "application/json"})
+
             # Restore your instrumentation logic
             target_id = game_id
             if not target_id and "_" in conversation_id:
@@ -72,7 +76,7 @@ class AIEngine:
                  if len(parts[0]) > 7: target_id = parts[0]
             
             if target_id:
-                logging.info(f"AI Request: {model.model_name} (Game: {target_id})")
+                logging.info(f"AI Request: {model.model_name} (Game: {target_id}) [JSON: {json_mode}]")
             
             result = await model.ainvoke(messages)
             

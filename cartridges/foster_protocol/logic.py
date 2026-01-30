@@ -5,7 +5,7 @@ import logging
 import json
 import ast
 import re
-from .models import Caisson, Drone, Player
+from .models import Caisson, Drone, Player, DroneAction
 from .board import GameConfig
 from . import tools as drone_tools 
 from . import ai_templates
@@ -104,6 +104,7 @@ class FosterProtocol:
 
     async def get_drone_action(self, drone, context_data, tools_api, game_id: str) -> tuple[Dict[str, Any], str]:
         try:
+            context_data["schema"] = DroneAction.model_json_schema()
             sys_prompt, user_msg = ai_templates.compose_tactical_turn(context_data)
 
             response_text = await tools_api.ai.generate_response(
@@ -111,33 +112,31 @@ class FosterProtocol:
                 conversation_id=f"tactical_{drone.id}",
                 user_input=user_msg,
                 model_version=drone.model_version,
-                game_id=game_id
+                game_id=game_id,
+                json_mode=True
             )
 
-            # The model sometimes returns a list of strings instead of a single string.
-            if isinstance(response_text, list):
-                response_text = "\n".join(str(item) for item in response_text)
-
-            match = re.search(r"\{.*\}", response_text, re.DOTALL)
-            if match:
-                json_text = match.group(0)
-                pre_text = response_text[:match.start()].strip()
-                post_text = response_text[match.end():].strip()
-                thought_text = "Processing..."
-                if pre_text:
-                    thought_text = pre_text.replace("```json", "").replace("```", "").strip()
-                elif post_text:
-                    thought_text = post_text.replace("```json", "").replace("```", "").strip()
+            try:
+                data = json.loads(response_text)
+                # If thought_chain is missing, default it
+                thought = data.get("thought_chain", "Processing...")
                 
-                return json.loads(json_text), thought_text
-
-            logging.warning(f"Drone {drone.id} Brain freeze. Full Response:\n{response_text}")
-            return {"tool": "wait", "args": {}}, "System Error: (No JSON)."
+                # Construct tool call format expected by engine
+                tool_call = {
+                    "tool": data.get("tool", "wait"),
+                    "args": data.get("args", {})
+                }
+                
+                return tool_call, thought
+                
+            except json.JSONDecodeError:
+                logging.error(f"Drone {drone.id} emitted invalid JSON in JSON Mode: {response_text}")
+                return {"tool": "wait", "args": {}}, "System Error: Malformed JSON."
 
         except Exception as e:
             raw_text = locals().get('response_text', 'NO_RESPONSE_GENERATED')
-            logging.error(f"Drone {drone.id} brain freeze: {e}\nCaused by Input:\n{raw_text}")
-            return {"tool": "wait", "args": {}}, f"Brain Freeze: {str(e)}"
+            logging.error(f"Drone {drone.id} fatal error: {e}\nCaused by Input:\n{raw_text}")
+            return {"tool": "wait", "args": {}}, f"Fatal Error: {str(e)}"
 
     async def speak_all_drones(self, game_data, ctx, tools, instruction):
         tasks = []

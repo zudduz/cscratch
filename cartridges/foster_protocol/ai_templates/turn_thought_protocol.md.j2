@@ -11,6 +11,8 @@ CHECK TIME. If Hour {{ end_hour }}, you MUST move to 'stasis_bay'. If Battery < 
 STATUS CHECK: Observe if targets are already OFFLINE before committing battery to them.
 
 OUTPUT FORMAT:
-Write your thoughts first. Then output the JSON block.
+Respond with a SINGLE valid JSON object.
+Use the thought_chain field to reason step-by-step BEFORE selecting your tool.
 
-{ "tool": "charge", "args": {} }
+Schema:
+{{ schema }}

@@ -269,25 +269,24 @@ class LobbyView(discord.ui.View):
 
 @client.event
 async def on_message(message):
-    if system_state.shutting_down: return
-    if message.author == client.user: return
+    if system_state.shutting_down:
+        return
+    if message.author == client.user:
+        return
+    if not await persistence.db.lock_event(message.id):
+        return
     
     channel_id = str(message.channel.id)
     
-    # 1. MEMORY CHECK (Instant)
     game_id = client.active_game_channels.get(channel_id)
-    
-    # 2. INDEX LOOKUP (Fast Failover)
     if not game_id:
         game_id = await persistence.db.get_game_id_by_channel_index(channel_id)
         if game_id:
-            # Cache Hit! Update memory for next time.
             client.active_game_channels[channel_id] = game_id
             
-    if not game_id: return # Not a game message
+    if not game_id:
+        return
 
-    if not await persistence.db.lock_event(message.id): return
     try:
-        # Pass the resolved game_id to skip the O(N) scan
         await game_engine.engine.dispatch_input(channel_id, str(message.author.id), message.author.name, message.content, known_game_id=game_id)
     except Exception as e: logging.error(f"Input Error: {e}")

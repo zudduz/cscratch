@@ -102,7 +102,7 @@ async def test_dispatch_input_success(engine, mock_db):
     mock_db.get_game_by_id.return_value = fake_game
 
     # 2. Action
-    await engine.dispatch_input(channel_id, "u2", "Player2", "Hello World")
+    await engine.dispatch_input(channel_id, "u2", "Player2", "Hello World", "game_555")
 
     # 3. Verify
     # Should call update_game_metadata_fields with the result from MockCartridge
@@ -117,12 +117,12 @@ async def test_dispatch_input_success(engine, mock_db):
 async def test_dispatch_input_ignored_if_game_ended(engine, mock_db):
     channel_id = "chan_dead"
     fake_game = GameState(
-        id="g_dead", story_id="test", host_id="u1", status="ended", # <--- ENDED
+        id="g_dead", story_id="test", host_id="u1", status="ended",
         created_at="2024-01-01"
     )
     mock_db.get_game_by_channel_id.return_value = fake_game
 
-    await engine.dispatch_input(channel_id, "u1", "me", "ping")
+    await engine.dispatch_input(channel_id, "u1", "me", "ping", "g_dead")
 
     # Should NOT hit the DB update
     mock_db.update_game_metadata_fields.assert_not_called

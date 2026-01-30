@@ -48,6 +48,7 @@ DUMMY_CONTEXT.update({
     "hour": 7,
     "end_hour": 8,
     "inventory": ["fuel_canister", "plasma_torch"],
+    "schema": "schema",
     
     # Instructions & Speak
     "instruction": "Report status.",

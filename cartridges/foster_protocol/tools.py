@@ -425,7 +425,7 @@ def create_strict_action_model():
 
     return create_model(
         'DroneActionStrict',
-        thought_chain=(str, Field(..., description=ai_templates.SCHEMA_THOUGHT_CHAIN_DESC)),
+        # thought_chain=(str, Field(..., description=ai_templates.SCHEMA_THOUGHT_CHAIN_DESC)),
         tool=(ToolEnum, Field(..., description=f"{ai_templates.SCHEMA_TOOL_DESC_PREFIX}{available_tools}")),
         args=(Dict[str, Any], Field(default_factory=dict, description=ai_templates.SCHEMA_ARGS_DESC))
     )

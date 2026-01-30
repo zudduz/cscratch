@@ -117,9 +117,13 @@ class FosterProtocol:
                 game_id=game_id
             )
 
+            # The model sometimes returns a list of strings instead of a single string.
+            if isinstance(response_text, list):
+                response_text = "\n".join(str(item) for item in response_text)
+
             if not response_text:
-                logging.error(f"Drone {drone.id} silenced by AI Safety protocols.")
-                return {"tool": "invalid", "args": {}}, "Safety Protocol Engaged (Silent)."
+                logging.error(f"Drone {drone.id} returned empty string.")
+                return {"tool": "invalid", "args": {}}, "Drone provided empty response."
 
             # Find the first valid JSON block { ... } matching curly braces
             match = re.search(r"(\{.*\})", response_text, re.DOTALL)

@@ -20,18 +20,18 @@ CMD_END_DESC = "Cleanup"
 
 # Lobby & Admin
 ADMIN_WARNING = (
-    "**FAIR PLAY NOTICE**\n"
-    "To the Administrator: You have permissions to view ALL private channels.\n"
-    "**FOR A FAIR GAME:** Please **MUTE** or **COLLAPSE** the private channels of other players.\n"
+    "**Fair play notice**\n"
+    "To the Administrator: You have permissions to view all private channels.\n"
+    "**FOR A FAIR GAME:** Please **mute** or **collapse** the private channels of other players.\n"
     "*The Protocol relies on trust.*"
 )
 
-LOBBY_DESC = "Click to join."
+LOBBY_DESC = "Click to join"
 CMD_FAILED = "Failed: {error}"
 
 # Errors & Status
-ERR_NO_GAME = "No game."
-ERR_NOT_HOST = "Denied. Host only."
+ERR_NO_GAME = "No game"
+ERR_NOT_HOST = "Denied. Host only"
 MSG_TEARDOWN = "**Teardown.**"
 
 # Interaction UI
@@ -40,7 +40,7 @@ BTN_START = "Start"
 BTN_DELETE_CHANNELS = "Delete Channels"
 
 EMBED_TITLE_ENDED = "Game Complete"
-EMBED_DESC_ENDED = "The game has concluded. The host may now delete the channels."
+EMBED_DESC_ENDED = "The host may now delete the channels"
 
 ERR_NOT_HOST_START = "Only the host may start the game"
 ERR_GENERIC = "Error"

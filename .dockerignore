@@ -1,0 +1,49 @@
+# --- Version Control & Metadata ---
+.git
+.gitignore
+.dockerignore
+cloudbuild.yaml
+
+# --- Development Environments ---
+.idx/
+.vscode/
+.idea/
+venv/
+env/
+
+# --- Testing & QA ---
+tests/
+conftest.py
+pytest.ini
+htmlcov/
+.coverage
+.tox/
+.nox/
+
+# --- Python Bytecode & Cache ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# --- Documentation & Logs ---
+*.log
+*.md
+docs/
+
+# --- Dev Tools & Scripts (Not needed in Prod) ---
+ops_server.py
+pack_repo.py
+keep_cloud_alive.sh
+*.sh
+
+# --- Local Configs & Secrets (Safety Net) ---
+.env
+.env.*
+*.json
+!app/*.json
+!cartridges/*.json
+!*.json

@@ -5,7 +5,6 @@ import logging
 import json
 import ast
 import re
-from pydantic import create_model, Field
 from .models import Caisson, Drone, Player
 from .board import GameConfig
 from . import tools as drone_tools 
@@ -105,7 +104,8 @@ class FosterProtocol:
 
     async def get_drone_action(self, drone, context_data, tools_api, game_id: str) -> tuple[Dict[str, Any], str]:
         try:
-            context_data["schema"] = drone_tools.create_strict_action_model().model_json_schema()
+            # INJECT SCHEMA (for guidance only)
+            context_data["schema"] = DroneAction.model_json_schema()
             
             sys_prompt, user_msg = ai_templates.compose_tactical_turn(context_data)
 
@@ -114,25 +114,34 @@ class FosterProtocol:
                 conversation_id=f"tactical_{drone.id}",
                 user_input=user_msg,
                 model_version=drone.model_version,
-                game_id=game_id,
-                json_mode=True
+                game_id=game_id
             )
 
-            try:
-                clean_text = response_text.replace("```json", "").replace("```", "").strip()
-                data = json.loads(clean_text)
-                thought = data.get("thought_chain", "Drone acted without thinking")
-                
-                tool_call = {
-                    "tool": data.get("tool", "wait"),
-                    "args": data.get("args", {})
-                }
-                
-                return tool_call, thought
-                
-            except json.JSONDecodeError:
-                logging.error(f"Drone {drone.id} emitted invalid JSON in JSON Mode: {response_text}")
-                return {"tool": "wait", "args": {}}, "System Error: Malformed JSON."
+            if not response_text:
+                logging.error(f"Drone {drone.id} silenced by AI Safety protocols.")
+                return {"tool": "invalid", "args": {}}, "Safety Protocol Engaged (Silent)."
+
+            # Find the first valid JSON block { ... } matching curly braces
+            match = re.search(r"(\{.*\})", response_text, re.DOTALL)
+            
+            if match:
+                clean_json = match.group(1)
+                try:
+                    data = json.loads(clean_json)
+                    thought = response_text
+                    
+                    tool_call = {
+                        "tool": data.get("tool", "wait"),
+                        "args": data.get("args", {})
+                    }
+                    return tool_call, thought
+                    
+                except json.JSONDecodeError:
+                    logging.error(f"Drone {drone.id} emitted invalid JSON: {clean_json}")
+                    return {"tool": "wait", "args": {}}, "System Error: Malformed JSON."
+            else:
+                logging.error(f"Drone {drone.id} output no JSON block: {response_text}")
+                return {"tool": "wait", "args": {}}, "System Error: No Action Data."
 
         except Exception as e:
             raw_text = locals().get('response_text', 'NO_RESPONSE_GENERATED')

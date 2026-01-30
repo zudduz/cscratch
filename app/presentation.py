@@ -37,6 +37,11 @@ MSG_TEARDOWN = "**Teardown.**"
 # Interaction UI
 BTN_JOIN = "Join"
 BTN_START = "Start"
+BTN_DELETE_CHANNELS = "Delete Channels"
+
+EMBED_TITLE_ENDED = "Game Complete"
+EMBED_DESC_ENDED = "The game has concluded. The host may now delete the channels."
+
 ERR_NOT_HOST_START = "Only the host may start the game"
 ERR_GENERIC = "Error"
 MSG_STARTING = "Starting game"

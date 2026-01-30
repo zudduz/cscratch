@@ -79,6 +79,61 @@ class ChickenBot(commands.Bot):
         except Exception as e:
             logging.error(f"Unlock Failed: {e}")
 
+    async def cleanup_game_channels(self, guild, interface: dict):
+        """Shared logic to delete channels and category."""
+        if not interface: return
+
+        # 1. Delete Category and Channels
+        cat_id = interface.get('category_id')
+        if cat_id:
+            try:
+                cat = guild.get_channel(int(cat_id))
+                if cat:
+                    for c in cat.channels: 
+                        try:
+                            cid = str(c.id)
+                            await c.delete()
+                            
+                            # CLEANUP CACHE & INDEX
+                            if cid in self.active_game_channels: 
+                                del self.active_game_channels[cid]
+                            await persistence.db.remove_channel_association(cid)
+                        except Exception as e:
+                            logging.warning(f"Failed to delete channel {c.id}: {e}")
+
+                    await cat.delete()
+            except Exception as e:
+                logging.error(f"Category cleanup failed: {e}")
+
+    async def lock_channels(self, game_id: str, interface_data: dict):
+        """
+        Called by GameEngine when the game ends naturally.
+        Displays the 'End Game' button in the lobby.
+        """
+        game = await persistence.db.get_game_by_id(game_id)
+        if not game: return
+
+        # 1. Announce Costs
+        report = presentation.build_cost_report(
+            game_id=game.id,
+            input_tokens=game.usage_input_tokens,
+            output_tokens=game.usage_output_tokens
+        )
+        await self.announce_state(report)
+
+        # 2. Show Button in Lobby
+        main_chan_id = interface_data.get('main_channel_id')
+        if main_chan_id:
+            channel = self.get_channel(int(main_chan_id))
+            if channel:
+                embed = discord.Embed(
+                    title=presentation.EMBED_TITLE_ENDED,
+                    description=presentation.EMBED_DESC_ENDED,
+                    color=0x992D22
+                )
+                view = EndGameView(game_id, game.host_id)
+                await channel.send(embed=embed, view=view)
+
     async def execute_channel_ops(self, game_id: str, ops: list):
         if not ops:
            return
@@ -203,29 +258,38 @@ async def end(interaction: discord.Interaction):
     
     await interaction.followup.send(presentation.MSG_TEARDOWN)
     
-    # Use presentation logic for cost reporting
     report = presentation.build_cost_report(
         game_id=game.id,
         input_tokens=game.usage_input_tokens,
         output_tokens=game.usage_output_tokens
     )
-
     await client.announce_state(report)
     
-    if game.interface.category_id:
-        try:
-            cat = interaction.guild.get_channel(int(game.interface.category_id))
-            if cat:
-                for c in cat.channels: 
-                    await c.delete()
-                    cid = str(c.id)
-                    # CLEANUP CACHE & INDEX
-                    if cid in client.active_game_channels: 
-                        del client.active_game_channels[cid]
-                    await persistence.db.remove_channel_association(cid)
-                await cat.delete()
-        except: pass
+    # Cleanup Channels
+    await client.cleanup_game_channels(interaction.guild, game.interface.model_dump())
+    
+    # Mark Ended
     await game_engine.engine.end_game(game.id)
+
+class EndGameView(discord.ui.View):
+    def __init__(self, game_id, host_id):
+        super().__init__(timeout=None)
+        self.game_id = game_id
+        self.host_id = host_id
+
+    @discord.ui.button(label=presentation.BTN_DELETE_CHANNELS, style=discord.ButtonStyle.danger, custom_id="end_delete_btn")
+    async def delete_button(self, interaction, button):
+        if str(interaction.user.id) != self.host_id:
+            await interaction.response.send_message(presentation.ERR_NOT_HOST, ephemeral=True)
+            return
+
+        if not await safe_defer(interaction): return
+        
+        await interaction.followup.send(presentation.MSG_TEARDOWN)
+        
+        game = await persistence.db.get_game_by_id(self.game_id)
+        if game:
+             await client.cleanup_game_channels(interaction.guild, game.interface.model_dump())
 
 class LobbyView(discord.ui.View):
     def __init__(self, game_id): super().__init__(timeout=None); self.game_id = game_id

@@ -352,5 +352,5 @@ async def on_message(message):
         return
 
     try:
-        await game_engine.engine.dispatch_input(channel_id, str(message.author.id), message.author.name, message.content, known_game_id=game_id)
+        await game_engine.engine.dispatch_input(channel_id, str(message.author.id), message.author.name, message.content, game_id)
     except Exception as e: logging.error(f"Input Error: {e}")

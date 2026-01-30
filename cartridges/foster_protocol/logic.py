@@ -119,7 +119,8 @@ class FosterProtocol:
             )
 
             try:
-                data = json.loads(response_text)
+                clean_text = response_text.replace("```json", "").replace("```", "").strip()
+                data = json.loads(clean_text)
                 thought = data.get("thought_chain", "Drone acted without thinking")
                 
                 tool_call = {

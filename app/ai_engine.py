@@ -80,10 +80,16 @@ class AIEngine:
             
             result = await model.ainvoke(messages)
             
-            # Restore Truncation Detection
-            finish_reason = result.response_metadata.get('finish_reason')
+            metadata = result.response_metadata
+            finish_reason = metadata.get('finish_reason')
+            
+            if not result.content:
+                logging.error(f"[AI SAFETY BLOCK] Content is empty. Finish Reason: {finish_reason}")
+                logging.error(f"[AI SAFETY DATA] Ratings: {metadata.get('safety_ratings')}")
+                return ""
+
             if finish_reason and finish_reason != "STOP":
-                logging.warning(f"AI Stop Reason: {finish_reason} (Potential Truncation for Game: {target_id})")
+                logging.error(f"[AI TRUNCATION] Stop Reason: {finish_reason} (Game: {target_id})")
 
             if target_id:
                 asyncio.create_task(self._track_usage(target_id, result.response_metadata))

@@ -2,7 +2,7 @@ import os
 import logging
 import asyncio
 from google.cloud import firestore
-from .models import GameState
+from .models import GameState, AILogEntry
 
 class PersistenceLayer:
     def __init__(self):

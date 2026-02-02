@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Optional, Any, Literal
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -39,10 +39,10 @@ class GameState(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 class AILogEntry(BaseModel):
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(datetime.timezone.utc))
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     game_id: str
     model: str
     system_prompt: str
     user_input: str
     raw_response: str
-    usage: dict
+    usage: Dict[str, Any] = Field(default_factory=dict)

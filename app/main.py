@@ -11,6 +11,7 @@ from . import game_engine
 from .state import sys as system_state
 from .gcp_log import setup_logging
 from . import presentation
+from .dashboard import router as dashboard_router
 
 # 1. SETUP STRUCTURED LOGGING IMMEDIATELY
 setup_logging()
@@ -59,6 +60,7 @@ async def lifespan(app: FastAPI):
         await discord_client.close()
 
 app = FastAPI(lifespan=lifespan)
+app.include_router(dashboard_router)
 
 @app.get("/ping")
 async def ping(response: Response):

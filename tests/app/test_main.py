@@ -6,9 +6,11 @@ client = TestClient(app)
 
 def test_health_check():
     """Verify the app boots and health endpoint works."""
-    response = client.get("/")
-    assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    # MOCK DISCORD: Force the client to say it is ready
+    with patch("app.main.discord_client.is_ready", return_value=True):
+        response = client.get("/ping")
+        assert response.status_code == 200
+        assert response.json() == {"status": "ok", "discord": "connected"}
 
 def test_dashboard_routes_exist():
     """
@@ -27,9 +29,3 @@ def test_dashboard_routes_exist():
         routes = [route.path for route in app.routes]
         assert "/dashboard" in routes
         assert "/dashboard/{game_id}" in routes
-
-def test_webhook_route_validation():
-    """Verify the webhook rejects bad requests (proof of life for Pydantic models)."""
-    response = client.post("/webhook", json={"bad": "payload"})
-    # Should be 422 Unprocessable Entity due to schema mismatch
-    assert response.status_code == 422

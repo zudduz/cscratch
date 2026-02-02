@@ -5,7 +5,7 @@ from cartridges.foster_protocol.board import GameConfig
 from cartridges.foster_protocol.tools import TOOL_REGISTRY
 
 # Define path relative to this test file
-TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "../cartridges/foster_protocol/ai_templates")
+TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "../../cartridges/foster_protocol/ai_templates")
 
 # --- THE UNIVERSAL CONTEXT ---
 # This dictionary contains dummy values for EVERY variable used in your templates.

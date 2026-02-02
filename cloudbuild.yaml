@@ -35,7 +35,6 @@ steps:
   - '--min-instances=0'
   - '--max-instances=1'
   - '--set-secrets=LANGCHAIN_API_KEY=langsmith-api-key:latest'
-  - '--set-env-vars=LANGCHAIN_TRACING_V2=true,LANGCHAIN_PROJECT=chicken-scratch-prod'
 
 options:
   logging: CLOUD_LOGGING_ONLY

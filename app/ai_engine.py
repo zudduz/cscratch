@@ -23,6 +23,22 @@ from . import persistence
 _SHARED_MODEL = None
 _MODEL_LOCK = asyncio.Lock()
 
+def _sanitize_schema(schema: dict) -> dict:
+    """
+    Recursively removes 'additionalProperties' and 'title' from the schema 
+    to make it compatible with Vertex AI Controlled Generation.
+    """
+    if isinstance(schema, dict):
+        return {
+            k: _sanitize_schema(v) 
+            for k, v in schema.items() 
+            if k not in ["additionalProperties", "title"]
+        }
+    elif isinstance(schema, list):
+        return [_sanitize_schema(v) for v in schema]
+    else:
+        return schema
+
 class AIEngine:
     def __init__(self):
         # Default to sandbox ID but allow env override
@@ -86,6 +102,7 @@ class AIEngine:
             # If a schema is provided, we bind it to the model for this specific invocation.
             # This enables "Controlled Generation" (JSON Mode) on Vertex AI.
             if response_schema:
+                response_schema = _sanitize_schema(response_schema)
                 invocation_model = model.bind(
                     response_mime_type="application/json",
                     response_schema=response_schema
@@ -113,7 +130,7 @@ class AIEngine:
             
         except Exception as e:
             logging.error(f"AI Generation Error: {e}")
-            return f"[SYSTEM ERROR] Neural Link Severed: {e}"
+            return f"[SYSTEM ERROR]: {e}"
 
     async def _track_usage(self, game_id: str, metadata: dict):
         try:

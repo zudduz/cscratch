@@ -37,3 +37,12 @@ class GameState(BaseModel):
 
     # Pydantic V2 Config
     model_config = ConfigDict(populate_by_name=True)
+
+class AILogEntry(BaseModel):
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(datetime.timezone.utc))
+    game_id: str
+    model: str
+    system_prompt: str
+    user_input: str
+    raw_response: str
+    usage: dict

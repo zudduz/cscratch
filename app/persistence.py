@@ -135,4 +135,16 @@ class PersistenceLayer:
         # Prevent double-processing of Discord webhooks/events
         return True 
 
+    async def log_ai_interaction(self, entry: AILogEntry):
+        # Store in a subcollection 'logs' under the game document
+        # This keeps it organized and scalable
+        await self.games_collection.document(entry.game_id).collection('logs').add(entry.model_dump())
+
+    async def get_game_logs(self, game_id: str, limit: int = 50):
+        logs = []
+        ref = self.games_collection.document(game_id).collection('logs')
+        async for doc in ref.order_by('timestamp', direction=firestore.Query.DESCENDING).limit(limit).stream():
+            logs.append(doc.to_dict())
+        return logs
+
 db = PersistenceLayer()

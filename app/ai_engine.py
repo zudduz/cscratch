@@ -92,8 +92,9 @@ class AIEngine:
             # Restore your instrumentation logic
             target_id = game_id
             if not target_id and "_" in conversation_id:
-                 parts = conversation_id.split("_")
-                 if len(parts[0]) > 7: target_id = parts[0]
+                parts = conversation_id.split("_")
+                if len(parts[0]) > 7:
+                    target_id = parts[0]
             
             if target_id:
                 logging.info(f"AI Request: {model.model_name} (Game: {target_id})")
@@ -112,6 +113,17 @@ class AIEngine:
 
             result = await invocation_model.ainvoke(messages)
             
+            if target_id:
+                log_entry = AILogEntry(
+                    game_id=target_id,
+                    model=model.model_name,
+                    system_prompt=system_prompt,
+                    user_input=user_input,
+                    raw_response=result.content,
+                    usage=result.response_metadata.get('usage_metadata', {})
+                )
+                asyncio.create_task(persistence.db.log_ai_interaction(log_entry))            
+
             metadata = result.response_metadata
             finish_reason = metadata.get('finish_reason')
             

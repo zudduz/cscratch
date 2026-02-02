@@ -103,7 +103,7 @@ class SleepCommand(BaseCommand):
             
             await context.ctx.reply(f"Sleep request logged")
             if context.game_data.is_ready_for_day:
-                await context.ctx.send("aux-comm", "Crew asleep")
+                await context.ctx.send("aux-comm", "The crew is asleep\nBeginning Day Cycle")
                 
                 context.game_data.phase = "day"
                 for p in context.game_data.players.values():

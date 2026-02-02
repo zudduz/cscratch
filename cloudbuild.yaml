@@ -34,7 +34,9 @@ steps:
   - '--allow-unauthenticated'
   - '--min-instances=0'
   - '--max-instances=1'
-  - '--set-secrets=LANGCHAIN_API_KEY=langsmith-api-key:latest'
+
+images:
+- 'gcr.io/$PROJECT_ID/cscratch'
 
 options:
   logging: CLOUD_LOGGING_ONLY

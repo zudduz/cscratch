@@ -13,4 +13,3 @@ nest_asyncio
 pytest
 pytest-asyncio
 Jinja2
-langsmith

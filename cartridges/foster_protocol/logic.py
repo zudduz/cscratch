@@ -102,12 +102,11 @@ class FosterProtocol:
         except Exception as e:
             logging.error(f"Dream failed for {drone.id}: {e}")
 
-    async def get_drone_action(self, drone, context_data, tools_api, game_id: str) -> tuple[Dict[str, Any], str]:
+    async def get_drone_action(self, drone, game_data: Caisson, tools_api, game_id: str, hour: int) -> tuple[Dict[str, Any], str]:
         try:
-            # INJECT SCHEMA (for guidance only)
-            context_data["schema"] = drone_tools.create_strict_action_model().model_json_schema()
-            
-            sys_prompt, user_msg = ai_templates.compose_tactical_turn(context_data)
+                        # INJECT SCHEMA (for guidance only)
+            schema = drone_tools.create_strict_action_model().model_json_schema()
+            sys_prompt, user_msg = ai_templates.compose_tactical_turn(drone, game_data, hour)
 
             response_text = await tools_api.ai.generate_response(
                 system_prompt=sys_prompt,
@@ -115,7 +114,7 @@ class FosterProtocol:
                 user_input=user_msg,
                 model_version=drone.model_version,
                 game_id=game_id,
-                response_schema=context_data["schema"]
+                response_schema=schema
             )
 
             # The model sometimes returns a list of strings instead of a single string.
@@ -209,9 +208,8 @@ class FosterProtocol:
             pass
 
     async def run_single_drone_turn(self, drone, game_data, hour, tools, game_id):
-        context_data = drone_tools.gather_turn_context_data(drone, game_data, hour)
-        action, thought = await self.get_drone_action(drone, context_data, tools, game_id)
-        result = drone_tools.execute_tool(action.get("tool", "wait"), action.get("args", {}), drone.id, game_data)
+        action, thought = await self.get_drone_action(drone, game_data, tools, game_id, hour)
+        result = drone_tools.execute_tool(action.get("tool", "invalid"), action.get("args", {}), drone.id, game_data)
         
         return {
             "drone": drone,
@@ -432,6 +430,9 @@ class FosterProtocol:
             response = await tools.ai.generate_response(
                 sys_prompt, f"{ctx.game_id}_{my_drone.id}", user_msg, my_drone.model_version, game_id=ctx.game_id
             )
+            
             await ctx.reply(response)
+            my_drone.night_chat_log.append(f"SELF: {response}") 
+
             return {f"drones.{my_drone.id}.night_chat_log": my_drone.night_chat_log}
         return None

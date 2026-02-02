@@ -424,7 +424,7 @@ def create_strict_action_model():
     return create_model(
         'DroneActionStrict',
         thought_chain=(str, Field(..., description=ai_templates.SCHEMA_THOUGHT_CHAIN_DESC)),
-        tool=(ToolEnum, Field(..., description=f"{ai_templates.SCHEMA_TOOL_DESC_PREFIX}{available_tools}")),
+        tool=(ToolEnum, Field(..., description=f"{ai_templates.SCHEMA_TOOL_DESC_PREFIX}")),
         args=(Dict[str, Any], Field(default_factory=dict, description=ai_templates.SCHEMA_ARGS_DESC))
     )
 
@@ -443,27 +443,3 @@ def execute_tool(tool_name: str, args: Dict, drone_id: str, game: Caisson) -> To
 
     context = ToolContext(game, actor, args)
     return tool_instance.run(context)
-
-def gather_turn_context_data(drone: Drone, game_data: Caisson, hour: int = 1) -> Dict[str, Any]:
-    """
-    Gathers raw data for the turn context prompt.
-    """
-    visible_drones = get_visible_drones(game_data, drone.location_id, drone.id)
-    
-    return {
-        "hour": hour,
-        "end_hour": GameConfig.HOURS_PER_SHIFT,
-        "location_id": drone.location_id,
-        "battery": drone.battery,
-        "inventory": drone.inventory,
-        "visible_drones": visible_drones,
-        "long_term_memory": drone.long_term_memory,
-    }
-
-def get_visible_drones(game_data: Caisson, location_id: str, exclude_id: Optional[str] = None) -> List[str]:
-    """Return a list of drone status strings visible in the given location."""
-    return [
-        f"{d.id} ({d.status})"
-        for d in game_data.drones.values() 
-        if d.location_id == location_id and d.id != exclude_id
-    ]

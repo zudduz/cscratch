@@ -2,10 +2,10 @@ import os
 from typing import Dict, Any, Tuple
 from jinja2 import Environment, FileSystemLoader
 from .board import GameConfig
-from .models import Caisson
+from .models import Caisson, Drone
 
 SCHEMA_THOUGHT_CHAIN_DESC = "Room for your thoughts."
-SCHEMA_TOOL_DESC_PREFIX = "The tool to execute. Must be strictly one of: "
+SCHEMA_TOOL_DESC_PREFIX = "The tool to execute."
 SCHEMA_ARGS_DESC = "Arguments for the selected tool (e.g., target_id, room_id)."
 
 # --- JINJA2 SETUP ---
@@ -92,23 +92,36 @@ def compose_intro_turn(drone_id: str, game_data: Caisson) -> Tuple[str, str]:
     user_input = render("drone_intro.md.j2")
     return system_prompt, user_input
 
-def compose_tactical_turn(context_data: Dict[str, Any]) -> Tuple[str, str]:
+def compose_tactical_turn(drone: Drone, game_data: Caisson, hour: int) -> Tuple[str, str]:
     """
     The main game loop turn.
     """
-    system = render("drone_day.md.j2")
+    context_data = _gather_turn_context_data(drone, game_data, hour)
     
-    # User
-    context_str = render("turn_context.md.j2", **context_data)
+    system_prompt = _compose_dynamic_system_prompt(drone.id, game_data)
+    user_input = render("turn_context.md.j2", **context_data)
     
-    protocol_str = render(
-        "turn_thought_protocol.md.j2", 
-        end_hour=GameConfig.HOURS_PER_SHIFT,
-        schema=context_data.get("schema") 
-    )
+    return system_prompt, user_input
+
+def _gather_turn_context_data(drone: Drone, game_data: Caisson, hour: int = 1) -> Dict[str, Any]:
+    """
+    Gathers raw data for the turn context prompt.
+    """
+    visible_drones = [
+        f"{d.id} ({d.status})"
+        for d in game_data.drones.values() 
+        if d.location_id == drone.location_id and d.id != drone.id
+    ]
     
-    user_input = f"{context_str}\n\n{protocol_str}"
-    return system, user_input
+    return {
+        "hour": hour,
+        "end_hour": GameConfig.HOURS_PER_SHIFT,
+        "location_id": drone.location_id,
+        "battery": drone.battery,
+        "inventory": drone.inventory,
+        "visible_drones": visible_drones,
+        "long_term_memory": drone.long_term_memory,
+    }
 
 def compose_dream_turn(old_memory: str, daily_logs: list, chat_log: list) -> Tuple[str, str]:
     system = "You are an archival system."

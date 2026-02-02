@@ -3,7 +3,7 @@ import logging
 import asyncio
 import warnings
 from langchain_core._api.deprecation import LangChainDeprecationWarning
-from models import AILogEntry
+from .models import AILogEntry
 
 # SUPPRESS FALSE POSITIVE WARNING:
 # LangChain recommends switching to ChatGoogleGenerativeAI, but that requires an API Key.

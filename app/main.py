@@ -1,3 +1,5 @@
+import os
+import uuid
 import asyncio
 import logging
 from contextlib import asynccontextmanager
@@ -13,34 +15,23 @@ from .gcp_log import setup_logging
 from . import presentation
 from .dashboard import router as dashboard_router
 
+INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", str(uuid.uuid4()))
+DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "badtoken")
+
 # 1. SETUP STRUCTURED LOGGING IMMEDIATELY
 setup_logging()
 
 nest_asyncio.apply()
 
-def get_discord_token():
-    try:
-        client = secretmanager.SecretManagerServiceClient()
-        name = "projects/171510694317/secrets/c-scratch-discord-api/versions/latest"
-        response = client.access_secret_version(request={"name": name})
-        return response.payload.data.decode("UTF-8")
-    except Exception as e:
-        logging.error(f"Failed to retrieve Discord token: {e}")
-        return None
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    token = get_discord_token()
-    if token:
-        # Start the Discord Client (Gateway Mode)
-        asyncio.create_task(discord_client.start(token))
-    else:
-        logging.warning("Discord token not found. Bot will not start.")
+    # Start the Discord Client (Gateway Mode)
+    asyncio.create_task(discord_client.start(DISCORD_TOKEN))
     
     yield
     
     # --- SHUTDOWN SIGNAL RECEIVED (SIGTERM) ---
-    logging.info("System: Shutdown signal received. Raising shields.")
+    logging.info("System: Shutdown signal received")
     
     # 1. Raise Gates (Stop processing new messages immediately)
     system_state.shutting_down = True

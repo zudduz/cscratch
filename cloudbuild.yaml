@@ -34,6 +34,8 @@ steps:
   - '--allow-unauthenticated'
   - '--min-instances=0'
   - '--max-instances=1'
+  - '--set-secrets'
+  - 'INTERNAL_API_KEY=cscratch-internal-api-key:latest,DISCORD_TOKEN=cscratch-discord-token:latest'
 
 images:
 - 'gcr.io/$PROJECT_ID/cscratch'

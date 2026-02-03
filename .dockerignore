@@ -8,7 +8,7 @@ cloudbuild.yaml
 .idx/
 .vscode/
 .idea/
-venv/
+.venv/
 env/
 
 # --- Testing & QA ---

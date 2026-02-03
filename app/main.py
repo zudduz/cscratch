@@ -11,7 +11,7 @@ from .state import sys as system_state
 from .gcp_log import setup_logging
 from . import presentation
 from . import config
-from .dashboard import router as dashboard_router
+from .routers import dashboard
 from .routers import ingress
 
 # 1. SETUP STRUCTURED LOGGING IMMEDIATELY
@@ -44,7 +44,7 @@ async def lifespan(app: FastAPI):
     await discord_client.close()
 
 app = FastAPI(lifespan=lifespan)
-app.include_router(dashboard_router)
+app.include_router(dashboard.router)
 app.include_router(ingress.router)
 
 @app.get("/ping")

@@ -17,7 +17,7 @@ def test_dashboard_routes_exist():
     Verify the dashboard routes we just added are reachable.
     We mock the persistence layer so we don't hit real Firestore.
     """
-    with patch("app.dashboard.persistence.db") as mock_db:
+    with patch("app.routers.dashboard.persistence.db") as mock_db:
         # Mock the stream of games to return an empty list
         
         # Check if route is in app.routes

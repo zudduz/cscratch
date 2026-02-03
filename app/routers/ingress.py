@@ -67,12 +67,18 @@ async def check_admin_warning(guild_id: str, user_id: str, channel_id: str):
 
 @router.post("/message")
 async def handle_message(payload: MessagePayload):
-    # 1. Lookup Game ID
+    # 1. IDEMPOTENCY CHECK (Distributed Lock)
+    # This prevents double-processing if the Gateway retries on a timeout/cold-start.
+    if not await persistence.db.lock_event(payload.message_id):
+        logging.info(f"Duplicate event ignored: {payload.message_id}")
+        return {"status": "ignored", "reason": "already_processed"}
+
+    # 2. Lookup Game ID
     game_id = await persistence.db.get_game_id_by_channel_index(payload.channel_id)
     if not game_id:
         return {"status": "ignored", "reason": "unknown_channel"}
 
-    # 2. Dispatch to Engine
+    # 3. Dispatch to Engine
     try:
         await game_engine.engine.dispatch_input(
             channel_id=payload.channel_id,

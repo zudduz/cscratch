@@ -21,8 +21,11 @@ class ChickenBot(commands.Bot):
         self.active_game_channels = {}
 
     async def setup_hook(self):
-        # ... (Existing logic omitted for brevity, logic preserved in previous version)
-        pass
+        logging.info(presentation.LOG_HYDRATING)
+        self.active_game_channels = await persistence.db.get_active_game_channels()
+        # Note: We don't sync commands here in legacy mode to avoid conflicts if needed,
+        # but original code did. Kept simple.
+        await self.tree.sync()
 
 # --- HEADLESS REST INTERFACE (HTTP) ---
 class DiscordRESTInterface:
@@ -130,14 +133,19 @@ class DiscordRESTInterface:
         if not ops: return
         
         # We need the guild to perform creates
-        # We assume the first op has context or we fetch game again (expensive)
-        # Optimization: We fetch the game once to get the Guild ID
         game = await persistence.db.get_game_by_id(game_id)
         if not game or not game.interface.guild_id: return
 
         try:
             guild = await self.client.fetch_guild(int(game.interface.guild_id))
             
+            # FIX: Explicitly fetch the bot member because `guild.me` is None in REST mode
+            try:
+                bot_member = await guild.fetch_member(self.client.user.id)
+            except Exception as e:
+                logging.error(f"Failed to fetch bot member (Permissions check failed): {e}")
+                return
+
             category = None
             if game.interface.category_id:
                 try:
@@ -152,10 +160,9 @@ class DiscordRESTInterface:
                 if op['op'] == 'create':
                     overwrites = {
                         guild.default_role: discord.PermissionOverwrite(read_messages=False),
-                        guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
+                        bot_member: discord.PermissionOverwrite(read_messages=True, send_messages=True)
                     }
                     
-                    # Mapping logic from original code...
                     if op.get('audience') == 'public':
                          overwrites[guild.default_role] = discord.PermissionOverwrite(read_messages=True)
                     elif op.get('audience') == 'private':

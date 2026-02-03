@@ -12,7 +12,7 @@ from .gcp_log import setup_logging
 from . import presentation
 from . import config
 from .dashboard import router as dashboard_router
-from .routers import ingress # New Router
+from .routers import ingress
 
 # 1. SETUP STRUCTURED LOGGING IMMEDIATELY
 setup_logging()

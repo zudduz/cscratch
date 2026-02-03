@@ -2,6 +2,7 @@ from fastapi import APIRouter, Header, HTTPException, Request, Depends
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
 import logging
+import discord
 
 from .. import game_engine
 from .. import persistence
@@ -44,6 +45,26 @@ class InteractionPayload(BaseModel):
     user_name: str
     values: List[str] = []
 
+# --- HELPER: ADMIN CHECK ---
+async def check_admin_warning(guild_id: str, user_id: str, channel_id: str):
+    """
+    Fetches the member to check for Admin permissions.
+    Sends a warning if they are an admin.
+    """
+    try:
+        if not guild_id: return
+        
+        guild = await discord_interface.client.fetch_guild(int(guild_id))
+        member = await guild.fetch_member(int(user_id))
+        
+        if member.guild_permissions.administrator:
+            await discord_interface.send_message(channel_id, presentation.ADMIN_WARNING)
+            
+    except Exception as e:
+        logging.warning(f"Failed to perform admin check: {e}")
+
+# --- ENDPOINTS ---
+
 @router.post("/message")
 async def handle_message(payload: MessagePayload):
     # 1. Lookup Game ID
@@ -81,6 +102,10 @@ async def handle_interaction(payload: InteractionPayload):
         if game_id:
             await game_engine.engine.join_game(game_id, payload.user_id, payload.user_name)
             await discord_interface.send_message(payload.channel_id, presentation.format_player_joined(payload.user_name))
+            
+            if payload.guild_id:
+                await check_admin_warning(payload.guild_id, payload.user_id, payload.channel_id)
+
             return {"status": "joined"}
     
     elif payload.custom_id == "start_btn":
@@ -128,7 +153,6 @@ async def _cmd_start(p: CommandPayload):
         await persistence.db.register_channel_association(str(chan.id), game_id)
         
         # 5. Send Lobby UI
-        import discord
         embed = discord.Embed(
             title=presentation.format_lobby_title(p.cartridge),
             description=presentation.LOBBY_DESC,
@@ -142,6 +166,8 @@ async def _cmd_start(p: CommandPayload):
         await chan.send(embed=embed, view=view)
         
         await discord_interface.send_message(p.channel_id, presentation.format_lobby_created_msg(chan.mention))
+        
+        await check_admin_warning(p.guild_id, p.user_id, chan.id)
         
         return {"status": "ok", "game_id": game_id}
         

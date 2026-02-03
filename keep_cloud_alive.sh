@@ -1,6 +1,6 @@
 #!/bin/bash
 
-URL="https://cscratch-171510694317.us-central1.run.app/ping"
+URL="https://cscratch-dg-171510694317.us-central1.run.app/ping"
 
 echo "🔌 Keep-alive active. Pinging $URL every 5 minutes..."
 echo "❌ Press Ctrl+C to stop."

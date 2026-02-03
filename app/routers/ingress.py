@@ -110,7 +110,7 @@ async def _cmd_start(p: CommandPayload):
         game_id = await game_engine.engine.start_new_game(p.cartridge, p.user_id, p.user_name)
         
         # 2. Create Channels
-        guild = await discord_interface.client.client.fetch_guild(int(p.guild_id))
+        guild = await discord_interface.client.fetch_guild(int(p.guild_id))
         
         cat = await guild.create_category(f"Lobby {game_id}")
         chan = await guild.create_text_channel("cscratch-lobby", category=cat)

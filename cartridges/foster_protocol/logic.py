@@ -152,23 +152,24 @@ class FosterProtocol:
             logging.error(f"Drone {drone.id} fatal error: {e}\nCaused by Input:\n{raw_text}")
             return {"tool": "wait", "args": {}}, f"Fatal Error: {str(e)}"
 
-    async def speak_all_drones(self, game_data, ctx, tools, instruction):
+    async def speak_all_drones(self, game_data, ctx, tools):
         tasks = []
         for drone in game_data.drones.values():
             if not drone.can_talk:
                 continue
-            tasks.append(self._speak_single_drone(ctx, tools, drone, game_data, instruction))
+            tasks.append(self._speak_single_drone(ctx, tools, drone, game_data))
         if tasks: await asyncio.gather(*tasks)
 
-    async def _speak_single_drone(self, ctx, tools, drone, game_data, instruction):
+    async def _speak_single_drone(self, ctx, tools, drone, game_data):
         try:
-            sys_prompt, user_msg = ai_templates.compose_speak_turn(drone.id, game_data, instruction)
+            sys_prompt, user_msg = ai_templates.compose_speak_turn(drone.id, game_data)
             
             resp = await tools.ai.generate_response(
                 sys_prompt, f"{ctx.game_id}_drone_{drone.id}", user_msg, drone.model_version, game_id=ctx.game_id
             )
             await FosterPresenter.send_private_message(ctx, drone.foster_id, resp)
-        except Exception: pass
+        except Exception as e:
+            logging.error(f"speaking failed for {drone.id}: {e}")
 
     async def _send_public_eulogy(self, ctx, tools, drone, game_data):
         try:
@@ -374,7 +375,7 @@ class FosterProtocol:
                 ctx.schedule(self.execute_day_simulation(game_data, ctx, tools))
             else:
                 # Normal Night Phase
-                await self.speak_all_drones(game_data, ctx, tools, ai_templates.format_drone_checkin())
+                await self.speak_all_drones(game_data, ctx, tools)
                 game_data.phase = "night"
 
         result = game_data.model_dump()
@@ -423,7 +424,7 @@ class FosterProtocol:
                 await FosterPresenter.reply_no_drone_present(ctx)
                 return None
 
-            log_line = ai_templates.format_parent_log_line(user_input)
+            log_line = ai_templates.format_foster_log_line(user_input)
             my_drone.night_chat_log.append(log_line)
             
             sys_prompt, user_msg = ai_templates.compose_nanny_chat_turn(

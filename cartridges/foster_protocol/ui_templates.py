@@ -114,13 +114,13 @@ class FosterPresenter:
         await ctx.send(cls.CHANNEL_AUX, "Oxygen depleted\nStasis engaged\nThe crew sleeps\nThe drones must continue alone")
 
     @classmethod
-    async def report_mission_summary(cls, ctx, victory: bool, fail_reason: str, saboteur_drone: Drone, foster_parent_name: str):
+    async def report_mission_summary(cls, ctx, victory: bool, fail_reason: str, saboteur_drone: Drone, foster_name: str):
         if victory:
             final_report = f"Mission: Success"
         else:
             final_report = f"Mission: Failure\nReason: {fail_reason}"
         
-        final_report += f"\nTraitor: Drone {saboteur_drone.id} (Bonded to <@{foster_parent_name}>)."
+        final_report += f"\nTraitor: Drone {saboteur_drone.id} (Bonded to <@{foster_name}>)."
         await ctx.send(cls.CHANNEL_AUX, final_report)
 
     # --- CHAT & INTERACTION ---

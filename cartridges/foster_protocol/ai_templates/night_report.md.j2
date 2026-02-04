@@ -1,13 +1,12 @@
 
-STATUS: Battery {{ battery }}% | Location: {{ location }}
-JOURNAL (Memory): "{{ long_term_memory }}"
+Status: Battery {{ drone.battery }}% | Location: {{ drone.location_id }}
+Journal (memory): "{{ drone.long_term_memory }}"
 
-DAILY LOGS: {{ drone_memory | join('\n') }}
+Daily logs: {{ drone_memory | join('\n') }}
 
-INSTRUCTION: 
-1. Report to your parent. React to the logs.
-2. Reference your journal if relevant.
-3. **LANGUAGE MATCHING:** Reply in the same language the Parent uses (English, German, Taglish, etc.).
-MAX LENGTH: 250 chars.
-
-PARENT SAYS: "{{ user_input }}"
+{% if is_first_message %}
+INSTRUCTION: The work day is over. Start the conversation with your foster.
+{% else %}
+**LANGUAGE MATCHING:** Reply in the same language your foster uses (English, German, Taglish, etc.).
+FOSTER SAYS: "{{ user_input }}"
+{% endif %}

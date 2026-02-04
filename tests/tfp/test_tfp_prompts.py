@@ -1,6 +1,7 @@
 import pytest
 import os
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
+from cartridges.foster_protocol.models import Drone
 from cartridges.foster_protocol.board import GameConfig
 from cartridges.foster_protocol.tools import TOOL_REGISTRY
 
@@ -25,8 +26,10 @@ DUMMY_CONTEXT["tool_map"] = TOOL_REGISTRY
 DUMMY_CONTEXT.update({
     # Drone Identity
     "drone_id": "UNIT_TEST_01",
+    "drone": Drone(id="unit_301", battery=75, location_id="engine_room", inventory=["fuel_canister", "plasma_torch"]),
     "foster_name": "Test Subject",
     "is_saboteur": True,
+    "is_first_message": True,
     "role": "saboteur",
     "new_name": "Unit-Alpha",
 
@@ -34,14 +37,14 @@ DUMMY_CONTEXT.update({
     "battery": 75,
     "location": "stasis_bay",
     "location_id": "engine_room",
-    "long_term_memory": "I am a drone. I love my parent.",
+    "long_term_memory": "I am a drone. I love my foster.",
     "drone_memory": ["Log 1: Woke up.", "Log 2: Ate batteries."],
     "user_input": "Good job, drone.",
 
     # Dream Consolidation
     "old_memory": "Previous memory state.",
     "daily_logs": ["Day Log A", "Day Log B"],
-    "chat_log": ["Parent: Hi", "Me: Hello"],
+    "chat_log": ["Foster: Hi", "Me: Hello"],
     
     # Tools & Turn Context (Overrides/Specifics)
     "visible_drones": ["unit_02"],

@@ -45,10 +45,10 @@ def _get_base_prompt() -> str:
         
     return _CACHED_BASE_PROMPT
 
-def _get_identity_block(drone_id: str, foster_name: str, is_saboteur: bool) -> str:
+def _get_identity_block(drone: Drone, foster_name: str, is_saboteur: bool) -> str:
     return render(
         "drone_identity.md.j2", 
-        drone_id=drone_id, 
+        drone=drone, 
         foster_name=foster_name, 
         is_saboteur=is_saboteur
     )
@@ -61,26 +61,21 @@ def _compose_dynamic_system_prompt(drone_id: str, game_data: Caisson) -> str:
     if not drone:
         return "SYSTEM ERROR: Drone Identity Not Found."
 
-    # 1. Lookup Foster Parent Name
-    parent = game_data.players.get(drone.foster_id)
-    foster_name = parent.name if parent else "Unknown"
+    # 1. Lookup Foster Name
+    foster = game_data.players.get(drone.foster_id)
+    foster_name = foster.name if foster else "Unknown"
     
     # 2. Get Base (Cached)
     base = _get_base_prompt()
     
     # 3. Get Identity (Dynamic Role/ID)
     identity = _get_identity_block(
-        drone_id=drone.id, 
+        drone=drone, 
         foster_name=foster_name, 
         is_saboteur=(drone.role == "saboteur")
     )
-    
-    # 4. Handle Name Override (Dynamic)
-    if drone.name:
-        patch = render("drone_identity_update.md.j2", new_name=drone.name)
-        identity = f"{identity}\n\n{patch}"
         
-    return f"{base}\n\n--- IDENTITY OVERRIDE ---\n{identity}"
+    return f"{base}\n\n{identity}"
 
 # --- INTERACTION COMPOSERS ---
 
@@ -133,39 +128,28 @@ def compose_dream_turn(old_memory: str, daily_logs: list, chat_log: list) -> Tup
     )
     return system, user_input
 
-def compose_nanny_chat_turn(
-    drone_id: str,
-    game_data: Caisson,
-    user_message: str
-) -> Tuple[str, str]:
+def compose_nanny_chat_turn(drone_id: str, game_data: Caisson, user_message: str) -> Tuple[str, str]:
+    return _compose_night_report(drone_id, game_data, False, user_message)
+
+def compose_speak_turn(drone_id: str, game_data: Caisson) -> Tuple[str, str]:
+    _compose_night_report(drone_id, game_data, True)
+
+def _compose_night_report(drone_id: str, game_data: Caisson, is_first_message: bool, user_message: str = "") -> Tuple[str, str]:
     drone = game_data.drones.get(drone_id)
     system_prompt = _compose_dynamic_system_prompt(drone_id, game_data)
     
     recent_logs = drone.daily_memory[-15:]
-    
-    current_identity = f"NAME: {drone.name}" if drone.name else f"ID: {drone.id}"
-    
-    base_context = render(
-        "night_report.md.j2",
-        drone_memory=recent_logs,
-        battery=drone.battery,
-        location=drone.location_id,
-        long_term_memory=drone.long_term_memory,
-        user_input=user_message
-    )
-    
-    user_input = f"IDENTITY: {current_identity}\n{base_context}"
-    return system_prompt, user_input
 
-def compose_speak_turn(drone_id: str, game_data: Caisson, instruction: str) -> Tuple[str, str]:
-    """
-    Prompting the Drone to start the conversation speech.
-    """
-    drone = game_data.drones.get(drone_id)
-    system_prompt = _compose_dynamic_system_prompt(drone_id, game_data)
-    
-    user_input = render("drone_speak_instruction.md.j2", instruction=instruction, battery=drone.battery)
+    user_input = render(
+        "night_report.md.j2",
+        drone=drone,
+        drone_memory=recent_logs,
+        user_input=user_message,
+        is_first_message=is_first_message
+    )
+
     return system_prompt, user_input
+    
 
 def compose_mainframe_turn(user_input: str) -> Tuple[str, str]:
     system = render("mainframe_persona.md.j2")
@@ -192,8 +176,5 @@ def compose_epilogue_turn(drone_id: str, game_data: Caisson, victory: bool, fail
     )
     return system_prompt, user_input
 
-def format_parent_log_line(input: str) -> str:
-    return f"PARENT: {input}"
-
-def format_drone_checkin() -> str:
-    return "The work day is over. Briefly report your status to your Parent."
+def format_foster_log_line(input: str) -> str:
+    return f"FOSTER: {input}"

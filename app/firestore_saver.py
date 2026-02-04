@@ -73,8 +73,8 @@ class FirestoreSaver(BaseCheckpointSaver):
         parent_config: Optional[RunnableConfig] = None,
     ) -> None:
         """
-        Uses a transaction to ensure that checkpoints are updated safely.
-        Prevents race conditions where an older step might overwrite a newer one.
+        Uses a transaction to ensure checkpoints are updated sequentially.
+        Prevents older steps from overwriting newer ones if multiple tasks run in parallel.
         """
         transaction = self.client.transaction()
 
@@ -103,8 +103,7 @@ class FirestoreSaver(BaseCheckpointSaver):
                 doc_ref = self.client.collection(self.collection).document(thread_id)
                 
                 # OPTIMISTIC CONCURRENCY CHECK
-                # Only overwrite if the new checkpoint has a higher or equal step count
-                # or if no checkpoint exists yet.
+                # We check the 'step' count to ensure we only write 'forward' in time.
                 snapshot = await doc_ref.get(transaction=transaction)
                 new_step = (metadata or {}).get("step", 0)
                 
@@ -114,12 +113,11 @@ class FirestoreSaver(BaseCheckpointSaver):
                     current_step = current_metadata.get("step", -1)
                     
                     if new_step < current_step:
-                        # Log and skip if we're trying to write an older state
-                        logging.warning(f"Skipping stale checkpoint write for {thread_id}. Current step: {current_step}, New step: {new_step}")
+                        # Skip stale write
+                        logging.warning(f"Skipping stale checkpoint for {thread_id}. Current: {current_step}, Attempted: {new_step}")
                         continue
 
                 checkpoint_bytes = pickle.dumps(checkpoint)
-                # Cleanup internal keys that shouldn't be persisted as metadata
                 if metadata and "__start__" in metadata:
                     del metadata["__start__"]
                 
@@ -132,7 +130,7 @@ class FirestoreSaver(BaseCheckpointSaver):
         try:
             await _save_in_transaction(transaction, writes)
         except Exception as e:
-            logging.error(f"Failed to commit FirestoreSaver transaction: {e}")
+            logging.error(f"FirestoreSaver transaction failed: {e}")
             raise
 
     async def alist(self, filter: Optional[RunnableConfig] = None, *, before: Optional[RunnableConfig] = None, limit: Optional[int] = None) -> AsyncIterator[CheckpointTuple]:

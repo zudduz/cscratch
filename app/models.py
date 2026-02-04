@@ -31,6 +31,9 @@ class GameState(BaseModel):
     interface: GameInterface = Field(default_factory=GameInterface)
     schema_version: int = 2
     
+    # Versioning for optimistic concurrency
+    version: int = Field(default=1, description="Sequence number for state updates")
+    
     # --- COST TRACKING ---
     usage_input_tokens: int = 0
     usage_output_tokens: int = 0

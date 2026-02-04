@@ -98,7 +98,6 @@ async def test_dispatch_input_success(engine, mock_db):
     )
     
     # When using AsyncMock, setting return_value sets the result of the await
-    mock_db.get_game_by_channel_id.return_value = fake_game
     mock_db.get_game_by_id.return_value = fake_game
 
     # 2. Action

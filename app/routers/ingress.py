@@ -183,7 +183,14 @@ async def _cmd_start(p: CommandPayload):
         return {"status": "error"}
 
 async def _cmd_end(p: CommandPayload):
-    game = await game_engine.engine.find_game_by_channel(p.channel_id)
+    game_id = await persistence.db.get_game_id_by_channel_index(p.channel_id)
+    if not game_id:
+        await discord_interface.send_message(p.channel_id, presentation.ERR_NO_GAME)
+        return {"status": "no_game"}
+
+    game = await persistence.db.get_game_by_id(game_id)
+    
+    # Validation
     if not game:
         await discord_interface.send_message(p.channel_id, presentation.ERR_NO_GAME)
         return {"status": "no_game"}
@@ -193,9 +200,6 @@ async def _cmd_end(p: CommandPayload):
         return {"status": "denied"}
         
     await discord_interface.send_message(p.channel_id, presentation.MSG_TEARDOWN)
-    
-    report = presentation.build_cost_report(game.id, game.usage_input_tokens, game.usage_output_tokens)
-    await discord_interface.announce_state(report)
     
     await discord_interface.cleanup_game_channels(p.guild_id, game.interface.model_dump())
     await game_engine.engine.end_game(game.id)

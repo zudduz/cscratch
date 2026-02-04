@@ -118,9 +118,6 @@ class GameEngine:
                 if patch and "metadata" in patch:
                     await self._apply_state_patch(game.id, patch["metadata"])
 
-    async def find_game_by_channel(self, channel_id: str) -> GameState | None:
-        return await persistence.db.get_game_by_channel_id(channel_id)
-
     async def end_game(self, game_id: str):
         await persistence.db.mark_game_ended(game_id)
         

@@ -20,20 +20,6 @@ class PersistenceLayer:
             return GameState(**doc.to_dict())
         return None
 
-    async def get_game_by_channel_id(self, channel_id: str) -> GameState:
-        # Scan for existing channels (inefficient for large scale, fine for prototype)
-        async for doc in self.games_collection.stream():
-            data = doc.to_dict()
-            interface = data.get('interface', {})
-            
-            if str(interface.get('main_channel_id')) == str(channel_id):
-                return GameState(**data)
-            
-            if str(channel_id) in interface.get('channels', {}).values():
-                return GameState(**data)
-                
-        return None
-
     async def add_player_to_game(self, game_id: str, player: LobbyPlayer):
         """
         Uses firestore.ArrayUnion to atomically append a player.

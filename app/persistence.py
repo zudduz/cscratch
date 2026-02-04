@@ -2,7 +2,7 @@ import os
 import logging
 import asyncio
 from google.cloud import firestore
-from .models import GameState, AILogEntry
+from .models import GameState, AILogEntry, LobbyPlayer
 
 class PersistenceLayer:
     def __init__(self):
@@ -37,14 +37,21 @@ class PersistenceLayer:
                 
         return None
 
-    async def add_player_to_game(self, game_id: str, player):
-        game = await self.get_game_by_id(game_id)
-        if game:
-            # Check for duplicates
-            if any(p.id == player.id for p in game.players):
-                return
-            game.players.append(player)
-            await self.save_game(game)
+    async def add_player_to_game(self, game_id: str, player: LobbyPlayer):
+        """
+        Uses firestore.ArrayUnion to atomically append a player.
+        Note: This acts like a Set; if an identical player object exists, 
+        it won't be added. This is safe from race conditions without a transaction.
+        """
+        try:
+            game_ref = self.games_collection.document(game_id)
+            await game_ref.update({
+                "players": firestore.ArrayUnion([player.model_dump()])
+            })
+            return True
+        except Exception as e:
+            logging.error(f"Failed to add player via ArrayUnion: {e}")
+            return False
 
     async def update_game_interface(self, game_id: str, interface):
         await self.games_collection.document(game_id).update({

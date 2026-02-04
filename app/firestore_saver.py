@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import pickle
+import logging
 from typing import Any, AsyncIterator, Optional, Dict, Sequence
 
+from google.cloud import firestore
 from google.cloud.firestore import AsyncClient
 from pydantic import Field
 from langchain_core.runnables import RunnableConfig
@@ -70,33 +72,68 @@ class FirestoreSaver(BaseCheckpointSaver):
         writes: Sequence[tuple],
         parent_config: Optional[RunnableConfig] = None,
     ) -> None:
-        batch = self.client.batch()
-        for write in writes:
-            if len(write) == 3:
-                write_config, checkpoint, metadata = write
-            else:
-                write_config, checkpoint = write
-                metadata = None
+        """
+        Uses a transaction to ensure that checkpoints are updated safely.
+        Prevents race conditions where an older step might overwrite a newer one.
+        """
+        transaction = self.client.transaction()
 
-            thread_id = None
-            if isinstance(write_config, str):
-                thread_id = write_config
-            elif isinstance(write_config, dict):
-                configurable = write_config.get("configurable")
-                if isinstance(configurable, str):
-                    thread_id = configurable
-                elif isinstance(configurable, dict):
-                    thread_id = configurable.get("thread_id")
+        @firestore.async_transactional
+        async def _save_in_transaction(transaction, writes):
+            for write in writes:
+                if len(write) == 3:
+                    write_config, checkpoint, metadata = write
+                else:
+                    write_config, checkpoint = write
+                    metadata = None
 
-            if not thread_id:
-                continue
+                thread_id = None
+                if isinstance(write_config, str):
+                    thread_id = write_config
+                elif isinstance(write_config, dict):
+                    configurable = write_config.get("configurable")
+                    if isinstance(configurable, str):
+                        thread_id = configurable
+                    elif isinstance(configurable, dict):
+                        thread_id = configurable.get("thread_id")
 
-            doc_ref = self.client.collection(self.collection).document(thread_id)
-            checkpoint_bytes = pickle.dumps(checkpoint)
-            if metadata and "__start__" in metadata:
-                del metadata["__start__"]
-            batch.set(doc_ref, {"checkpoint": checkpoint_bytes, "metadata": metadata or {}})
-        await batch.commit()
+                if not thread_id:
+                    continue
+
+                doc_ref = self.client.collection(self.collection).document(thread_id)
+                
+                # OPTIMISTIC CONCURRENCY CHECK
+                # Only overwrite if the new checkpoint has a higher or equal step count
+                # or if no checkpoint exists yet.
+                snapshot = await doc_ref.get(transaction=transaction)
+                new_step = (metadata or {}).get("step", 0)
+                
+                if snapshot.exists:
+                    current_data = snapshot.to_dict()
+                    current_metadata = current_data.get("metadata") or {}
+                    current_step = current_metadata.get("step", -1)
+                    
+                    if new_step < current_step:
+                        # Log and skip if we're trying to write an older state
+                        logging.warning(f"Skipping stale checkpoint write for {thread_id}. Current step: {current_step}, New step: {new_step}")
+                        continue
+
+                checkpoint_bytes = pickle.dumps(checkpoint)
+                # Cleanup internal keys that shouldn't be persisted as metadata
+                if metadata and "__start__" in metadata:
+                    del metadata["__start__"]
+                
+                transaction.set(doc_ref, {
+                    "checkpoint": checkpoint_bytes, 
+                    "metadata": metadata or {},
+                    "updated_at": firestore.SERVER_TIMESTAMP
+                })
+
+        try:
+            await _save_in_transaction(transaction, writes)
+        except Exception as e:
+            logging.error(f"Failed to commit FirestoreSaver transaction: {e}")
+            raise
 
     async def alist(self, filter: Optional[RunnableConfig] = None, *, before: Optional[RunnableConfig] = None, limit: Optional[int] = None) -> AsyncIterator[CheckpointTuple]:
         collection_ref = self.client.collection(self.collection)

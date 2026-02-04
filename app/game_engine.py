@@ -78,7 +78,7 @@ class GameEngine:
         if hasattr(cartridge, 'on_game_start'):
             result = await cartridge.on_game_start(game.model_dump())
             if 'metadata' in result:
-                 await persistence.db.update_game_metadata(game_id, result['metadata'])
+                 await persistence.db.update_game_metadata(game_id, result['metadata'], game.version)
 
         await persistence.db.set_game_active(game_id)
         return result

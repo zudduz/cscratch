@@ -1,6 +1,7 @@
 from typing import Dict, Any, List
 from .models import Drone, Caisson
 from .tools import ToolExecutionResult
+from .board import GameEndState
 
 class FosterPresenter:
     """
@@ -93,12 +94,15 @@ class FosterPresenter:
         return report
 
     @classmethod
-    async def report_victory(cls, ctx):
-        await ctx.send(cls.CHANNEL_AUX, "Success!\nSufficient fuel for escape velocity\nInitiating burn...")
-
-    @classmethod
-    async def report_failure_orbital_decay(cls, ctx):
-        await ctx.send(cls.CHANNEL_AUX, "Failure\nOrbital decay irreversible\nRequired fuel exceeds ship capacity")
+    async def report_game_end(cls, ctx, game_end_state):
+        if game_end_state == GameEndState.NO_ACTIVE_DRONES:
+            await ctx.send(cls.CHANNEL_AUX, "Failure\nNo active drones\nOrbital decay inevitable")
+        elif game_end_state == GameEndState.INSUFFICIENT_FUEL_CAPACITY:
+            await ctx.send(cls.CHANNEL_AUX, "Failure\nOrbital decay irreversible\nRequired fuel exceeds ship capacity")
+        elif game_end_state == GameEndState.BURN_INITIATED:
+            await ctx.send(cls.CHANNEL_AUX, "Success!\nSufficient fuel for escape velocity\nInitiating burn...")
+        else:
+            await ctx.send(cls.CHANNEL_AUX, "Unmapped game end state")
 
     @classmethod
     async def report_cycle_continuation(cls, ctx, req_tomorrow: int):
@@ -110,12 +114,7 @@ class FosterPresenter:
         await ctx.send(cls.CHANNEL_AUX, "Oxygen depleted\nStasis engaged\nThe crew sleeps\nThe drones must continue alone")
 
     @classmethod
-    async def report_mission_summary(cls, ctx, victory: bool, fail_reason: str, saboteur_drone: Drone, foster_name: str):
-        if victory:
-            final_report = f"Mission: Success"
-        else:
-            final_report = f"Mission: Failure\nReason: {fail_reason}"
-        
+    async def report_saboteur(cls, ctx, saboteur_drone: Drone, foster_name: str):
         final_report += f"\nTraitor: Drone {saboteur_drone.id} (Bonded to <@{foster_name}>)."
         await ctx.send(cls.CHANNEL_AUX, final_report)
 

@@ -160,7 +160,7 @@ def compose_eulogy_turn(drone_id: str, game_data: Caisson) -> Tuple[str, str]:
     user_input = render("drone_eulogy.md.j2")
     return system_prompt, user_input
 
-def compose_epilogue_turn(drone_id: str, game_data: Caisson, victory: bool, fail_reason: str = "") -> Tuple[str, str]:
+def compose_epilogue_turn(drone_id: str, game_data: Caisson, game_end_state) -> Tuple[str, str]:
     drone = game_data.drones.get(drone_id)
     system_prompt = _compose_dynamic_system_prompt(drone_id, game_data)
     
@@ -170,8 +170,7 @@ def compose_epilogue_turn(drone_id: str, game_data: Caisson, victory: bool, fail
         
     user_input = render(
         "drone_epilogue.md.j2", 
-        victory=victory, 
-        role=drone.role, 
+        game_end_state=game_end_state,
         status_note=context_note
     )
     return system_prompt, user_input

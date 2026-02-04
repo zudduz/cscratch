@@ -6,7 +6,7 @@ import json
 import ast
 import re
 from .models import Caisson, Drone, Player
-from .board import GameConfig
+from .board import GameConfig, GameEndState
 from . import tools as drone_tools 
 from . import ai_templates
 from . import commands
@@ -182,17 +182,19 @@ class FosterProtocol:
         except Exception as e:
             logging.error(f"Eulogy failed for {drone.id}: {e}")
 
-    async def generate_epilogues(self, game_data: Caisson, ctx, tools, victory: bool, fail_reason: str = ""):
+    async def generate_epilogues(self, game_data: Caisson, ctx, tools, game_end_state):
         saboteur_drone = next((b for b in game_data.drones.values() if b.role == "saboteur"), None)
         foster_of_saboteur = game_data.players[saboteur_drone.foster_id]
         
+        await FosterPresenter.report_saboteur(ctx, saboteur_drone, foster_of_saboteur.name)
+
         tasks = []
         for drone in game_data.drones.values():
             if drone.status == "destroyed":
                  continue
             
             # Logic for status note handled in templates
-            sys_prompt, user_msg = ai_templates.compose_epilogue_turn(drone.id, game_data, victory, fail_reason)
+            sys_prompt, user_msg = ai_templates.compose_epilogue_turn(drone.id, game_data, game_end_state)
             tasks.append(self._generate_epilogue_response(ctx, tools, drone, sys_prompt, user_msg))
             
         if tasks:
@@ -231,10 +233,10 @@ class FosterProtocol:
             physics_report = self._calculate_physics(game_data)
 
             # 4. Arbitration Phase (Rules)
-            game_status, status_reason = self._evaluate_arbitration(game_data, physics_report)
+            game_end_state = self._evaluate_arbitration(game_data, physics_report)
 
             # 5. Transition Phase (Routing)
-            result_payload = await self._handle_transition(game_data, game_status, status_reason, physics_report, ctx, tools)
+            result_payload = await self._handle_transition(game_data, game_end_state, physics_report, ctx, tools)
 
             return result_payload
             
@@ -318,20 +320,20 @@ class FosterProtocol:
             "cycle_report_idx": current_cycle # Use the pre-incremented cycle for reporting "Report for Cycle X"
         }
 
-    def _evaluate_arbitration(self, game_data: Caisson, physics: Dict[str, int]) -> Tuple[str, str]:
+    def _evaluate_arbitration(self, game_data: Caisson, physics: Dict[str, int]) -> str:
         """Determines if the game is Won, Lost, or Continuing."""
         if game_data.fuel >= physics["req_today"]:
-            return "VICTORY", "Sufficient fuel achieved"
+            return GameEndState.BURN_INITIATED
         elif physics["req_tomorrow"] > GameConfig.MAX_POSSIBLE_FUEL_REQ:
-            return "FAILURE", "Required fuel exceeds engine's capacity"
+            return GameEndState.INSUFFICIENT_FUEL_CAPACITY
 
         active_drones = [d for d in game_data.drones.values() if d.status == "active"]
         if not active_drones:
-            return "FAILURE", "All drones unresponsive"
+            return GameEndState.NO_ACTIVE_DRONES
 
-        return "CONTINUE", ""
+        return GameEndState.CONTINUE_GAME
 
-    async def _handle_transition(self, game_data: Caisson, status: str, status_reason: str, physics: Dict[str, int], ctx, tools) -> Dict[str, Any]:
+    async def _handle_transition(self, game_data: Caisson, game_end_state: str, physics: Dict[str, int], ctx, tools) -> Dict[str, Any]:
         """Handles the outcome of arbitration and returns the state patch."""
         
         # Report Status
@@ -346,20 +348,7 @@ class FosterProtocol:
 
         channel_ops = []
 
-        if status == "VICTORY":
-            await FosterPresenter.report_victory(ctx)
-            await self.generate_epilogues(game_data, ctx, tools, victory=True)
-            await ctx.end()
-            channel_ops.append({"op": "reveal", "key": "black-box"})
-
-        elif status == "FAILURE":
-            await FosterPresenter.report_failure_orbital_decay(ctx)
-            await self.generate_epilogues(game_data, ctx, tools, victory=False, fail_reason=status_reason)
-            await ctx.end()
-            channel_ops.append({"op": "reveal", "key": "black-box"})
-
-        else:
-            # CONTINUE
+        if game_end_state == GameEndState.CONTINUE_GAME:
             await FosterPresenter.report_cycle_continuation(ctx, physics["req_tomorrow"])
             
             # Auto-Continue Logic (If Oxygen is 0, crew is in stasis, we skip night chat)
@@ -374,6 +363,11 @@ class FosterProtocol:
                 # Normal Night Phase
                 await self.speak_all_drones(game_data, ctx, tools)
                 game_data.phase = "night"
+        else:
+            # Game over
+            await FosterPresenter.report_game_end(ctx, game_end_state)
+            await self.generate_epilogues(game_data, ctx, tools, game_end_state)
+            await ctx.end()
 
         result = game_data.model_dump()
         result["channel_ops"] = channel_ops if channel_ops else None

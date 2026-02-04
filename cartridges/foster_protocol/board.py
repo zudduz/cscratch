@@ -31,3 +31,9 @@ class Room(str, Enum):
     TORPEDO_BAY = "torpedo_bay"
     MAINTENANCE = "maintenance"
     CHARGING_STATION = "charging_station"
+
+class GameEndState(str, Enum):
+    NO_ACTIVE_DROIDS = "no_active_droids"
+    INSUFFICIENT_FUEL_CAPACITY = "insufficient_fuel_capacity"
+    BURN_INITIATED = "burn_initiated"
+    CONTINUE_GAME = "continue_game"

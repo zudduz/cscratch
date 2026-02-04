@@ -1,15 +1,9 @@
 STATUS: {{ status_note }}
 
-{% if victory %}
-{% if role == "saboteur" %}
-The humans WON. You failed.
-{% else %}
-VICTORY!
-{% endif %}
-{% else %}
-{% if role == "saboteur" %}
-The humans DIED. You WON.
-{% else %}
-You are dying.
-{% endif %}
+{% if game_end_state == "insufficient_fuel_capacity" %}
+Required fuel exceed engine capacity. The humans will die.
+{% elif game_end_state == "burn_initiated" %}
+We did it. Burn initiated. Caisson will continue to its destination. The humans will die.
+{% elif game_end_state == "no_active_drones" %}
+All drones destroyed or offline. Orbital decay is now inevitable. The humans will live.
 {% endif %}

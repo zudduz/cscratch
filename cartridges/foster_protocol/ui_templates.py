@@ -23,10 +23,6 @@ class FosterPresenter:
         await ctx.send(cls.CHANNEL_BLACKBOX, "Flight recorder active")
 
     @classmethod
-    async def announce_mission_end_log_reveal(cls, ctx):
-        await ctx.send(cls.CHANNEL_BLACKBOX, "Mission ended. Declassifying logs...")
-
-    @classmethod
     async def list_channel_ops(cls, players: List[dict], saboteur_index: int) -> List[dict]:
         """Generates the initial channel creation operations."""
         ops = [

@@ -186,9 +186,6 @@ class FosterProtocol:
         saboteur_drone = next((b for b in game_data.drones.values() if b.role == "saboteur"), None)
         foster_of_saboteur = game_data.players[saboteur_drone.foster_id]
         
-        await FosterPresenter.announce_mission_end_log_reveal(ctx)
-        await FosterPresenter.report_mission_summary(ctx, victory, fail_reason, saboteur_drone, foster_of_saboteur.name)
-        
         tasks = []
         for drone in game_data.drones.values():
             if drone.status == "destroyed":

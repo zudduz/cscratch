@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, AsyncMock, patch, PropertyMock
 from cartridges.foster_protocol.logic import FosterProtocol
 from cartridges.foster_protocol.models import Caisson, Player, Drone
 from app.engine_context import EngineContext
-from cartridges.foster_protocol.board import GameConfig
+from cartridges.foster_protocol.board import GameConfig, GameEndState
 
 # --- FIXTURES ---
 
@@ -106,7 +106,7 @@ async def test_no_active_drones(cartridge, mock_ctx, mock_tools):
         }
     arbitration = cartridge._evaluate_arbitration(game_data, physics_report)
         
-    assert arbitration[0] == "FAILURE"
+    assert arbitration == GameEndState.NO_ACTIVE_DRONES
 
 @pytest.mark.asyncio
 async def test_torpedo_explosion(cartridge, mock_ctx, mock_tools):

@@ -58,7 +58,7 @@ DUMMY_CONTEXT.update({
     
     # Epilogue / Eulogy
     "status_note": "Battery depleted.",
-    "victory": True,
+    "game_end_state": "no_active_drones",
 })
 
 def get_template_files():

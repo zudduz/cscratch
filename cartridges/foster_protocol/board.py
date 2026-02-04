@@ -33,7 +33,7 @@ class Room(str, Enum):
     CHARGING_STATION = "charging_station"
 
 class GameEndState(str, Enum):
-    NO_ACTIVE_DROIDS = "no_active_droids"
+    NO_ACTIVE_DRONES = "no_active_drones"
     INSUFFICIENT_FUEL_CAPACITY = "insufficient_fuel_capacity"
     BURN_INITIATED = "burn_initiated"
     CONTINUE_GAME = "continue_game"

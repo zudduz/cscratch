@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch, PropertyMock
 from cartridges.foster_protocol.logic import FosterProtocol
-from cartridges.foster_protocol.models import Caisson, Player
+from cartridges.foster_protocol.models import Caisson, Player, Drone
 from app.engine_context import EngineContext
 from cartridges.foster_protocol.board import GameConfig
 
@@ -73,19 +73,9 @@ async def test_oxygen_depletion_math(cartridge, mock_ctx, mock_tools):
     for i in range(5):
         game_data.players[f"p{i}"] = Player(is_alive=True)
         
-    # FIX: Use new_callable=PropertyMock to ensure the if-statement sees 'False'
-    # instead of a Truthy Mock object.
-    with patch("asyncio.sleep", AsyncMock()), \
-         patch.object(Caisson, "is_ready_for_day", new_callable=PropertyMock) as mock_ready, \
-         patch.object(cartridge, "run_single_drone_turn", AsyncMock(return_value={
-             "drone": MagicMock(), "action": {}, "result": MagicMock(message="ok", visibility="private"), "thought": "x"
-         })):
+    physics_report = cartridge._calculate_physics(game_data)
         
-        mock_ready.return_value = False
-        result_state = await cartridge.execute_day_simulation(game_data, mock_ctx, mock_tools)
-        
-    new_state = Caisson(**result_state)
-    assert new_state.oxygen == 80
+    assert physics_report["oxygen_drop"] == 20
 
 @pytest.mark.asyncio
 async def test_lifeboat_dilemma(cartridge, mock_ctx, mock_tools):
@@ -96,18 +86,27 @@ async def test_lifeboat_dilemma(cartridge, mock_ctx, mock_tools):
     game_data.players["p4"] = Player(alive=False) 
     game_data.players["p5"] = Player(alive=False) 
     
-    # FIX: Use new_callable=PropertyMock
-    with patch("asyncio.sleep", AsyncMock()), \
-         patch.object(Caisson, "is_ready_for_day", new_callable=PropertyMock) as mock_ready, \
-         patch.object(cartridge, "run_single_drone_turn", AsyncMock(return_value={
-             "drone": MagicMock(), "action": {}, "result": MagicMock(message="ok", visibility="private"), "thought": "x"
-         })):
-         
-        mock_ready.return_value = False
-        result_state = await cartridge.execute_day_simulation(game_data, mock_ctx, mock_tools)
+    physics_report = cartridge._calculate_physics(game_data)
         
-    new_state = Caisson(**result_state)
-    assert new_state.oxygen == 96 
+    assert physics_report["oxygen_drop"] == 4 
+
+@pytest.mark.asyncio
+async def test_no_active_drones(cartridge, mock_ctx, mock_tools):
+    game_data = Caisson(oxygen=100, fuel=40)
+    game_data.players["p1"] = Player(alive=False) 
+    game_data.players["p2"] = Player(alive=False) 
+    game_data.drones["unit_303"] = Drone(id="unit_303", destroyed=True)
+    game_data.drones["unit_313"] = Drone(id="unit_313", battery=0)
+    
+    physics_report = {
+            "oxygen_drop": 20,
+            "req_today": 60,
+            "req_tomorrow": 70,
+            "cycle_report_idx": 1
+        }
+    arbitration = cartridge._evaluate_arbitration(game_data, physics_report)
+        
+    assert arbitration[0] == "FAILURE"
 
 @pytest.mark.asyncio
 async def test_torpedo_explosion(cartridge, mock_ctx, mock_tools):

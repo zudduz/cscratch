@@ -323,9 +323,14 @@ class FosterProtocol:
     def _evaluate_arbitration(self, game_data: Caisson, physics: Dict[str, int]) -> Tuple[str, str]:
         """Determines if the game is Won, Lost, or Continuing."""
         if game_data.fuel >= physics["req_today"]:
-            return "VICTORY", "Sufficient fuel achieved."
+            return "VICTORY", "Sufficient fuel achieved"
         elif physics["req_tomorrow"] > GameConfig.MAX_POSSIBLE_FUEL_REQ:
-            return "FAILURE", "Required fuel exceeds ship capacity."
+            return "FAILURE", "Required fuel exceeds engine's capacity"
+
+        active_drones = [d for d in game_data.drones.values() if d.status == "active"]
+        if not active_drones:
+            return "FAILURE", "All drones unresponsive"
+
         return "CONTINUE", ""
 
     async def _handle_transition(self, game_data: Caisson, status: str, status_reason: str, physics: Dict[str, int], ctx, tools) -> Dict[str, Any]:

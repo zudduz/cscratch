@@ -203,15 +203,15 @@ class ChargeTool(BaseTool):
 
 
 class TowTool(BaseTool):
-    usage = "tow(target_id, destination_id)"
+    usage = "tow(target_id, room_id)"
     COST = 20
     VISIBILITY = "Global"
     effect_desc = "Move another drone."
-    required_args = ("target_id", "destination_id")
+    required_args = ("target_id", "room_id")
 
     def validate(self, context: ToolContext) -> Tuple[bool, str]:
         target_id = context.args.get("target_id")
-        dest_id = context.args.get("destination_id", "charging_station")
+        dest_id = context.args.get("room_id", "charging_station")
         
         target = context.game_data.drones.get(target_id)
         if not target or target.location_id != context.actor.location_id:
@@ -225,7 +225,7 @@ class TowTool(BaseTool):
 
     def execute(self, context: ToolContext) -> ToolExecutionResult:
         target_id = context.args.get("target_id")
-        dest_id = context.args.get("destination_id", "charging_station")
+        dest_id = context.args.get("room_id", "charging_station")
         target = context.game_data.drones.get(target_id)
         
         context.actor.location_id = dest_id

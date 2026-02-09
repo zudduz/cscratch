@@ -113,7 +113,7 @@ def test_tool_tow_success(game_state):
     drone.location_id = "shuttle_bay"
     target.location_id = "shuttle_bay"
     
-    result = execute_tool("tow", {"target_id": "unit_02", "destination_id": "engine_room"}, "unit_01", game_state)
+    result = execute_tool("tow", {"target_id": "unit_02", "room_id": "engine_room"}, "unit_01", game_state)
     
     assert result.success is True
     assert drone.location_id == "engine_room"

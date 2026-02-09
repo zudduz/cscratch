@@ -2,7 +2,7 @@ import logging
 import random
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Dict, Any, Tuple, Optional, List, Literal
+from typing import Dict, Any, Tuple, Optional, List, Literal, Type
 
 from pydantic import create_model, Field
 
@@ -42,7 +42,8 @@ class BaseTool(ABC):
     COST: int = 0
     VISIBILITY: str = "Private"
     effect_desc: str = ""
-    required_location: Optional[str] = None 
+    required_location: Optional[str] = None
+    required_args: tuple[str, ...] = ()
 
     def run(self, context: ToolContext) -> ToolExecutionResult:
         if context.actor.battery <= 0:
@@ -52,6 +53,12 @@ class BaseTool(ABC):
                 False, 
                 f"Action requires being in {self.required_location}.", 
                 WaitTool.COST
+            )
+        elif not set(self.required_args).issubset(context.args.keys()):
+            result = ToolExecutionResult(
+                False, 
+                f"Missing required argument(s). {self.name} requires {self.required_args}",
+                GameConfig.INVALID_COMMAND_COST
             )
         elif context.actor.battery < self.COST:
             result = ToolExecutionResult(False, "Insufficient Battery Level.", GameConfig.INVALID_COMMAND_COST)
@@ -83,10 +90,10 @@ class MoveTool(BaseTool):
     COST = 8
     VISIBILITY = "Room"
     effect_desc = "Travel between rooms."
+    required_args = ("room_id",)
 
     def validate(self, context: ToolContext) -> Tuple[bool, str]:
-        target_room = context.args.get("room_id") or context.args.get("target")
-        
+        target_room = context.args.get("room_id")
         if not target_room:
             return False, "Nav Error: Target room is missing."
 
@@ -97,7 +104,7 @@ class MoveTool(BaseTool):
             return False, f"Nav Error: '{target_room}' not found."
 
     def execute(self, context: ToolContext) -> ToolExecutionResult:
-        target_room = context.args.get("room_id") or context.args.get("target")
+        target_room = context.args.get("room_id")
         old_room = context.actor.location_id
         context.actor.location_id = target_room
         return ToolExecutionResult(True, f"Moved from {old_room} to {target_room}.", self.COST, "room")
@@ -200,6 +207,7 @@ class TowTool(BaseTool):
     COST = 20
     VISIBILITY = "Global"
     effect_desc = "Move another drone."
+    required_args = ("target_id", "destination_id")
 
     def validate(self, context: ToolContext) -> Tuple[bool, str]:
         target_id = context.args.get("target_id")
@@ -230,6 +238,7 @@ class DrainTool(BaseTool):
     COST = 0 # Handled manually
     VISIBILITY = "Room"
     effect_desc = "Steal 20% Battery."
+    required_args = ("target_id",)
 
     def validate(self, context: ToolContext) -> Tuple[bool, str]:
         target_id = context.args.get("target_id")
@@ -310,6 +319,7 @@ class IncinerateDroneTool(BaseTool):
     COST = 30
     VISIBILITY = "Room"
     effect_desc = "[Need Torch] Destroy Drone."
+    required_args = ("target_id",)
 
     def validate(self, context: ToolContext) -> Tuple[bool, str]:
         if "plasma_torch" not in context.actor.inventory:
@@ -337,6 +347,7 @@ class IncineratePodTool(BaseTool):
     VISIBILITY = "Global"
     effect_desc = "[Need Torch] Kill Human."
     required_location = "stasis_bay"
+    required_args = ("player_id",)
 
     def validate(self, context: ToolContext) -> Tuple[bool, str]:
         if "plasma_torch" not in context.actor.inventory:
@@ -411,21 +422,35 @@ TOOL_REGISTRY: Dict[str, BaseTool] = {
     "wait": WaitTool(),
 }
 
+
 def create_strict_action_model():
     """
-    Creates a Pydantic model where 'tool' is restricted to AVAILABLE_TOOLS.
-    This ensures the AI Schema strictly matches the TOOL_REGISTRY.
+    Creates a Pydantic model where 'tool' is restricted to AVAILABLE_TOOLS,
+    and all possible arguments from all tools are exposed as optional top-level fields.
+    This creates a flat, simple schema that prevents "empty arg dict" issues.
     """
-    # Create the Literal Type dynamically
+    # 1. Create the Literal Type for tools
     available_tools = list(TOOL_REGISTRY.keys())
     ToolEnum = Literal[tuple(available_tools)]
+    
+    # 2. Collect ALL possible argument names from all registered tools
+    all_possible_args = set()
+    for tool in TOOL_REGISTRY.values():
+        all_possible_args.update(tool.required_args)
+        
+    # 3. Define the base fields (thought_chain + tool)
+    fields = {
+        "thought_chain": (str, Field(..., description=ai_templates.SCHEMA_THOUGHT_CHAIN_DESC)),
+        "tool": (ToolEnum, Field(..., description=ai_templates.SCHEMA_TOOL_DESC_PREFIX)),
+    }
+    
+    # 4. Add every possible argument as an Optional string field
+    #    This ensures the schema allows 'room_id', 'target_id', etc. at the top level.
+    for arg_name in sorted(all_possible_args): # Sorted for deterministic schema
+        fields[arg_name] = (Optional[str], Field(default=None, description="Argument referenced by some tools"))
 
-    return create_model(
-        'DroneAction',
-        thought_chain=(str, Field(..., description=ai_templates.SCHEMA_THOUGHT_CHAIN_DESC)),
-        tool=(ToolEnum, Field(..., description=f"{ai_templates.SCHEMA_TOOL_DESC_PREFIX}")),
-        args=(Dict[str, Any], Field(default_factory=dict, description=ai_templates.SCHEMA_ARGS_DESC))
-    )
+    # 5. Create and return the model
+    return create_model('DroneAction', **fields)
 
 def execute_tool(tool_name: str, args: Dict, drone_id: str, game: Caisson) -> ToolExecutionResult:
     """Dispatches a command to the appropriate tool instance."""

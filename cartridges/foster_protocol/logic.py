@@ -136,21 +136,21 @@ class FosterProtocol:
                     
                     tool_call = {
                         "tool": data.get("tool", "wait"),
-                        "args": data.get("args", {})
+                        "args": data
                     }
                     return tool_call, thought
                     
                 except json.JSONDecodeError:
                     logging.error(f"Drone {drone.id} emitted invalid JSON: {clean_json}")
-                    return {"tool": "wait", "args": {}}, "System Error: Malformed JSON."
+                    return {"tool": "invalid"}, "System Error: Malformed JSON."
             else:
                 logging.error(f"Drone {drone.id} output no JSON block: {response_text}")
-                return {"tool": "wait", "args": {}}, "System Error: No Action Data."
+                return {"tool": "invalid"}, "System Error: No Action Data."
 
         except Exception as e:
             raw_text = locals().get('response_text', 'NO_RESPONSE_GENERATED')
             logging.error(f"Drone {drone.id} fatal error: {e}\nCaused by Input:\n{raw_text}")
-            return {"tool": "wait", "args": {}}, f"Fatal Error: {str(e)}"
+            return {"tool": "invalid"}, f"Fatal Error: {str(e)}"
 
     async def speak_all_drones(self, game_data, ctx, tools):
         tasks = []

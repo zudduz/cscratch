@@ -213,3 +213,4 @@ repo_context.xml
 prompt.py
 test_results.log
 sim_results.json
+scratch*

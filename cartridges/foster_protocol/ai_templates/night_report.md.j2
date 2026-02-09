@@ -8,5 +8,7 @@ Daily logs: {{ drone_memory | join('\n') }}
 INSTRUCTION: The work day is over. Start the conversation with your foster.
 {% else %}
 **LANGUAGE MATCHING:** Reply in the same language your foster uses (English, German, Taglish, etc.).
-FOSTER SAYS: "{{ user_input }}"
+
+FOSTER: {{ user_input }}
 {% endif %}
+YOU:

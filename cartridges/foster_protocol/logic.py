@@ -104,7 +104,7 @@ class FosterProtocol:
 
     async def get_drone_action(self, drone, game_data: Caisson, tools_api, game_id: str, hour: int) -> tuple[Dict[str, Any], str]:
         try:
-                        # INJECT SCHEMA (for guidance only)
+            # INJECT SCHEMA (for guidance only)
             schema = drone_tools.create_strict_action_model().model_json_schema()
             sys_prompt, user_msg = ai_templates.compose_tactical_turn(drone, game_data, hour)
 

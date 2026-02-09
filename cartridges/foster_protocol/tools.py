@@ -411,7 +411,6 @@ TOOL_REGISTRY: Dict[str, BaseTool] = {
     "wait": WaitTool(),
 }
 
-
 def create_strict_action_model():
     """
     Creates a Pydantic model where 'tool' is restricted to AVAILABLE_TOOLS.
@@ -422,7 +421,7 @@ def create_strict_action_model():
     ToolEnum = Literal[tuple(available_tools)]
 
     return create_model(
-        'DroneActionStrict',
+        'DroneAction',
         thought_chain=(str, Field(..., description=ai_templates.SCHEMA_THOUGHT_CHAIN_DESC)),
         tool=(ToolEnum, Field(..., description=f"{ai_templates.SCHEMA_TOOL_DESC_PREFIX}")),
         args=(Dict[str, Any], Field(default_factory=dict, description=ai_templates.SCHEMA_ARGS_DESC))

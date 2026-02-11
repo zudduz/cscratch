@@ -9,7 +9,6 @@ class Player(BaseModel):
     role: Literal["loyal", "saboteur"] = "loyal"
     alive: bool = True
     requested_sleep: bool = False
-    nanny_channel_id: Optional[str] = None
     name: str = ""
 
     @property

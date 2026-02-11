@@ -115,7 +115,7 @@ class FosterPresenter:
 
     @classmethod
     async def report_saboteur(cls, ctx, saboteur_drone: Drone, foster_name: str):
-        final_report += f"\nTraitor: Drone {saboteur_drone.id} (Bonded to <@{foster_name}>)."
+        final_report = f"\nTraitor: Drone {saboteur_drone.id} (Bonded to <@{foster_name}>)."
         await ctx.send(cls.CHANNEL_AUX, final_report)
 
     # --- CHAT & INTERACTION ---

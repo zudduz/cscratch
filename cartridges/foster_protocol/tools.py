@@ -425,13 +425,11 @@ TOOL_REGISTRY: Dict[str, BaseTool] = {
 
 def create_strict_action_model():
     """
-    Creates a Pydantic model where 'tool' is restricted to AVAILABLE_TOOLS,
-    and all possible arguments from all tools are exposed as optional top-level fields.
-    This creates a flat, simple schema that prevents "empty arg dict" issues.
+    Creates a Pydantic model where 'tool' is restricted to a simple enum.
+    Vertex AI does NOT support 'anyOf' or complex logic in Controlled Generation.
     """
-    # 1. Create the Literal Type for tools
+    # Use a basic list for the enum to ensure it serializes to a simple "enum": [...]
     available_tools = list(TOOL_REGISTRY.keys())
-    ToolEnum = Literal[tuple(available_tools)]
     
     # 2. Collect ALL possible argument names from all registered tools
     all_possible_args = set()
@@ -439,9 +437,10 @@ def create_strict_action_model():
         all_possible_args.update(tool.required_args)
         
     # 3. Define the base fields (thought_chain + tool)
+    # We use a standard Enum or a string with enum constraint to avoid anyOf logic
     fields = {
         "thought_chain": (str, Field(..., description=ai_templates.SCHEMA_THOUGHT_CHAIN_DESC)),
-        "tool": (ToolEnum, Field(..., description=ai_templates.SCHEMA_TOOL_DESC_PREFIX)),
+        "tool": (str, Field(..., enum=available_tools, description=ai_templates.SCHEMA_TOOL_DESC_PREFIX)),
     }
     
     # 4. Add every possible argument as an Optional string field

@@ -26,19 +26,42 @@ _MODEL_LOCK = asyncio.Lock()
 
 def _sanitize_schema(schema: dict) -> dict:
     """
-    Recursively removes 'additionalProperties' and 'title' from the schema 
+    Recursively removes unsupported keywords from the schema 
     to make it compatible with Vertex AI Controlled Generation.
+    
+    Vertex AI does NOT support: 'additionalProperties', 'title', 'anyOf', 'oneOf', 'allOf'.
     """
-    if isinstance(schema, dict):
-        return {
-            k: _sanitize_schema(v) 
-            for k, v in schema.items() 
-            if k not in ["additionalProperties", "title"]
-        }
-    elif isinstance(schema, list):
-        return [_sanitize_schema(v) for v in schema]
-    else:
+    if not isinstance(schema, dict):
+        if isinstance(schema, list):
+            return [_sanitize_schema(v) for v in schema]
         return schema
+
+    # 1. Strip basic forbidden keys
+    sanitized = {
+        k: _sanitize_schema(v) 
+        for k, v in schema.items() 
+        if k not in ["additionalProperties", "title", "$schema", "description"]
+    }
+
+    # 2. Handle 'anyOf' (Vertex AI limitation)
+    # If anyOf exists, we try to collapse it into an 'enum' if it's just a list of const strings.
+    # Otherwise, we just take the first option to avoid the error.
+    if "anyOf" in sanitized:
+        options = sanitized.pop("anyOf")
+        # Heuristic: If they are all just {'type': 'string', 'enum': [...]}
+        enums = []
+        for opt in options:
+            if "enum" in opt:
+                enums.extend(opt["enum"])
+        
+        if enums:
+            sanitized["type"] = "string"
+            sanitized["enum"] = list(set(enums))
+        elif options:
+            # Fallback: Just use the first schema definition in the list
+            sanitized.update(_sanitize_schema(options[0]))
+
+    return sanitized
 
 class AIEngine:
     def __init__(self):
@@ -101,13 +124,12 @@ class AIEngine:
                 logging.info(f"AI Request: {model.model_name} (Game: {target_id})")
             
             # --- STRUCTURED OUTPUT BINDING ---
-            # If a schema is provided, we bind it to the model for this specific invocation.
-            # This enables "Controlled Generation" (JSON Mode) on Vertex AI.
             if response_schema:
-                response_schema = _sanitize_schema(response_schema)
+                # Vertex AI is very picky about the JSON schema format
+                sanitized_schema = _sanitize_schema(response_schema)
                 invocation_model = model.bind(
                     response_mime_type="application/json",
-                    response_schema=response_schema
+                    response_schema=sanitized_schema
                 )
             else:
                 invocation_model = model

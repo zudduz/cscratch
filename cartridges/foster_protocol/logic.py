@@ -393,7 +393,9 @@ class FosterProtocol:
 
         # 3. Chat Routing
         if channel_id == interface_channels.get('aux-comm'):
-            return await self._handle_mainframe_chat(user_input, ctx, tools)
+            # MVP: Mainframe personality disabled
+            # return await self._handle_mainframe_chat(user_input, ctx, tools)
+            return None
             
         elif channel_id == interface_channels.get(f"nanny_{user_id}"):
             return await self._handle_drone_chat(user_input, ctx, tools, game_data, user_id)

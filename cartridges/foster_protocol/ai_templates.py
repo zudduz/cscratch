@@ -132,7 +132,7 @@ def compose_nanny_chat_turn(drone_id: str, game_data: Caisson, user_message: str
     return _compose_night_report(drone_id, game_data, False, user_message)
 
 def compose_speak_turn(drone_id: str, game_data: Caisson) -> Tuple[str, str]:
-    _compose_night_report(drone_id, game_data, True)
+    return _compose_night_report(drone_id, game_data, True)
 
 def _compose_night_report(drone_id: str, game_data: Caisson, is_first_message: bool, user_message: str = "") -> Tuple[str, str]:
     drone = game_data.drones.get(drone_id)

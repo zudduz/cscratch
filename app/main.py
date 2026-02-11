@@ -28,9 +28,6 @@ async def lifespan(app: FastAPI):
     # Start Engine Cron
     await game_engine.engine.start()
     
-    # TODO remove lifecycle debug statements since we no longer have the websocket controlled here.
-    await discord_client.announce_state("System Online (Headless Mode)")
-    
     yield
     
     # --- SHUTDOWN ---

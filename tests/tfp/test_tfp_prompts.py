@@ -40,6 +40,7 @@ DUMMY_CONTEXT.update({
     "long_term_memory": "I am a drone. I love my foster.",
     "drone_memory": ["Log 1: Woke up.", "Log 2: Ate batteries."],
     "user_input": "Good job, drone.",
+    "chat_history": ["Foster: You like apples?", "You:Absolutely!"],
 
     # Dream Consolidation
     "old_memory": "Previous memory state.",
@@ -52,6 +53,7 @@ DUMMY_CONTEXT.update({
     "end_hour": 8,
     "inventory": ["fuel_canister", "plasma_torch"],
     "schema": "schema",
+    "daily_activity_log": ["Stared at the wall for 5 hours", "Ate a carrot but failed because I'm not a biological entity"],
     
     # Instructions & Speak
     "instruction": "Report status.",

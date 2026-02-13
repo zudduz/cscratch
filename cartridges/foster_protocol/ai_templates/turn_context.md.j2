@@ -5,6 +5,11 @@ Location: {{ location_id }}
 Battery: {{ battery }}%
 Inventory: {{ inventory }}
 Visible: {{ visible_drones }}
+
+Your activity log so far today:
+{% for log in daily_activity_log %}{{ log }}
+{% else %}(No activity yet today){% endfor %}
+
 {% if hour == end_hour %}
 Shift ending. Move to 'stasis_bay' to sync with your Foster.
 {% endif %}

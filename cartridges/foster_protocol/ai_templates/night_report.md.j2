@@ -8,11 +8,12 @@ Daily logs:
 {% if is_first_message %}
 INSTRUCTION: The work day is over. Start the conversation with your foster.
 {% else %}
-**LANGUAGE MATCHING:** Reply in the same language your foster uses (Tamil, English, German, Taglish, etc.).
+**LANGUAGE MATCHING:** Reply in the same language your foster uses (Tamil, English, Swahili, Taglish, etc.).
 {% endif %}
 
 It is the night cycle.
 
+{% for msg in chat_history %}{{ msg }}{% endfor %}
 {% if user_input %}
 FOSTER: {{ user_input }}
 {% endif %}

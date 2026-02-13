@@ -116,6 +116,7 @@ def _gather_turn_context_data(drone: Drone, game_data: Caisson, hour: int = 1) -
         "inventory": drone.inventory,
         "visible_drones": visible_drones,
         "long_term_memory": drone.long_term_memory,
+        "daily_activity_log": drone.daily_memory
     }
 
 def compose_dream_turn(old_memory: str, daily_logs: list, chat_log: list) -> Tuple[str, str]:
@@ -145,7 +146,8 @@ def _compose_night_report(drone_id: str, game_data: Caisson, is_first_message: b
         drone=drone,
         drone_memory=recent_logs,
         user_input=user_message,
-        is_first_message=is_first_message
+        is_first_message=is_first_message,
+        chat_history=drone.night_chat_log
     )
 
     return system_prompt, user_input

@@ -14,10 +14,6 @@ from langchain_google_vertexai import ChatVertexAI, HarmBlockThreshold, HarmCate
 from langchain_core.messages import HumanMessage, SystemMessage
 from . import persistence
 
-# PRICING (Gemini 2.5 Flash)
-# Input: $0.30 per 1M ($0.075 Cached)
-# Output: $1.25 per 1M
-
 # --- SHARED AUTH STATE ---
 # We keep the model instance global so it reuses the underlying 
 # connection pool and cached OAuth tokens across parallel games.

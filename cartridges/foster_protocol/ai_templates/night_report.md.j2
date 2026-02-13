@@ -13,8 +13,7 @@ INSTRUCTION: The work day is over. Start the conversation with your foster.
 
 It is the night cycle.
 
-{% for msg in chat_history %}{{ msg }}{% endfor %}
-{% if user_input %}
-FOSTER: {{ user_input }}
-{% endif %}
-YOU:
+{% for msg in chat_history %}
+{{ msg }}
+{% endfor %}
+You: 

@@ -173,4 +173,7 @@ def compose_epilogue_turn(drone_id: str, game_data: Caisson, game_end_state) -> 
     return system_prompt, user_input
 
 def format_foster_log_line(input: str) -> str:
-    return f"FOSTER: {input}"
+    return f"Foster: {input}"
+
+def format_drone_log_line(input: str) -> str:
+    return f"You: {input}"

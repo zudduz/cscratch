@@ -76,7 +76,7 @@ class FosterProtocol:
                 sys_prompt, f"{ctx.game_id}_drone_{drone.id}", user_msg, drone.model_version, game_id=ctx.game_id
             )
             await FosterPresenter.send_private_message(ctx, drone.foster_id, resp)
-            drone.night_chat_log.append(f"SELF (Intro): {resp}")
+            drone.night_chat_log.append(ai_templates.format_drone_log_line(resp))
         except Exception as e:
             logging.error(f"Intro failed for {drone.id}: {e}")
 
@@ -431,7 +431,7 @@ class FosterProtocol:
             )
             
             await ctx.reply(response)
-            my_drone.night_chat_log.append(f"SELF: {response}") 
+            my_drone.night_chat_log.append(ai_templates.format_drone_log_line(response))
 
             return {f"drones.{my_drone.id}.night_chat_log": my_drone.night_chat_log}
         return None

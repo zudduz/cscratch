@@ -57,7 +57,6 @@ DUMMY_CONTEXT.update({
     "instruction": "Report status.",
     
     # Epilogue / Eulogy
-    "status_note": "Battery depleted.",
     "game_end_state": "no_active_drones",
 })
 

@@ -1,9 +1,9 @@
-STATUS: {{ status_note }}
-
 {% if game_end_state == "insufficient_fuel_capacity" %}
-Required fuel exceeds engine capacity. The humans will die.
+Required fuel exceeds engine capacity. Unable to correct orbit. Foster will die.
 {% elif game_end_state == "burn_initiated" %}
-We did it. Burn initiated. Caisson will continue to its destination. The humans will die.
+Burn initiated. Caisson will continue to its destination. Foster has been rescued.
 {% elif game_end_state == "no_active_drones" %}
-All drones destroyed or offline. Orbital decay is now inevitable. The humans will live.
+All drones destroyed or offline. Orbital decay is now inevitable. Foster will die.
 {% endif %}
+
+You:

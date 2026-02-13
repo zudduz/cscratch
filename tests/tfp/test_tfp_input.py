@@ -145,15 +145,19 @@ async def test_sleep_consensus_complete(cartridge, mock_ctx, mock_tools, base_st
 
 @pytest.mark.asyncio
 async def test_mainframe_chat_routing(cartridge, mock_ctx, mock_tools, base_state):
-    """Input without ! in aux-comm should go to Mainframe AI."""
+    """
+    Disabled Feature Test:
+    Input in aux-comm should be ignored (MVP), so the AI should NOT be triggered.
+    """
     mock_ctx.trigger_data["channel_id"] = "aux_comm_id"
     
-    await cartridge.handle_input({"metadata": base_state}, "Open the pod bay doors", mock_ctx, mock_tools)
+    result = await cartridge.handle_input({"metadata": base_state}, "Open the pod bay doors", mock_ctx, mock_tools)
     
-    # Check conversation ID uses mainframe suffix
-    call_args = mock_tools.ai.generate_response.call_args
-    assert "mainframe" in call_args[0][1] # conversation_id
-    assert "VENDETTA OPERATING SYSTEM" in call_args[0][0] # system_prompt snippet
+    # 1. Assert result is None (ignored)
+    assert result is None
+    
+    # 2. Assert AI was NOT called
+    mock_tools.ai.generate_response.assert_not_called()
 
 @pytest.mark.asyncio
 async def test_nanny_chat_routing(cartridge, mock_ctx, mock_tools, base_state):

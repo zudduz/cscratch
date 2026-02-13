@@ -164,14 +164,9 @@ def compose_epilogue_turn(drone_id: str, game_data: Caisson, game_end_state) -> 
     drone = game_data.drones.get(drone_id)
     system_prompt = _compose_dynamic_system_prompt(drone_id, game_data)
     
-    context_note = "STATUS: ONLINE."
-    if drone.battery <= 0:
-        context_note = "STATUS: BATTERY DEAD. Final transmission."
-        
     user_input = render(
         "drone_epilogue.md.j2", 
-        game_end_state=game_end_state,
-        status_note=context_note
+        game_end_state=game_end_state
     )
     return system_prompt, user_input
 

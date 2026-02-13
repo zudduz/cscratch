@@ -55,9 +55,9 @@ class FosterPresenter:
         status_str = f"[Bat:{drone.battery}% | Loc:{drone.location_id} | Inv:{inv_str}]"
         
         msg = (
-            f"**[H{hour}] {role_icon} {display_id}** {status_str}\n"
             f"*{thought}*\n"
             f">> `{result.message}`" 
+            f"**[H{hour}] {role_icon} {display_id}** {status_str}\n"
         )
         await ctx.send(cls.CHANNEL_BLACKBOX, msg)
 

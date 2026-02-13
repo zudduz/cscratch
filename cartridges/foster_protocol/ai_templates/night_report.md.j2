@@ -5,14 +5,15 @@ Status: Battery {{ drone.battery }}% | Location: {{ drone.location_id }}
 Daily logs:
 {{ drone_memory | join('\n') }}
 
-It is the night cycle.
-
 {% if is_first_message %}
 INSTRUCTION: The work day is over. Start the conversation with your foster.
-
 {% else %}
-**LANGUAGE MATCHING:** Reply in the same language your foster uses (English, German, Taglish, etc.).
+**LANGUAGE MATCHING:** Reply in the same language your foster uses (Tamil, English, German, Taglish, etc.).
+{% endif %}
 
+It is the night cycle.
+
+{% if user_input %}
 FOSTER: {{ user_input }}
 {% endif %}
 YOU:

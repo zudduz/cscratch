@@ -111,11 +111,7 @@ async def test_no_active_drones(cartridge, mock_ctx, mock_tools):
 @pytest.mark.asyncio
 async def test_torpedo_explosion(cartridge, mock_ctx, mock_tools):
     game_data = Caisson()
-    drone = MagicMock()
-    drone.id = "unit_01"
-    drone.location_id = "torpedo_bay"
-    drone.battery = 100
-    drone.inventory = []
+    drone = Drone(id="unit_01", location_id="torpedo_bay", battery=100, inventory=[])
     game_data.drones["unit_01"] = drone
     
     mock_tools.ai.generate_response.return_value = '''{"thought_chain": "Carefully gather fuel", "tool": "gather"}'''
@@ -135,11 +131,7 @@ async def test_gather_success(cartridge):
     expected_remaining = initial_shuttle_fuel - gather_amount
 
     game_data = Caisson()
-    drone = MagicMock()
-    drone.id = "unit_01"
-    drone.location_id = "shuttle_bay"
-    drone.battery = 100
-    drone.inventory = []
+    drone = Drone(id="unit_01", location_id="shuttle_bay", battery=100, inventory=[])
     game_data.drones["unit_01"] = drone
     
     mock_tools = MagicMock()

@@ -123,7 +123,7 @@ class FosterProtocol:
 
             if not response_text:
                 logging.error(f"Drone {drone.id} returned empty string.")
-                return {"tool": "invalid", "args": {}}, "Drone provided empty response."
+                return {"tool": "invalid"}, "Drone provided empty response."
 
             # Find the first valid JSON block { ... } matching curly braces
             match = re.search(r"(\{.*\})", response_text, re.DOTALL)
@@ -135,7 +135,7 @@ class FosterProtocol:
                     thought = response_text
                     
                     tool_call = {
-                        "tool": data.get("tool", "wait"),
+                        "tool": data.get("tool", "invalid"),
                         "args": data
                     }
                     return tool_call, thought

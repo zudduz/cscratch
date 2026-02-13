@@ -1,22 +1,26 @@
-Internal memory: "{{ long_term_memory }}"
+Internal memory: "{{ drone.long_term_memory }}"
 
 Time: Hour {{ hour }} of {{ end_hour }}
-Location: {{ location_id }}
-Battery: {{ battery }}%
-Inventory: {{ inventory }}
+Location: {{ drone.location_id }}
+Battery: {{ drone.battery }}%
+Inventory: {{ drone.inventory }}
 Visible: {{ visible_drones }}
 
 Your activity log so far today:
-{% for log in daily_activity_log %}{{ log }}
-{% else %}(No activity yet today){% endfor %}
+{% for log in drone.daily_memory %}
+{{ log }}
+{% else %}
+(No activity yet today)
+{% endfor %}
 
 {% if hour == end_hour %}
 Shift ending. Move to 'stasis_bay' to sync with your Foster.
+
 {% endif %}
 {% if battery < 30 %}
 Warning: Battery low. Consider charging at the 'charging_station'.
-{% endif %}
 
+{% endif %}
 It is the day cycle.
 
 **Action Output:**

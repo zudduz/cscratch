@@ -26,7 +26,10 @@ DUMMY_CONTEXT["tool_map"] = TOOL_REGISTRY
 DUMMY_CONTEXT.update({
     # Drone Identity
     "drone_id": "UNIT_TEST_01",
-    "drone": Drone(id="unit_301", battery=75, location_id="engine_room", inventory=["fuel_canister", "plasma_torch"]),
+    "drone": Drone(id="unit_301", battery=75, location_id="engine_room", inventory=["fuel_canister", "plasma_torch"],
+        long_term_memory="I am a drone. I love my foster.",
+        drone_memory=["Log 1: Woke up.", "Log 2: Ate batteries."],
+    ),
     "foster_name": "Test Subject",
     "is_saboteur": True,
     "is_first_message": True,
@@ -53,7 +56,7 @@ DUMMY_CONTEXT.update({
     "end_hour": 8,
     "inventory": ["fuel_canister", "plasma_torch"],
     "schema": "schema",
-    "daily_activity_log": ["Stared at the wall for 5 hours", "Ate a carrot but failed because I'm not a biological entity"],
+    "daily_memory": ["Stared at the wall for 5 hours", "Ate a carrot but failed because I'm not a biological entity"],
     
     # Instructions & Speak
     "instruction": "Report status.",

@@ -91,33 +91,22 @@ def compose_tactical_turn(drone: Drone, game_data: Caisson, hour: int) -> Tuple[
     """
     The main game loop turn.
     """
-    context_data = _gather_turn_context_data(drone, game_data, hour)
-    
-    system_prompt = _compose_dynamic_system_prompt(drone.id, game_data)
-    user_input = render("turn_context.md.j2", **context_data)
-    
-    return system_prompt, user_input
 
-def _gather_turn_context_data(drone: Drone, game_data: Caisson, hour: int = 1) -> Dict[str, Any]:
-    """
-    Gathers raw data for the turn context prompt.
-    """
     visible_drones = [
         f"{d.id} ({d.status})"
         for d in game_data.drones.values() 
         if d.location_id == drone.location_id and d.id != drone.id
     ]
     
-    return {
-        "hour": hour,
-        "end_hour": GameConfig.HOURS_PER_SHIFT,
-        "location_id": drone.location_id,
-        "battery": drone.battery,
-        "inventory": drone.inventory,
-        "visible_drones": visible_drones,
-        "long_term_memory": drone.long_term_memory,
-        "daily_activity_log": drone.daily_memory
-    }
+    system_prompt = _compose_dynamic_system_prompt(drone.id, game_data)
+    user_input = render("turn_context.md.j2",
+        hour=hour,
+        end_hour=GameConfig.HOURS_PER_SHIFT,
+        visible_drones=visible_drones,
+        drone=drone
+    )
+    
+    return system_prompt, user_input
 
 def compose_dream_turn(old_memory: str, daily_logs: list, chat_log: list) -> Tuple[str, str]:
     system = "You are an archival system."

@@ -118,7 +118,7 @@ async def test_torpedo_explosion(cartridge, mock_ctx, mock_tools):
     drone.inventory = []
     game_data.drones["unit_01"] = drone
     
-    mock_tools.ai.generate_response.return_value = '''{"thought_chain": "Carefully gather fuel", "tool": "gather", "args": {}}'''
+    mock_tools.ai.generate_response.return_value = '''{"thought_chain": "Carefully gather fuel", "tool": "gather"}'''
     
     with patch("random.randint", return_value=0): 
         res = await cartridge.run_single_drone_turn(drone, game_data, 1, mock_tools, "game_id")
@@ -143,7 +143,7 @@ async def test_gather_success(cartridge):
     game_data.drones["unit_01"] = drone
     
     mock_tools = MagicMock()
-    mock_tools.ai.generate_response = AsyncMock(return_value='''{"tool": "gather", "args": {}}''')
+    mock_tools.ai.generate_response = AsyncMock(return_value='''{"tool": "gather"}''')
     
     res = await cartridge.run_single_drone_turn(drone, game_data, 1, mock_tools, "game_id")
     

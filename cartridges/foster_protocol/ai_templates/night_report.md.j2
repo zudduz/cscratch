@@ -1,5 +1,7 @@
-Journal (memory): "{{ drone.long_term_memory }}"
+{% if drone.long_term_memory %}
+Internal memory: "{{ drone.long_term_memory }}"
 
+{% endif %}
 Status: Battery {{ drone.battery }}% | Location: {{ drone.location_id }}
 
 Daily logs:

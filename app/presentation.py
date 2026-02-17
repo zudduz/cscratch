@@ -45,6 +45,7 @@ EMBED_DESC_ENDED = "The host may now delete the channels"
 ERR_NOT_HOST_START = "Only the host may start the game"
 ERR_GENERIC = "Error"
 MSG_STARTING = "Starting game"
+LOBBY_FULL = "Lobby is full"
 
 
 # --- LOGIC & FORMATTERS ---
@@ -70,8 +71,8 @@ def format_lobby_title(cartridge_name: str) -> str:
 def format_lobby_created_msg(mention: str) -> str:
     return f"Lobby: {mention}"
 
-def format_player_joined(name: str) -> str:
-    return f"**{name}** joined!"
+def format_player_joined(name: str, count: int, max_p: int, cost: int) -> str:
+    return f"**{name}** joined! ({count}/{max_p})\n**Required Scratch:** `{cost}`"
 
 def build_cost_report(game_id: str, input_tokens: int, output_tokens: int) -> str:
     """Calculates costs (Gemini 2.5 Flash Pricing) and returns a formatted report."""

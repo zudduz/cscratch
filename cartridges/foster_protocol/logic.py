@@ -21,6 +21,13 @@ class FosterProtocol:
             **default_state.model_dump()
         }
 
+    @property
+    def MAX_PLAYERS(self):
+        return GameConfig.MAX_PLAYERS
+
+    def calculate_start_cost(self, player_count: int) -> int:
+        return max(4, player_count)
+
     async def on_game_start(self, generic_state: dict) -> Dict[str, Any]:
         game_data = Caisson(**generic_state.get('metadata', {}))
         discord_players = generic_state.get('players', [])

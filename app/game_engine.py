@@ -56,13 +56,49 @@ class GameEngine:
         await self.join_game(game_id, host_id, host_name)
         return game_id
 
-    async def join_game(self, game_id: str, user_id: str, user_name: str):
+    async def join_game(self, game_id: str, user_id: str, user_name: str) -> dict:
+        """
+        Attempts to add a player to the game.
+        Returns a dict containing status, player_count, max, and current_cost.
+        """
         game = await persistence.db.get_game_by_id(game_id)
-        if game:
-            for p in game.players:
-                if p.id == user_id: return
+        if not game: 
+            return {"status": "error"}
+
+        cartridge = await self._load_cartridge(game.story_id)
+        
+        max_players = getattr(cartridge, "MAX_PLAYERS", 8)
+        cost_func = getattr(cartridge, "calculate_start_cost", lambda n: max(4, n))
+
+        # Check if already joined
+        existing = next((p for p in game.players if p.id == user_id), None)
+        if existing:
+            current_count = len(game.players)
+            cost = cost_func(current_count)
+            return {
+                "status": "joined", 
+                "player_count": current_count, 
+                "cost": cost, 
+                "max": max_players
+            }
+
+        # Check limit
+        if len(game.players) >= max_players:
+             return {"status": "full", "max": max_players}
+
         player = LobbyPlayer(id=user_id, name=user_name)
         await persistence.db.add_player_to_game(game_id, player)
+        
+        # Calculate state after join
+        current_count = len(game.players) + 1
+        cost = cost_func(current_count)
+        
+        return {
+            "status": "joined", 
+            "player_count": current_count, 
+            "cost": cost, 
+            "max": max_players
+        }
 
     async def register_interface_data(self, game_id: str, interface_data: dict):
         interface = GameInterface(**interface_data)

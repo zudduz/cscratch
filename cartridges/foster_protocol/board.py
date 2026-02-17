@@ -1,6 +1,8 @@
 from enum import Enum
 
 class GameConfig:
+    MAX_PLAYERS = 8
+
     HOURS_PER_SHIFT = 8
     INITIAL_OXYGEN = 100
     OXYGEN_BASE_LOSS = 20

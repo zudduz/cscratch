@@ -106,13 +106,24 @@ async def handle_interaction(payload: InteractionPayload):
     if payload.custom_id == "join_btn":
         game_id = await persistence.db.get_game_id_by_channel_index(payload.channel_id)
         if game_id:
-            await game_engine.engine.join_game(game_id, payload.user_id, payload.user_name)
-            await discord_interface.send_message(payload.channel_id, presentation.format_player_joined(payload.user_name))
+            result = await game_engine.engine.join_game(game_id, payload.user_id, payload.user_name)
             
-            if payload.guild_id:
-                await check_admin_warning(payload.guild_id, payload.user_id, payload.channel_id)
+            if result.get("status") == "full":
+                await discord_interface.send_message(payload.channel_id, presentation.LOBBY_FULL)
+            
+            elif result.get("status") == "joined":
+                msg = presentation.format_player_joined(
+                    payload.user_name, 
+                    result.get("player_count"), 
+                    result.get("max"), 
+                    result.get("cost")
+                )
+                await discord_interface.send_message(payload.channel_id, msg)
+                
+                if payload.guild_id:
+                    await check_admin_warning(payload.guild_id, payload.user_id, payload.channel_id)
 
-            return {"status": "joined"}
+            return {"status": result.get("status")}
     
     elif payload.custom_id == "start_btn":
         game_id = await persistence.db.get_game_id_by_channel_index(payload.channel_id)

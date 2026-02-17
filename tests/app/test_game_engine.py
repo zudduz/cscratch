@@ -48,8 +48,17 @@ def engine(mock_db):
 @pytest.mark.asyncio
 async def test_start_new_game_flow(engine, mock_db):
     # 1. Setup
-    mock_db.get_game_by_id.return_value = None # No existing game
-    
+    # Create a dummy game object that get_game_by_id returns.
+    # This is required because start_new_game calls join_game, which fetches the game to check player limits.
+    fake_game = GameState(
+        id="temp_id",
+        story_id="test-story",
+        host_id="user_123",
+        status="setup",
+        created_at="2024-01-01T00:00:00Z"
+    )
+    mock_db.get_game_by_id.return_value = fake_game 
+
     # 2. Action
     game_id = await engine.start_new_game("test-story", "user_123", "HostUser")
     
@@ -119,9 +128,11 @@ async def test_dispatch_input_ignored_if_game_ended(engine, mock_db):
         id="g_dead", story_id="test", host_id="u1", status="ended",
         created_at="2024-01-01"
     )
-    mock_db.get_game_by_channel_id.return_value = fake_game
+    
+    # dispatch_input calls get_game_by_id using the passed game_id
+    mock_db.get_game_by_id.return_value = fake_game
 
     await engine.dispatch_input(channel_id, "u1", "me", "ping", "g_dead")
 
     # Should NOT hit the DB update
-    mock_db.update_game_metadata_fields.assert_not_called
+    mock_db.update_game_metadata_fields.assert_not_called()

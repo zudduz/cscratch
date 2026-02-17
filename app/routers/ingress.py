@@ -9,6 +9,7 @@ from .. import persistence
 from .. import presentation
 from .. import config
 from ..discord_client import client as discord_interface
+from .. import commands
 
 async def verify_auth(x_internal_auth: str = Header(...)):
     if x_internal_auth != config.INTERNAL_API_KEY:
@@ -30,11 +31,10 @@ class MessagePayload(BaseModel):
 
 class CommandPayload(BaseModel):
     command: str
-    cartridge: Optional[str] = "foster-protocol"
-    guild_id: str
-    channel_id: str
-    user_id: str
-    user_name: str
+    # Context contains user_id, channel_id, guild_id, user_name
+    context: Dict[str, Any]
+    # Params contains arguments like 'cartridge', 'amount', 'recipient'
+    params: Dict[str, Any] = {}
 
 class InteractionPayload(BaseModel):
     type: str 
@@ -68,7 +68,6 @@ async def check_admin_warning(guild_id: str, user_id: str, channel_id: str):
 @router.post("/message")
 async def handle_message(payload: MessagePayload):
     # 1. IDEMPOTENCY CHECK (Distributed Lock)
-    # This prevents double-processing if the Gateway retries on a timeout/cold-start.
     if not await persistence.db.lock_event(payload.message_id):
         logging.info(f"Duplicate event ignored: {payload.message_id}")
         return {"status": "ignored", "reason": "already_processed"}
@@ -94,12 +93,19 @@ async def handle_message(payload: MessagePayload):
 
 @router.post("/command")
 async def handle_command(payload: CommandPayload):
-    if payload.command == "start":
-        return await _cmd_start(payload)
-    elif payload.command == "end":
-        return await _cmd_end(payload)
+    handler = commands.REGISTRY.get(payload.command)
     
-    return {"status": "ignored"}
+    if handler:
+        try:
+            # Dispatch to the specific command handler defined in app/commands.py
+            await handler(payload.context, payload.params)
+            return {"status": "ok"}
+        except Exception as e:
+            logging.error(f"Command Execution Failed ({payload.command}): {e}")
+            return {"status": "error", "detail": str(e)}
+    
+    logging.warning(f"Unknown command received: {payload.command}")
+    return {"status": "ignored", "reason": "unknown_command"}
 
 @router.post("/interaction")
 async def handle_interaction(payload: InteractionPayload):
@@ -144,78 +150,7 @@ async def handle_interaction(payload: InteractionPayload):
 
     return {"status": "ignored"}
 
-# --- COMMAND HELPERS ---
-
-async def _cmd_start(p: CommandPayload):
-    try:
-        # 1. Create Game Record
-        game_id = await game_engine.engine.start_new_game(p.cartridge, p.user_id, p.user_name)
-        
-        # 2. Create Channels
-        guild = await discord_interface.client.fetch_guild(int(p.guild_id))
-        
-        cat = await guild.create_category(f"Lobby {game_id}")
-        chan = await guild.create_text_channel("cscratch-lobby", category=cat)
-        
-        # 3. Register Interface
-        await game_engine.engine.register_interface_data(game_id, {
-            "type": "discord",
-            "guild_id": p.guild_id,
-            "category_id": str(cat.id),
-            "main_channel_id": str(chan.id),
-            "listener_ids": [str(chan.id)]
-        })
-        
-        # 4. Update Index
-        await persistence.db.register_channel_association(str(chan.id), game_id)
-        
-        # 5. Send Lobby UI
-        embed = discord.Embed(
-            title=presentation.format_lobby_title(p.cartridge),
-            description=presentation.LOBBY_DESC,
-            color=0x00ff00
-        )
-        
-        view = discord.ui.View()
-        view.add_item(discord.ui.Button(label=presentation.BTN_JOIN, style=discord.ButtonStyle.green, custom_id="join_btn"))
-        view.add_item(discord.ui.Button(label=presentation.BTN_START, style=discord.ButtonStyle.danger, custom_id="start_btn"))
-        
-        await chan.send(embed=embed, view=view)
-        
-        await discord_interface.send_message(p.channel_id, presentation.format_lobby_created_msg(chan.mention))
-        
-        await check_admin_warning(p.guild_id, p.user_id, chan.id)
-        
-        return {"status": "ok", "game_id": game_id}
-        
-    except Exception as e:
-        logging.error(f"Start CMD Failed: {e}")
-        await discord_interface.send_message(p.channel_id, presentation.CMD_FAILED.format(error=str(e)))
-        return {"status": "error"}
-
-async def _cmd_end(p: CommandPayload):
-    game_id = await persistence.db.get_game_id_by_channel_index(p.channel_id)
-    if not game_id:
-        await discord_interface.send_message(p.channel_id, presentation.ERR_NO_GAME)
-        return {"status": "no_game"}
-
-    game = await persistence.db.get_game_by_id(game_id)
-    
-    # Validation
-    if not game:
-        await discord_interface.send_message(p.channel_id, presentation.ERR_NO_GAME)
-        return {"status": "no_game"}
-        
-    if p.user_id != game.host_id:
-        await discord_interface.send_message(p.channel_id, presentation.ERR_NOT_HOST)
-        return {"status": "denied"}
-        
-    await discord_interface.send_message(p.channel_id, presentation.MSG_TEARDOWN)
-    
-    await discord_interface.cleanup_game_channels(p.guild_id, game.interface.model_dump())
-    await game_engine.engine.end_game(game.id)
-    
-    return {"status": "ended"}
+# --- HELPERS ---
 
 async def _trigger_launch(game_id, user_id, channel_id):
     game = await persistence.db.get_game_by_id(game_id)

@@ -2,7 +2,7 @@ import os
 import logging
 import asyncio
 from google.cloud import firestore
-from .models import GameState, AILogEntry, LobbyPlayer
+from .models import GameState, AILogEntry, LobbyPlayer, User
 
 class PersistenceLayer:
     def __init__(self):
@@ -10,6 +10,7 @@ class PersistenceLayer:
         self.db = firestore.AsyncClient(database="sandbox")
         self.games_collection = self.db.collection('games')
         self.channels_collection = self.db.collection('channels')
+        self.users_collection = self.db.collection('users')
 
     async def create_game_record(self, game: GameState):
         await self.games_collection.document(game.id).set(game.model_dump())
@@ -148,5 +149,52 @@ class PersistenceLayer:
         async for doc in ref.order_by('timestamp', direction=firestore.Query.DESCENDING).limit(limit).stream():
             logs.append(doc.to_dict())
         return logs
+
+    # --- ECONOMY / SCRATCH ---
+
+    async def get_user(self, user_id: str) -> User:
+        """Fetches a full User object. Returns None if not found."""
+        doc = await self.users_collection.document(str(user_id)).get()
+        if doc.exists:
+            # Inject ID if missing from doc body (common pattern in Firestore)
+            data = doc.to_dict()
+            if "id" not in data:
+                data["id"] = doc.id
+            return User(**data)
+        return None
+
+    async def get_user_balance(self, user_id: str) -> int:
+        """Lightweight helper to get just the balance."""
+        doc = await self.users_collection.document(str(user_id)).get()
+        if doc.exists:
+            return doc.to_dict().get("scratch_balance", 0)
+        return 0
+
+    async def adjust_user_balance(self, user_id: str, amount: int) -> int:
+        """
+        Transactional update.
+        If user exists: Increments balance.
+        If user new: Creates full User object (with defaults) and sets initial balance.
+        """
+        transaction = self.db.transaction()
+        ref = self.users_collection.document(str(user_id))
+
+        @firestore.async_transactional
+        async def _adjust_txn(transaction, ref):
+            snapshot = await ref.get(transaction=transaction)
+            
+            if snapshot.exists:
+                current_bal = snapshot.to_dict().get("scratch_balance", 0)
+                new_bal = current_bal + amount
+                transaction.update(ref, {"scratch_balance": new_bal})
+                return new_bal
+            else:
+                # User doesn't exist; use Pydantic to ensure schema compliance
+                # Default balance is 0, so we initialize with amount
+                new_user = User(id=user_id, scratch_balance=amount)
+                transaction.set(ref, new_user.model_dump())
+                return amount
+
+        return await _adjust_txn(transaction, ref)
 
 db = PersistenceLayer()

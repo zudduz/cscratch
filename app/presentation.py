@@ -72,12 +72,10 @@ def format_lobby_created_msg(mention: str) -> str:
     return f"Lobby: {mention}"
 
 def format_player_joined(name: str, count: int, max_p: int, cost: int) -> str:
-    return f"**{name}** joined! ({count}/{max_p})\n**Required Scratch:** `{cost}`"
+    return f"**{name}** joined! ({count}/{max_p})\nStart button will cost {cost} scratch"
 
 def build_cost_report(game_id: str, input_tokens: int, output_tokens: int) -> str:
     """Calculates costs (Gemini 2.5 Flash Pricing) and returns a formatted report."""
-    # Pricing: $0.30 per 1M input, $1.25 per 1M output (Updated to user spec if needed, keeping logic central)
-    # Note: Previous file had 2.50 for output, sticking to that for consistency with migration
     COST_PER_1M_INPUT = 0.30
     COST_PER_1M_OUTPUT = 2.50
 

@@ -45,24 +45,6 @@ class InteractionPayload(BaseModel):
     user_name: str
     values: List[str] = []
 
-# --- HELPER: ADMIN CHECK ---
-async def check_admin_warning(guild_id: str, user_id: str, channel_id: str):
-    """
-    Fetches the member to check for Admin permissions.
-    Sends a warning if they are an admin.
-    """
-    try:
-        if not guild_id: return
-        
-        guild = await discord_interface.client.fetch_guild(int(guild_id))
-        member = await guild.fetch_member(int(user_id))
-        
-        if member.guild_permissions.administrator:
-            await discord_interface.send_message(channel_id, presentation.ADMIN_WARNING)
-            
-    except Exception as e:
-        logging.warning(f"Failed to perform admin check: {e}")
-
 # --- ENDPOINTS ---
 
 @router.post("/message")
@@ -126,8 +108,7 @@ async def handle_interaction(payload: InteractionPayload):
                 )
                 await discord_interface.send_message(payload.channel_id, msg)
                 
-                if payload.guild_id:
-                    await check_admin_warning(payload.guild_id, payload.user_id, payload.channel_id)
+                await discord_interface.check_and_warn_admin(payload.guild_id, payload.user_id, payload.channel_id)
 
             return {"status": result.get("status")}
     

@@ -72,6 +72,21 @@ class DiscordRESTInterface:
         except Exception as e:
             logging.error(f"Send Error {channel_id}: {e}")
 
+    async def check_and_warn_admin(self, guild_id: str, user_id: str, channel_id: str):
+        """
+        Checks if a user is an Admin and sends the Fair Play warning if so.
+        Centralized here to avoid circular imports between commands.py and ingress.py.
+        """
+        if not guild_id: return
+        try:
+            guild = await self.client.fetch_guild(int(guild_id))
+            member = await guild.fetch_member(int(user_id))
+            
+            if member.guild_permissions.administrator:
+                await self.send_message(channel_id, presentation.ADMIN_WARNING)
+        except Exception as e:
+            logging.warning(f"Failed to perform admin check: {e}")
+
     async def unlock_channel(self, channel_id: str, guild_id: str):
         try:
             channel = await self.client.fetch_channel(int(channel_id))

@@ -62,6 +62,9 @@ async def handle_start(ctx: Dict[str, Any], params: Dict[str, Any]):
         view.add_item(discord.ui.Button(label=presentation.BTN_START, style=discord.ButtonStyle.danger, custom_id="start_btn"))
         
         await chan.send(embed=embed, view=view)
+
+        # 6. Host Fair Play Check
+        await discord_client.client.check_and_warn_admin(guild_id, user_id, str(chan.id))
         
         # Notify origin channel
         await discord_client.client.send_message(channel_id, presentation.format_lobby_created_msg(chan.mention))

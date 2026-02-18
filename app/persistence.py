@@ -196,5 +196,27 @@ class PersistenceLayer:
                 return amount
 
         return await _adjust_txn(transaction, ref)
+        
+    async def deduct_balance_if_sufficient(self, user_id: str, amount: int) -> bool:
+        """
+        Atomically checks if user has >= amount.
+        If yes, deducts and returns True.
+        If no (or user missing), returns False.
+        """
+        transaction = self.db.transaction()
+        ref = self.users_collection.document(str(user_id))
+
+        @firestore.async_transactional
+        async def _deduct_txn(transaction, ref):
+            snapshot = await ref.get(transaction=transaction)
+            if not snapshot.exists:
+                return False
+            current_bal = snapshot.to_dict().get("scratch_balance", 0)
+            if current_bal >= amount:
+                new_bal = current_bal - amount
+                transaction.update(ref, {"scratch_balance": new_bal})
+                return True
+
+        return await _deduct_txn(transaction, ref)
 
 db = PersistenceLayer()

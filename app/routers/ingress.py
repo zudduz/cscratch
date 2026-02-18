@@ -108,6 +108,7 @@ async def handle_interaction(payload: InteractionPayload):
                 )
                 await discord_interface.send_message(payload.channel_id, msg)
                 
+                # REFACTORED: Use centralized check
                 await discord_interface.check_and_warn_admin(payload.guild_id, payload.user_id, payload.channel_id)
 
             return {"status": result.get("status")}
@@ -143,6 +144,19 @@ async def _trigger_launch(game_id, user_id, channel_id):
     
     res = await game_engine.engine.launch_match(game_id)
     
+    # CASE 1: NOT ENOUGH MONEY
+    if res.get("error") == "insufficient_funds":
+         cost = res.get("cost", "Unknown")
+         await discord_interface.send_message(channel_id, f"**Launch Failed**: Insufficient Scratch.\nRequired: {cost} Scratch.")
+         return {"status": "failed", "reason": "insufficient_funds"}
+
+    # CASE 2: SYSTEM CRASHED BUT REFUNDED
+    if res.get("error") == "startup_failed":
+         detail = res.get("detail", "Unknown")
+         await discord_interface.send_message(channel_id, f"**Critical Error**: Game failed to initialize.\nYour Scratch has been automatically refunded.\nDebug Info: `{detail}`")
+         return {"status": "failed", "reason": "startup_failed"}
+    
+    # CASE 3: SUCCESS
     if res.get('channel_ops'):
         await discord_interface.execute_channel_ops(game_id, res['channel_ops'])
         

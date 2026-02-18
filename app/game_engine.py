@@ -106,18 +106,44 @@ class GameEngine:
 
     async def launch_match(self, game_id: str) -> dict:
         game = await persistence.db.get_game_by_id(game_id)
-        if not game: return None
+        if not game: return {"error": "no_game"}
 
         cartridge = await self._load_cartridge(game.story_id)
-        result = {}
         
-        if hasattr(cartridge, 'on_game_start'):
-            result = await cartridge.on_game_start(game.model_dump())
-            if 'metadata' in result:
-                 await persistence.db.update_game_metadata(game_id, result['metadata'], game.version)
+        # --- ECONOMY CHECK ---
+        cost_func = getattr(cartridge, "calculate_start_cost", lambda n: max(4, n))
+        cost = cost_func(len(game.players))
+        
+        # 1. DEDUCT (The Gate)
+        # We try to take the money first. If they don't have it, we stop here.
+        if not await persistence.db.deduct_balance_if_sufficient(game.host_id, cost):
+            return {"error": "insufficient_funds", "cost": cost}
+        
+        # 2. ATTEMPT START (Safe Mode)
+        # If anything crashes below, we MUST refund the user.
+        try:
+            result = {}
+            
+            if hasattr(cartridge, 'on_game_start'):
+                result = await cartridge.on_game_start(game.model_dump())
+                if 'metadata' in result:
+                     await persistence.db.update_game_metadata(game_id, result['metadata'], game.version)
 
-        await persistence.db.set_game_active(game_id)
-        return result
+            await persistence.db.set_game_active(game_id)
+            return result
+
+        except Exception as e:
+            # 3. CATASTROPHIC FAILURE -> REFUND
+            logging.critical(f"GAME_START_FAILED: Game {game_id}, Host {game.host_id}, Cost {cost}. Error: {e}")
+            
+            try:
+                new_bal = await persistence.db.adjust_user_balance(game.host_id, cost)
+                logging.info(f"REFUND_SUCCESSFUL: User {game.host_id} refunded {cost}. New Balance: {new_bal}")
+            except Exception as refund_err:
+                # If this fails, we have a major DB issue, but we log it for manual audit.
+                logging.critical(f"REFUND_FAILED: User {game.host_id} could NOT be refunded {cost}. Error: {refund_err}")
+            
+            return {"error": "startup_failed", "detail": str(e)}
 
     async def trigger_post_start(self, game_id: str):
         """

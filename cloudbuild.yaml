@@ -33,6 +33,8 @@ steps:
   - 'managed'
   - '--allow-unauthenticated'
   - '--min-instances=0'
+  - '--set-env-vars'
+  - 'ADMIN_USER_IDS=545309591827906587'
   - '--set-secrets'
   - 'INTERNAL_API_KEY=cscratch-internal-api-key:latest,DISCORD_TOKEN=cscratch-discord-token:latest'
 

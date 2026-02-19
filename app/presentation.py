@@ -45,6 +45,7 @@ EMBED_DESC_ENDED = "The host may now delete the channels"
 ERR_NOT_HOST_START = "Only the host may start the game"
 ERR_GENERIC = "Error"
 MSG_STARTING = "Starting game"
+GAME_ALREADY_STARTED = "Game already started"
 LOBBY_FULL = "Lobby is full"
 
 

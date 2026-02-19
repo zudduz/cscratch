@@ -153,15 +153,13 @@ async def _trigger_launch(game_id, user_id, channel_id, token, app_id):
     
     # ALREADY STARTED (Race Condition Handling)
     if res.get("error") == "already_started":
+         await discord_interface.send_message(channel_id, presentation.GAME_ALREADY_STARTED)
          return {"status": "ignored", "reason": "already_started"}
     
     # NOT ENOUGH MONEY
     if res.get("error") == "insufficient_funds":
          cost = res.get("cost", "Unknown")
-         msg = f"This game costs {cost} Scratch to start\nPlease purchase more Scratch"
-         
-         await discord_interface.send_message(channel_id, msg)
-         
+         await discord_interface.send_message(channel_id, presentation.insufficient_funds(balance, cost))
          return {"status": "failed", "reason": "insufficient_funds"}
 
     # SYSTEM CRASHED BUT REFUNDED

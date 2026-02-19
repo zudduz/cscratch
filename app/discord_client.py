@@ -77,7 +77,6 @@ class DiscordRESTInterface:
     async def send_followup(self, interaction_token: str, application_id: str, text: str):
         """
         Sends a follow-up message using the Interaction Webhook.
-        This works for both Ephemeral and Public deferred interactions.
         """
         if not interaction_token or not application_id:
             logging.warning("Cannot send followup: Missing token or app_id")
@@ -86,12 +85,15 @@ class DiscordRESTInterface:
         url = f"https://discord.com/api/v10/webhooks/{application_id}/{interaction_token}"
         
         try:
-            # We use the raw aiohttp session from the internal discord http client
-            # or create a new one if that's too hacky. Let's create a new one to be safe/clean.
             async with aiohttp.ClientSession() as session:
                 payload = {"content": text}
-                async with session.post(url, json=payload) as resp:
-                    if resp.status >= 400:
+                # No special headers needed for webhooks usually, but Content-Type is good
+                headers = {"Content-Type": "application/json"}
+                
+                async with session.post(url, json=payload, headers=headers) as resp:
+                    if resp.status == 404:
+                        logging.warning(f"Followup 404: Interaction likely timed out (>15m) or invalid token.")
+                    elif resp.status >= 400:
                         logging.error(f"Followup Failed {resp.status}: {await resp.text()}")
         except Exception as e:
             logging.error(f"Followup Error: {e}")
@@ -127,8 +129,6 @@ class DiscordRESTInterface:
     async def lock_channels(self, game_id: str, interface_data: dict):
         """
         End Game Logic: Show the 'Delete Channels' button.
-        Since we can't attach a View listener, we send a static message 
-        that informs the user what to do, or a button that Gateway routes back to us.
         """
         game = await persistence.db.get_game_by_id(game_id)
         if not game: return
@@ -142,7 +142,6 @@ class DiscordRESTInterface:
         await self.announce_state(report)
 
         # 2. Show Button in Lobby
-        # We construct a View that matches what the Gateway expects
         main_chan_id = interface_data.get('main_channel_id')
         if main_chan_id:
             try:
@@ -154,8 +153,6 @@ class DiscordRESTInterface:
                     color=0x992D22
                 )
                 
-                # In stateless mode, we send a View, but the interaction 
-                # will be caught by the Gateway and forwarded to /ingress
                 view = discord.ui.View()
                 btn = discord.ui.Button(
                     label=presentation.BTN_DELETE_CHANNELS, 
@@ -250,9 +247,6 @@ class DiscordRESTInterface:
         
         try:
             # We iterate known channels from the interface to delete them
-            # because we can't easily iterate the category contents statelessly without extra API calls
-            
-            # 1. Delete Channels listed in interface
             known_channels = [interface_data.get('main_channel_id')] + list(interface_data.get('channels', {}).values())
             
             for cid in known_channels:

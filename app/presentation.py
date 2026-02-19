@@ -23,7 +23,6 @@ ADMIN_WARNING = (
     "**Fair play notice**\n"
     "To the Administrator: You have permissions to view all private channels.\n"
     "**FOR A FAIR GAME:** Please **mute** or **collapse** the private channels of other players.\n"
-    "*The Protocol relies on trust.*"
 )
 
 LOBBY_DESC = "Click to join"
@@ -31,8 +30,9 @@ CMD_FAILED = "Failed: {error}"
 
 # Errors & Status
 ERR_NO_GAME = "No game"
-ERR_NOT_HOST = "Denied. Host only"
-MSG_TEARDOWN = "**Teardown.**"
+ERR_NOT_HOST = "Denied\nHost only"
+ERR_DENIED_ADMIN = "Denied\nAdmin access required"
+MSG_TEARDOWN = "Teardown"
 
 # Interaction UI
 BTN_JOIN = "Join"
@@ -89,3 +89,12 @@ def build_cost_report(game_id: str, input_tokens: int, output_tokens: int) -> st
         f"Output: {output_tokens} tok (${output_cost:.4f})\n"
         f"**TOTAL: ${total_cost:.4f}**"
     )
+
+def format_balance_report(user_id: str, balance: int) -> str:
+    return f"<@{user_id}>, your balance is **{balance}** Scratch."
+
+def format_gift_report(amount: int, target_id: str, new_balance: int) -> str:
+    return f"**System Gift**\nSent **{amount}** Scratch to <@{target_id}>.\nNew Balance: {new_balance}"
+
+def format_admin_balance_report(target_id: str, balance: int) -> str:
+    return f"User <@{target_id}> balance: **{balance}** Scratch"

@@ -103,8 +103,10 @@ async def handle_balance(ctx: Dict[str, Any], params: Dict[str, Any]):
     user_id = ctx["user_id"]
     balance = await persistence.db.get_user_balance(user_id)
     
-    msg = f"<@{user_id}>, your balance is **{balance}** Scratch."
-    await discord_client.client.send_message(ctx["channel_id"], msg)
+    await discord_client.client.send_message(
+        ctx["channel_id"], 
+        presentation.format_balance_report(user_id, balance)
+    )
 
 @slash_command("admin.gift")
 async def handle_gift(ctx: Dict[str, Any], params: Dict[str, Any]):
@@ -112,7 +114,7 @@ async def handle_gift(ctx: Dict[str, Any], params: Dict[str, Any]):
     
     # 1. Admin Check
     if sender_id not in config.ADMIN_USER_IDS:
-        await discord_client.client.send_message(ctx["channel_id"], "Denied. Admin access required.")
+        await discord_client.client.send_message(ctx["channel_id"], presentation.ERR_DENIED_ADMIN)
         return
 
     target_id = params.get("recipient")
@@ -126,5 +128,24 @@ async def handle_gift(ctx: Dict[str, Any], params: Dict[str, Any]):
     
     await discord_client.client.send_message(
         ctx["channel_id"], 
-        f"**System Gift**\nSent **{amount}** Scratch to <@{target_id}>.\nNew Balance: {new_bal}"
+        presentation.format_gift_report(amount, target_id, new_bal)
+    )
+
+@slash_command("admin.balance")
+async def handle_admin_balance(ctx: Dict[str, Any], params: Dict[str, Any]):
+    sender_id = ctx["user_id"]
+    
+    # 1. Admin Check
+    if sender_id not in config.ADMIN_USER_IDS:
+        await discord_client.client.send_message(ctx["channel_id"], presentation.ERR_DENIED_ADMIN)
+        return
+
+    target_id = params.get("user")
+    if not target_id:
+        return
+
+    balance = await persistence.db.get_user_balance(target_id)
+    await discord_client.client.send_message(
+        ctx["channel_id"], 
+        presentation.format_admin_balance_report(target_id, balance)
     )

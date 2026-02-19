@@ -141,18 +141,12 @@ async def _trigger_launch(game_id, user_id, channel_id, token, app_id):
     
     # 1. Ephemeral Failure for Non-Hosts
     if game.host_id != user_id:
-        if token and app_id:
-             await discord_interface.edit_response(token, app_id, presentation.ERR_NOT_HOST_START)
-        else:
-             await discord_interface.send_message(channel_id, presentation.ERR_NOT_HOST_START)
+        await discord_interface.send_message(channel_id, presentation.ERR_NOT_HOST_START)
         return {"status": "denied"}
 
     # 2. Ephemeral Status/Balance Check for Host
     balance = await persistence.db.get_user_balance(user_id)
     
-    if token and app_id:
-        await discord_interface.edit_response(token, app_id, f"Checking balance: {balance}...")
-        
     await discord_interface.send_message(channel_id, presentation.MSG_STARTING)
     
     res = await game_engine.engine.launch_match(game_id)
@@ -160,14 +154,10 @@ async def _trigger_launch(game_id, user_id, channel_id, token, app_id):
     # CASE 1: NOT ENOUGH MONEY
     if res.get("error") == "insufficient_funds":
          cost = res.get("cost", "Unknown")
-         msg = f"**Launch Failed**: Insufficient Scratch.\nRequired: {cost} Scratch."
+         msg = f"This game costs {cost} Scratch to start\nPlease purchase more Scratch"
          
          await discord_interface.send_message(channel_id, msg)
          
-         # Also send private detailed failure
-         if token and app_id:
-             await discord_interface.send_followup(token, app_id, f"Balance: {balance}\nRequired: {cost}")
-             
          return {"status": "failed", "reason": "insufficient_funds"}
 
     # CASE 2: SYSTEM CRASHED BUT REFUNDED

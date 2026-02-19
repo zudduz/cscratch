@@ -99,5 +99,5 @@ def format_gift_report(amount: int, target_id: str, new_balance: int) -> str:
 def format_admin_balance_report(target_id: str, balance: int) -> str:
     return f"User <@{target_id}> balance: **{balance}** Scratch"
 
-def format_launch_status(balance: int, cost: int) -> str:
-    return f"**Checking Funds...**\nBalance: {balance}\nCost: {cost}"
+def insufficient_funds(balance: int, cost: int) -> str:
+    return f"This game costs {cost} Scratch to start\nPlease purchase more Scratch"

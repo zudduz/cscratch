@@ -13,6 +13,7 @@ from . import presentation
 from . import config
 from .routers import dashboard
 from .routers import ingress
+from .routers import ops
 
 # 1. SETUP STRUCTURED LOGGING IMMEDIATELY
 setup_logging()
@@ -34,15 +35,13 @@ async def lifespan(app: FastAPI):
     logging.info("System: Shutdown signal received.")
     system_state.shutting_down = True
     
-    if token:
-        await discord_client.announce_state("System Offline")
-        
     game_engine.engine.stop()
     await discord_client.close()
 
 app = FastAPI(lifespan=lifespan)
 app.include_router(dashboard.router)
 app.include_router(ingress.router)
+app.include_router(ops.router)
 
 @app.get("/ping")
 async def ping(response: Response):

@@ -36,7 +36,7 @@ steps:
   - '--set-env-vars'
   - 'ADMIN_USER_IDS=545309591827906587'
   - '--set-secrets'
-  - 'INTERNAL_API_KEY=cscratch-internal-api-key:latest,DISCORD_TOKEN=cscratch-discord-token:latest'
+  - 'INTERNAL_API_KEY=cscratch-internal-api-key:latest,DISCORD_TOKEN=cscratch-discord-token:latest,OPS_KEY=cscratch-ops-key:latest'
 
 images:
 - 'gcr.io/$PROJECT_ID/cscratch'

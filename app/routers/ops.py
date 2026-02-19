@@ -5,9 +5,6 @@ import logging
 from .. import persistence
 from .. import config
 
-# Dedicated router for external operations (Make.com, etc)
-router = APIRouter(prefix="/ops", tags=["ops"], dependencies=[Depends(verify_ops_auth)])
-
 async def verify_ops_auth(x_ops_key: str = Header(...)):
     """
     Strictly validates the request against the OPS_KEY.
@@ -16,6 +13,9 @@ async def verify_ops_auth(x_ops_key: str = Header(...)):
     if x_ops_key != config.OPS_KEY:
         logging.warning("Ops: Invalid key attempt.")
         raise HTTPException(status_code=403, detail="Invalid Ops Key")
+
+# Dedicated router for external operations (Make.com, etc)
+router = APIRouter(prefix="/ops", tags=["ops"], dependencies=[Depends(verify_ops_auth)])
 
 class GiftPayload(BaseModel):
     user_id: str

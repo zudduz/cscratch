@@ -1,10 +1,12 @@
 import logging
 import discord
 import asyncio
+import aiohttp
 from discord.ext import commands
 
 from . import persistence
 from . import presentation
+from . import state
 from .state import sys as system_state
 
 # --- LEGACY CHICKEN BOT (WEBSOCKET) ---
@@ -71,6 +73,28 @@ class DiscordRESTInterface:
             logging.warning(f"Channel {channel_id} not found (Orphaned Game?)")
         except Exception as e:
             logging.error(f"Send Error {channel_id}: {e}")
+
+    async def send_followup(self, interaction_token: str, application_id: str, text: str):
+        """
+        Sends a follow-up message using the Interaction Webhook.
+        This works for both Ephemeral and Public deferred interactions.
+        """
+        if not interaction_token or not application_id:
+            logging.warning("Cannot send followup: Missing token or app_id")
+            return
+
+        url = f"https://discord.com/api/v10/webhooks/{application_id}/{interaction_token}"
+        
+        try:
+            # We use the raw aiohttp session from the internal discord http client
+            # or create a new one if that's too hacky. Let's create a new one to be safe/clean.
+            async with aiohttp.ClientSession() as session:
+                payload = {"content": text}
+                async with session.post(url, json=payload) as resp:
+                    if resp.status >= 400:
+                        logging.error(f"Followup Failed {resp.status}: {await resp.text()}")
+        except Exception as e:
+            logging.error(f"Followup Error: {e}")
 
     async def check_and_warn_admin(self, guild_id: str, user_id: str, channel_id: str):
         """

@@ -31,7 +31,7 @@ class MessagePayload(BaseModel):
 
 class CommandPayload(BaseModel):
     command: str
-    # Context contains user_id, channel_id, guild_id, user_name
+    # Context contains user_id, channel_id, guild_id, user_name, interaction_token, application_id
     context: Dict[str, Any]
     # Params contains arguments like 'cartridge', 'amount', 'recipient'
     params: Dict[str, Any] = {}
@@ -44,6 +44,8 @@ class InteractionPayload(BaseModel):
     user_id: str
     user_name: str
     values: List[str] = []
+    interaction_token: Optional[str] = None
+    application_id: Optional[str] = None
 
 # --- ENDPOINTS ---
 
@@ -116,7 +118,7 @@ async def handle_interaction(payload: InteractionPayload):
     elif payload.custom_id == "start_btn":
         game_id = await persistence.db.get_game_id_by_channel_index(payload.channel_id)
         if game_id:
-            return await _trigger_launch(game_id, payload.user_id, payload.channel_id)
+            return await _trigger_launch(game_id, payload.user_id, payload.channel_id, payload.interaction_token, payload.application_id)
             
     elif payload.custom_id == "end_delete_btn":
         game_id = await persistence.db.get_game_id_by_channel_index(payload.channel_id)
@@ -134,11 +136,28 @@ async def handle_interaction(payload: InteractionPayload):
 
 # --- HELPERS ---
 
-async def _trigger_launch(game_id, user_id, channel_id):
+async def _trigger_launch(game_id, user_id, channel_id, token, app_id):
     game = await persistence.db.get_game_by_id(game_id)
+    
+    # 1. Ephemeral Failure for Non-Hosts
     if game.host_id != user_id:
-        await discord_interface.send_message(channel_id, presentation.ERR_NOT_HOST_START)
+        if token and app_id:
+             await discord_interface.send_followup(token, app_id, presentation.ERR_NOT_HOST_START)
+        else:
+             await discord_interface.send_message(channel_id, presentation.ERR_NOT_HOST_START)
         return {"status": "denied"}
+
+    # 2. Ephemeral Status/Balance Check for Host
+    # Calculate expected cost for display
+    # This assumes the cost function is consistent with game_engine.py logic
+    # We grab current balance to show them what they have
+    balance = await persistence.db.get_user_balance(user_id)
+    
+    # We can't easily get the exact cost without duplicating game_engine logic here,
+    # but the subsequent call to launch_match will handle the deduction logic.
+    # For now, we just confirm "Checking Funds..." via ephemeral
+    if token and app_id:
+        await discord_interface.send_followup(token, app_id, f"Checking balance: {balance}...")
         
     await discord_interface.send_message(channel_id, presentation.MSG_STARTING)
     
@@ -147,7 +166,14 @@ async def _trigger_launch(game_id, user_id, channel_id):
     # CASE 1: NOT ENOUGH MONEY
     if res.get("error") == "insufficient_funds":
          cost = res.get("cost", "Unknown")
-         await discord_interface.send_message(channel_id, f"**Launch Failed**: Insufficient Scratch.\nRequired: {cost} Scratch.")
+         msg = f"**Launch Failed**: Insufficient Scratch.\nRequired: {cost} Scratch."
+         
+         await discord_interface.send_message(channel_id, msg)
+         
+         # Also send private detailed failure
+         if token and app_id:
+             await discord_interface.send_followup(token, app_id, f"Balance: {balance}\nRequired: {cost}")
+             
          return {"status": "failed", "reason": "insufficient_funds"}
 
     # CASE 2: SYSTEM CRASHED BUT REFUNDED

@@ -102,11 +102,18 @@ async def handle_end(ctx: Dict[str, Any], params: Dict[str, Any]):
 async def handle_balance(ctx: Dict[str, Any], params: Dict[str, Any]):
     user_id = ctx["user_id"]
     balance = await persistence.db.get_user_balance(user_id)
+    report = presentation.format_balance_report(user_id, balance)
     
-    await discord_client.client.send_message(
-        ctx["channel_id"], 
-        presentation.format_balance_report(user_id, balance)
-    )
+    # If we have interaction info, edit the "Thinking..." message
+    if ctx.get("interaction_token"):
+        await discord_client.client.edit_response(
+            ctx["interaction_token"], 
+            ctx["application_id"], 
+            report
+        )
+    else:
+        # Fallback for non-interaction contexts
+        await discord_client.client.send_message(ctx["channel_id"], report)
 
 @slash_command("admin.gift")
 async def handle_gift(ctx: Dict[str, Any], params: Dict[str, Any]):

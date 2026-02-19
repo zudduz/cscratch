@@ -142,22 +142,16 @@ async def _trigger_launch(game_id, user_id, channel_id, token, app_id):
     # 1. Ephemeral Failure for Non-Hosts
     if game.host_id != user_id:
         if token and app_id:
-             await discord_interface.send_followup(token, app_id, presentation.ERR_NOT_HOST_START)
+             await discord_interface.edit_response(token, app_id, presentation.ERR_NOT_HOST_START)
         else:
              await discord_interface.send_message(channel_id, presentation.ERR_NOT_HOST_START)
         return {"status": "denied"}
 
     # 2. Ephemeral Status/Balance Check for Host
-    # Calculate expected cost for display
-    # This assumes the cost function is consistent with game_engine.py logic
-    # We grab current balance to show them what they have
     balance = await persistence.db.get_user_balance(user_id)
     
-    # We can't easily get the exact cost without duplicating game_engine logic here,
-    # but the subsequent call to launch_match will handle the deduction logic.
-    # For now, we just confirm "Checking Funds..." via ephemeral
     if token and app_id:
-        await discord_interface.send_followup(token, app_id, f"Checking balance: {balance}...")
+        await discord_interface.edit_response(token, app_id, f"Checking balance: {balance}...")
         
     await discord_interface.send_message(channel_id, presentation.MSG_STARTING)
     

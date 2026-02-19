@@ -74,6 +74,26 @@ class DiscordRESTInterface:
         except Exception as e:
             logging.error(f"Send Error {channel_id}: {e}")
 
+    async def edit_response(self, interaction_token: str, application_id: str, text: str):
+        """
+        Edits the original deferred interaction response (replaces 'is thinking...').
+        """
+        if not interaction_token or not application_id:
+            return
+
+        url = f"https://discord.com/api/v10/webhooks/{application_id}/{interaction_token}/messages/@original"
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                payload = {"content": text}
+                headers = {"Content-Type": "application/json"}
+                
+                async with session.patch(url, json=payload, headers=headers) as resp:
+                    if resp.status >= 400:
+                        logging.error(f"Edit Response Failed {resp.status}: {await resp.text()}")
+        except Exception as e:
+            logging.error(f"Edit Response Error: {e}")
+
     async def send_followup(self, interaction_token: str, application_id: str, text: str):
         """
         Sends a follow-up message using the Interaction Webhook.

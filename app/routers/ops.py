@@ -20,14 +20,13 @@ async def verify_ops_auth(x_ops_key: str = Header(...)):
 class GiftPayload(BaseModel):
     user_id: str
     amount: int = "50"
-    reason: str = "gift"
 
 @router.post("/gift")
 async def ops_gift(payload: GiftPayload):
     """
     Endpoint for Make.com to gift tokens to a user.
     """
-    logging.info(f"Ops: Gifting {payload.amount} to {payload.user_id} ({payload.reason})")
+    logging.info(f"Ops: Gifting {payload.amount} to {payload.user_id}")
     
     try:
         # Use existing atomic transaction to create user (if new) and add balance

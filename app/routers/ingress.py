@@ -151,7 +151,11 @@ async def _trigger_launch(game_id, user_id, channel_id, token, app_id):
     
     res = await game_engine.engine.launch_match(game_id)
     
-    # CASE 1: NOT ENOUGH MONEY
+    # ALREADY STARTED (Race Condition Handling)
+    if res.get("error") == "already_started":
+         return {"status": "ignored", "reason": "already_started"}
+    
+    # NOT ENOUGH MONEY
     if res.get("error") == "insufficient_funds":
          cost = res.get("cost", "Unknown")
          msg = f"This game costs {cost} Scratch to start\nPlease purchase more Scratch"
@@ -160,7 +164,7 @@ async def _trigger_launch(game_id, user_id, channel_id, token, app_id):
          
          return {"status": "failed", "reason": "insufficient_funds"}
 
-    # CASE 2: SYSTEM CRASHED BUT REFUNDED
+    # SYSTEM CRASHED BUT REFUNDED
     if res.get("error") == "startup_failed":
          detail = res.get("detail", "Unknown")
          await discord_interface.send_message(channel_id, f"**Critical Error**: Game failed to initialize.\nYour Scratch has been automatically refunded.\nDebug Info: `{detail}`")

@@ -115,44 +115,44 @@ async def handle_balance(ctx: Dict[str, Any], params: Dict[str, Any]):
         # Fallback for non-interaction contexts
         await discord_client.client.send_message(ctx["channel_id"], report)
 
-@slash_command("admin.gift")
-async def handle_gift(ctx: Dict[str, Any], params: Dict[str, Any]):
-    sender_id = ctx["user_id"]
+# @slash_command("admin.gift")
+# async def handle_gift(ctx: Dict[str, Any], params: Dict[str, Any]):
+#     sender_id = ctx["user_id"]
     
-    # 1. Admin Check
-    if sender_id not in config.ADMIN_USER_IDS:
-        await discord_client.client.send_message(ctx["channel_id"], presentation.ERR_DENIED_ADMIN)
-        return
+#     # 1. Admin Check
+#     if sender_id not in config.ADMIN_USER_IDS:
+#         await discord_client.client.send_message(ctx["channel_id"], presentation.ERR_DENIED_ADMIN)
+#         return
 
-    target_id = params.get("recipient")
-    amount = params.get("amount")
+#     target_id = params.get("recipient")
+#     amount = params.get("amount")
     
-    if not target_id or amount is None:
-        return 
+#     if not target_id or amount is None:
+#         return 
 
-    # 2. Execute Transfer (Minting)
-    new_bal = await persistence.db.adjust_user_balance(target_id, int(amount))
+#     # 2. Execute Transfer (Minting)
+#     new_bal = await persistence.db.adjust_user_balance(target_id, int(amount))
     
-    await discord_client.client.send_message(
-        ctx["channel_id"], 
-        presentation.format_gift_report(amount, target_id, new_bal)
-    )
+#     await discord_client.client.send_message(
+#         ctx["channel_id"], 
+#         presentation.format_gift_report(amount, target_id, new_bal)
+#     )
 
-@slash_command("admin.balance")
-async def handle_admin_balance(ctx: Dict[str, Any], params: Dict[str, Any]):
-    sender_id = ctx["user_id"]
+# @slash_command("admin.balance")
+# async def handle_admin_balance(ctx: Dict[str, Any], params: Dict[str, Any]):
+#     sender_id = ctx["user_id"]
     
-    # 1. Admin Check
-    if sender_id not in config.ADMIN_USER_IDS:
-        await discord_client.client.send_message(ctx["channel_id"], presentation.ERR_DENIED_ADMIN)
-        return
+#     # 1. Admin Check
+#     if sender_id not in config.ADMIN_USER_IDS:
+#         await discord_client.client.send_message(ctx["channel_id"], presentation.ERR_DENIED_ADMIN)
+#         return
 
-    target_id = params.get("user")
-    if not target_id:
-        return
+#     target_id = params.get("user")
+#     if not target_id:
+#         return
 
-    balance = await persistence.db.get_user_balance(target_id)
-    await discord_client.client.send_message(
-        ctx["channel_id"], 
-        presentation.format_admin_balance_report(target_id, balance)
-    )
+#     balance = await persistence.db.get_user_balance(target_id)
+#     await discord_client.client.send_message(
+#         ctx["channel_id"], 
+#         presentation.format_admin_balance_report(target_id, balance)
+#     )

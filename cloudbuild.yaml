@@ -32,7 +32,7 @@ steps:
   - '--platform'
   - 'managed'
   - '--allow-unauthenticated'
-  - '--min-instances=0'
+  - '--min-instances=1'
   - '--set-env-vars'
   - 'ADMIN_USER_IDS=545309591827906587'
   - '--set-secrets'

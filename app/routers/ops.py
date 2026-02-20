@@ -26,11 +26,11 @@ async def top_up(payload: GiftPayload):
     """
     Endpoint for Make.com to gift tokens to a user.
     """
-    logging.info(f"Ops: Topping up {payload.user_id} to at least {payload.amount}")
+    logging.info(f"Ops: Topping up {payload.user_id} to at least {payload.target_amount}")
     
     try:
         # Use atomic transaction to set balance to max(current, target_amount)
-        new_balance = await persistence.db.top_up_user_balance(payload.user_id, payload.amount)
+        new_balance = await persistence.db.top_up_user_balance(payload.user_id, payload.target_amount)
         
         return {
             "status": "success",

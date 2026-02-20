@@ -61,12 +61,21 @@ A drone is DESTROYED if incinerated or disassembled via `!destroy`. A human is k
         await ctx.send(cls.CHANNEL_BLACKBOX, "Flight recorder active")
 
     @classmethod
-    async def list_channel_ops(cls, players: List[dict], saboteur_index: int) -> List[dict]:
+    async def list_channel_ops(cls, players: List[dict], saboteur_index: int, guild_id: str = None) -> List[dict]:
         """Generates the initial channel creation operations."""
         ops = [
-            {"op": "create", "key": cls.CHANNEL_AUX, "name": "aux-comm", "audience": "public"},
-            {"op": "create", "key": cls.CHANNEL_BLACKBOX, "name": "black-box-logs", "audience": "hidden", "init_msg": "Flight recorder active"}
+            {"op": "create", "key": cls.CHANNEL_AUX, "name": "aux-comm", "audience": "public"}
         ]
+        
+        # Only create the black box log channel on the cscratch-dev server
+        if guild_id and str(guild_id) == "1458011779031498875":
+            ops.append({
+                "op": "create", 
+                "key": cls.CHANNEL_BLACKBOX, 
+                "name": "black-box-logs", 
+                "audience": "hidden", 
+                "init_msg": "Flight recorder active"
+            })
         
         for i, p_data in enumerate(players):
             u_id = p_data['id']

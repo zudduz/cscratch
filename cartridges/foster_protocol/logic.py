@@ -31,13 +31,15 @@ class FosterProtocol:
     async def on_game_start(self, generic_state: dict) -> Dict[str, Any]:
         game_data = Caisson(**generic_state.get('metadata', {}))
         discord_players = generic_state.get('players', [])
+        guild_id = generic_state.get('interface', {}).get('guild_id')
+        
         if not discord_players:
             return { "metadata": game_data.model_dump() }
 
         saboteur_index = random.randint(0, len(discord_players) - 1)
         
         # Logic calculates roles, Presenter defines the channel ops
-        channel_ops = await FosterPresenter.list_channel_ops(discord_players, saboteur_index)
+        channel_ops = await FosterPresenter.list_channel_ops(discord_players, saboteur_index, guild_id)
         
         # Initial Message buffer (Engine handles these differently than direct sends)
         messages = [{ "channel": "aux-comm", "content": "VENDETTA OS v9.0 ONLINE" }]

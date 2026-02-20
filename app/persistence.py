@@ -197,6 +197,31 @@ class PersistenceLayer:
 
         return await _adjust_txn(transaction, ref)
         
+    async def top_up_user_balance(self, user_id: str, target_amount: int) -> int:
+        """
+        Transactional update.
+        If user exists: Sets balance to max(current_balance, target_amount).
+        If user new: Creates full User object (with defaults) and sets initial balance.
+        """
+        transaction = self.db.transaction()
+        ref = self.users_collection.document(str(user_id))
+
+        @firestore.async_transactional
+        async def _top_up_txn(transaction, ref):
+            snapshot = await ref.get(transaction=transaction)
+            
+            if snapshot.exists:
+                current_bal = snapshot.to_dict().get("scratch_balance", 0)
+                new_bal = max(current_bal, target_amount)
+                transaction.update(ref, {"scratch_balance": new_bal})
+                return new_bal
+            else:
+                new_user = User(id=user_id, scratch_balance=target_amount)
+                transaction.set(ref, new_user.model_dump())
+                return target_amount
+
+        return await _top_up_txn(transaction, ref)
+
     async def deduct_balance_if_sufficient(self, user_id: str, amount: int) -> bool:
         """
         Atomically checks if user has >= amount.

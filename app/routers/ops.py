@@ -19,23 +19,23 @@ router = APIRouter(prefix="/ops", tags=["ops"], dependencies=[Depends(verify_ops
 
 class GiftPayload(BaseModel):
     user_id: str
-    amount: int = "50"
+    target_amount: int = 50
 
-@router.post("/gift")
-async def ops_gift(payload: GiftPayload):
+@router.post("/top-up")
+async def top_up(payload: GiftPayload):
     """
     Endpoint for Make.com to gift tokens to a user.
     """
-    logging.info(f"Ops: Gifting {payload.amount} to {payload.user_id}")
+    logging.info(f"Ops: Topping up {payload.user_id} to at least {payload.amount}")
     
     try:
-        # Use existing atomic transaction to create user (if new) and add balance
-        new_balance = await persistence.db.adjust_user_balance(payload.user_id, payload.amount)
+        # Use atomic transaction to set balance to max(current, target_amount)
+        new_balance = await persistence.db.top_up_user_balance(payload.user_id, payload.amount)
         
         return {
             "status": "success",
             "user_id": payload.user_id,
-            "added": payload.amount,
+            "target_amount": payload.amount,
             "new_balance": new_balance
         }
     except Exception as e:

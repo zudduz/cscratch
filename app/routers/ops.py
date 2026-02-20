@@ -35,7 +35,7 @@ async def top_up(payload: GiftPayload):
         return {
             "status": "success",
             "user_id": payload.user_id,
-            "target_amount": payload.amount,
+            "target_amount": payload.target_amount,
             "new_balance": new_balance
         }
     except Exception as e:

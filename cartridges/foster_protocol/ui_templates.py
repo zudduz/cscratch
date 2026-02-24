@@ -68,7 +68,7 @@ A drone is DESTROYED if incinerated or disassembled via `!destroy`. A human is k
         ]
         
         # Only create the black box log channel on the cscratch-dev server
-        if guild_id and str(guild_id) == "1458011779031498875":
+        if guild_id and str(guild_id) == "1455418686931468403":
             ops.append({
                 "op": "create", 
                 "key": cls.CHANNEL_BLACKBOX, 

@@ -30,9 +30,12 @@ CMD_FAILED = "Failed: {error}"
 
 # Errors & Status
 ERR_NO_GAME = "No game"
+ERR_NO_ACTIVE_GAME = "No active game"
 ERR_NOT_HOST = "Denied\nHost only"
 ERR_DENIED_ADMIN = "Denied\nAdmin access required"
 MSG_TEARDOWN = "Teardown"
+ERR_DOC_NOT_FOUND = "{doc_name} not found for this cartridge"
+ERR_DOC_LOAD_FAILED = "Failed to load {doc_name}: {error}"
 
 # Interaction UI
 BTN_JOIN = "Join"

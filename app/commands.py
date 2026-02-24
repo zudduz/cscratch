@@ -139,14 +139,19 @@ async def handle_balance(ctx: Dict[str, Any], params: Dict[str, Any]):
     else:
         await discord_client.client.send_message(ctx["channel_id"], report)
 
-@slash_command("cscratch.guide")
-@slash_command("guide")
-async def handle_guide(ctx: Dict[str, Any], params: Dict[str, Any]):
-    try:
-        presenter = await _get_ui_presenter(ctx, params)
-        text = getattr(presenter, "GUIDE_TEXT", "Guide not found for this cartridge.")
-    except Exception as e:
-        text = f"Failed to load guide: {e}"
+async def _handle_info_command(ctx: Dict[str, Any], params: Dict[str, Any], attr_name: str, doc_name: str):
+    """Helper to retrieve documentation (Guide/Manual) from the active cartridge."""
+    channel_id = ctx["channel_id"]
+    game_id = await persistence.db.get_game_id_by_channel_index(channel_id)
+    
+    if not game_id:
+        text = presentation.ERR_NO_ACTIVE_GAME
+    else:
+        try:
+            presenter = await _get_ui_presenter(ctx, params)
+            text = getattr(presenter, attr_name, presentation.ERR_DOC_NOT_FOUND.format(doc_name=doc_name))
+        except Exception as e:
+            text = presentation.ERR_DOC_LOAD_FAILED.format(doc_name=doc_name, error=str(e))
 
     if ctx.get("interaction_token"):
         await discord_client.client.edit_response(
@@ -155,25 +160,17 @@ async def handle_guide(ctx: Dict[str, Any], params: Dict[str, Any]):
             text
         )
     else:
-        await discord_client.client.send_message(ctx["channel_id"], text)
+        await discord_client.client.send_message(channel_id, text)
+
+@slash_command("cscratch.guide")
+@slash_command("guide")
+async def handle_guide(ctx: Dict[str, Any], params: Dict[str, Any]):
+    await _handle_info_command(ctx, params, "GUIDE_TEXT", "Guide")
 
 @slash_command("cscratch.manual")
 @slash_command("manual")
 async def handle_manual(ctx: Dict[str, Any], params: Dict[str, Any]):
-    try:
-        presenter = await _get_ui_presenter(ctx, params)
-        text = getattr(presenter, "MANUAL_TEXT", "Manual not found for this cartridge.")
-    except Exception as e:
-        text = f"Failed to load manual: {e}"
-
-    if ctx.get("interaction_token"):
-        await discord_client.client.edit_response(
-            ctx["interaction_token"], 
-            ctx["application_id"], 
-            text
-        )
-    else:
-        await discord_client.client.send_message(ctx["channel_id"], text)
+    await _handle_info_command(ctx, params, "MANUAL_TEXT", "Manual")
 
 # @slash_command("admin.gift")
 # async def handle_gift(ctx: Dict[str, Any], params: Dict[str, Any]):

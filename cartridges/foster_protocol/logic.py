@@ -271,13 +271,11 @@ class FosterProtocol:
     async def _run_work_shift(self, game_data: Caisson, ctx, tools):
         """Simulates the passage of 1 day's work."""
         for hour in range(1, GameConfig.HOURS_PER_SHIFT + 1):
-            await asyncio.sleep(2) 
             active_drones = [b for b in game_data.drones.values() if b.status == "active"]
             random.shuffle(active_drones)
             hourly_activity = False 
             
             for drone in active_drones:
-                await asyncio.sleep(0.3)
                 try:
                     res = await self.run_single_drone_turn(drone, game_data, hour, tools, ctx.game_id)
                     drone_state = res['drone']

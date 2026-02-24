@@ -115,6 +115,23 @@ class DiscordRESTInterface:
         except Exception as e:
             logging.error(f"Send Error {channel_id}: {e}")
 
+    async def delete_response(self, interaction_token: str, application_id: str):
+        """
+        Deletes the original deferred interaction response.
+        """
+        if not interaction_token or not application_id:
+            return
+
+        url = f"https://discord.com/api/v10/webhooks/{application_id}/{interaction_token}/messages/@original"
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(url) as resp:
+                    if resp.status >= 400:
+                        logging.error(f"Delete Response Failed {resp.status}: {await resp.text()}")
+        except Exception as e:
+            logging.error(f"Delete Response Error: {e}")
+
     async def edit_response(self, interaction_token: str, application_id: str, text: str):
         """
         Edits the original deferred interaction response (replaces 'is thinking...').

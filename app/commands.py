@@ -58,30 +58,43 @@ async def handle_start(ctx: Dict[str, Any], params: Dict[str, Any]):
             guild_id=ctx["guild_id"],
             origin_channel_id=ctx["channel_id"]
         )
+        
+        # Delete the "is thinking..." message
+        await discord_client.client.delete_response(
+            ctx["interaction_token"], 
+            ctx["application_id"]
+        )
     except Exception as e:
         logging.error(f"Start CMD Failed: {e}")
-        await discord_client.client.send_message(ctx["channel_id"], presentation.CMD_FAILED.format(error=str(e)))
+        await discord_client.client.edit_response(
+            ctx["interaction_token"], 
+            ctx["application_id"], 
+            presentation.CMD_FAILED.format(error=str(e))
+        )
 
 @slash_command("end")
 async def handle_end(ctx: Dict[str, Any], params: Dict[str, Any]):
     channel_id = ctx["channel_id"]
+    token = ctx["interaction_token"]
+    app_id = ctx["application_id"]
+
     game_id = await persistence.db.get_game_id_by_channel_index(channel_id)
     
     if not game_id:
-        await discord_client.client.send_message(channel_id, presentation.ERR_NO_GAME)
+        await discord_client.client.edit_response(token, app_id, presentation.ERR_NO_GAME)
         return
 
     game = await persistence.db.get_game_by_id(game_id)
     
     if not game:
-        await discord_client.client.send_message(channel_id, presentation.ERR_NO_GAME)
+        await discord_client.client.edit_response(token, app_id, presentation.ERR_NO_GAME)
         return
         
     if ctx["user_id"] != game.host_id:
-        await discord_client.client.send_message(channel_id, presentation.ERR_NOT_HOST)
+        await discord_client.client.edit_response(token, app_id, presentation.ERR_NOT_HOST)
         return
         
-    await discord_client.client.send_message(channel_id, presentation.MSG_TEARDOWN)
+    await discord_client.client.edit_response(token, app_id, presentation.MSG_TEARDOWN)
     
     await discord_client.client.cleanup_game_channels(ctx["guild_id"], game.interface.model_dump())
     await game_engine.engine.end_game(game.id)

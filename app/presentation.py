@@ -26,6 +26,7 @@ ADMIN_WARNING = (
 )
 
 LOBBY_DESC = "Click to join"
+MSG_LOBBY_INSTRUCTIONS = 'Send "/cscratch guide" for how to play the game'
 CMD_FAILED = "Failed: {error}"
 
 # Errors & Status

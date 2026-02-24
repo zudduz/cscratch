@@ -49,55 +49,18 @@ def slash_command(name: str):
 @slash_command("start")
 async def handle_start(ctx: Dict[str, Any], params: Dict[str, Any]):
     cartridge = params.get("cartridge", "foster-protocol")
-    user_id = ctx["user_id"]
-    guild_id = ctx["guild_id"]
-    channel_id = ctx["channel_id"]
     
     try:
-        # 1. Create Game Record
-        game_id = await game_engine.engine.start_new_game(cartridge, user_id, ctx["user_name"])
-        
-        # 2. Create Channels
-        # Note: discord_client is "stateless" but holds a client reference we can use for API calls
-        guild = await discord_client.client.client.fetch_guild(int(guild_id))
-        
-        cat = await guild.create_category(f"Lobby {game_id}")
-        chan = await guild.create_text_channel("cscratch-lobby", category=cat)
-        
-        # 3. Register Interface
-        await game_engine.engine.register_interface_data(game_id, {
-            "type": "discord",
-            "guild_id": guild_id,
-            "category_id": str(cat.id),
-            "main_channel_id": str(chan.id),
-            "listener_ids": [str(chan.id)]
-        })
-        
-        # 4. Update Index
-        await persistence.db.register_channel_association(str(chan.id), game_id)
-        
-        # 5. Send Lobby UI
-        embed = discord.Embed(
-            title=presentation.format_lobby_title(cartridge),
-            description=presentation.LOBBY_DESC,
-            color=0x00ff00
+        await game_engine.engine.setup_game(
+            story_id=cartridge, 
+            host_id=ctx["user_id"], 
+            host_name=ctx["user_name"],
+            guild_id=ctx["guild_id"],
+            origin_channel_id=ctx["channel_id"]
         )
-        
-        view = discord.ui.View()
-        view.add_item(discord.ui.Button(label=presentation.BTN_JOIN, style=discord.ButtonStyle.green, custom_id="join_btn"))
-        view.add_item(discord.ui.Button(label=presentation.BTN_START, style=discord.ButtonStyle.danger, custom_id="start_btn"))
-        
-        await chan.send(embed=embed, view=view)
-
-        # 6. Host Fair Play Check
-        await discord_client.client.check_and_warn_admin(guild_id, user_id, str(chan.id))
-        
-        # Notify origin channel
-        await discord_client.client.send_message(channel_id, presentation.format_lobby_created_msg(chan.mention))
-        
     except Exception as e:
         logging.error(f"Start CMD Failed: {e}")
-        await discord_client.client.send_message(channel_id, presentation.CMD_FAILED.format(error=str(e)))
+        await discord_client.client.send_message(ctx["channel_id"], presentation.CMD_FAILED.format(error=str(e)))
 
 @slash_command("end")
 async def handle_end(ctx: Dict[str, Any], params: Dict[str, Any]):
@@ -171,45 +134,3 @@ async def handle_guide(ctx: Dict[str, Any], params: Dict[str, Any]):
 @slash_command("manual")
 async def handle_manual(ctx: Dict[str, Any], params: Dict[str, Any]):
     await _handle_info_command(ctx, params, "MANUAL_TEXT", "Manual")
-
-# @slash_command("admin.gift")
-# async def handle_gift(ctx: Dict[str, Any], params: Dict[str, Any]):
-#     sender_id = ctx["user_id"]
-    
-#     # 1. Admin Check
-#     if sender_id not in config.ADMIN_USER_IDS:
-#         await discord_client.client.send_message(ctx["channel_id"], presentation.ERR_DENIED_ADMIN)
-#         return
-
-#     target_id = params.get("recipient")
-#     amount = params.get("amount")
-    
-#     if not target_id or amount is None:
-#         return 
-
-#     # 2. Execute Transfer (Minting)
-#     new_bal = await persistence.db.adjust_user_balance(target_id, int(amount))
-    
-#     await discord_client.client.send_message(
-#         ctx["channel_id"], 
-#         presentation.format_gift_report(amount, target_id, new_bal)
-#     )
-
-# @slash_command("admin.balance")
-# async def handle_admin_balance(ctx: Dict[str, Any], params: Dict[str, Any]):
-#     sender_id = ctx["user_id"]
-    
-#     # 1. Admin Check
-#     if sender_id not in config.ADMIN_USER_IDS:
-#         await discord_client.client.send_message(ctx["channel_id"], presentation.ERR_DENIED_ADMIN)
-#         return
-
-#     target_id = params.get("user")
-#     if not target_id:
-#         return
-
-#     balance = await persistence.db.get_user_balance(target_id)
-#     await discord_client.client.send_message(
-#         ctx["channel_id"], 
-#         presentation.format_admin_balance_report(target_id, balance)
-#     )

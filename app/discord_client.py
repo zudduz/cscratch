@@ -7,6 +7,7 @@ from discord.ext import commands
 from . import persistence
 from . import presentation
 from . import state
+from .models import GameInterface
 from .state import sys as system_state
 
 # --- LEGACY CHICKEN BOT (WEBSOCKET) ---
@@ -53,6 +54,46 @@ class DiscordRESTInterface:
 
     async def close(self):
         await self.client.close()
+
+    # --- LOBBY CREATION ---
+    
+    async def create_lobby(self, game_id: str, cartridge: str, guild_id: str, host_id: str, origin_channel_id: str):
+        try:
+            guild = await self.client.fetch_guild(int(guild_id))
+            
+            cat = await guild.create_category(f"Lobby {game_id}")
+            chan = await guild.create_text_channel("cscratch-lobby", category=cat)
+            
+            interface_data = {
+                "type": "discord",
+                "guild_id": guild_id,
+                "category_id": str(cat.id),
+                "main_channel_id": str(chan.id),
+                "listener_ids": [str(chan.id)]
+            }
+            
+            interface = GameInterface(**interface_data)
+            await persistence.db.update_game_interface(game_id, interface)
+            await persistence.db.register_channel_association(str(chan.id), game_id)
+            
+            embed = discord.Embed(
+                title=presentation.format_lobby_title(cartridge),
+                description=presentation.LOBBY_DESC,
+                color=0x00ff00
+            )
+            
+            view = discord.ui.View()
+            view.add_item(discord.ui.Button(label=presentation.BTN_JOIN, style=discord.ButtonStyle.green, custom_id="join_btn"))
+            view.add_item(discord.ui.Button(label=presentation.BTN_START, style=discord.ButtonStyle.danger, custom_id="start_btn"))
+            
+            await chan.send(embed=embed, view=view)
+            await chan.send(presentation.MSG_LOBBY_INSTRUCTIONS)
+
+            await self.check_and_warn_admin(guild_id, host_id, str(chan.id))
+            await self.send_message(origin_channel_id, presentation.format_lobby_created_msg(chan.mention))
+        except Exception as e:
+            logging.error(f"Failed to create Discord lobby for {game_id}: {e}")
+            raise e
 
     # --- OUTPUT METHODS ---
 

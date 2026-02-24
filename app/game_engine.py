@@ -56,6 +56,16 @@ class GameEngine:
         await self.join_game(game_id, host_id, host_name)
         return game_id
 
+    async def setup_game(self, story_id: str, host_id: str, host_name: str, guild_id: str, origin_channel_id: str) -> str:
+        """Orchestrates game creation and delegates UI lobby setup to registered interfaces."""
+        game_id = await self.start_new_game(story_id, host_id, host_name)
+        
+        for interface in self.interfaces:
+            if hasattr(interface, 'create_lobby'):
+                await interface.create_lobby(game_id, story_id, guild_id, host_id, origin_channel_id)
+                
+        return game_id
+
     async def join_game(self, game_id: str, user_id: str, user_name: str) -> dict:
         """
         Attempts to add a player to the game.

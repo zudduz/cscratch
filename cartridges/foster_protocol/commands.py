@@ -90,7 +90,7 @@ class NameDroneCommand(BaseCommand):
         new_name = " ".join(args)[:20]
         my_drone.name = new_name
         
-        await context.ctx.reply(f"Identity Updated. Hello, **{new_name}**.")
+        await context.ctx.reply(f"Identity Updated. Hello, **{new_name}**. (ID: {my_drone.id})")
         return {f"drones.{my_drone.id}.name": new_name}
 
 class SleepCommand(BaseCommand):

@@ -61,6 +61,11 @@ class FosterProtocol:
                 model_version="gemini-2.5-flash"
             )
 
+            messages.append({
+                "channel": f"nanny_{u_id}", 
+                "content": f"New client detected\nID: {drone_id}"
+            })
+
         return { "metadata": game_data.model_dump(), "channel_ops": channel_ops, "messages": messages }
 
     async def post_game_start(self, metadata: dict, ctx, tools) -> Dict[str, Any]:

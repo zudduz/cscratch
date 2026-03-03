@@ -109,7 +109,7 @@ class FosterProtocol:
             )
             
             new_memory = await tools.ai.generate_response(
-                sys_prompt, f"dream_{drone.id}", user_msg, drone.
+                sys_prompt, f"dream_{drone.id}", user_msg, drone.model_version
             )
             drone.long_term_memory = new_memory.replace("\n", " ").strip()
             drone.night_chat_log = [] 

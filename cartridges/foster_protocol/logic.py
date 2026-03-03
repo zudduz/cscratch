@@ -234,7 +234,8 @@ class FosterProtocol:
 
     async def execute_day_simulation(self, game_data: Caisson, ctx, tools) -> Dict[str, Any]:
         """
-        Orchestrates the Day Phase using a pipeline pattern.
+        LEGACY METHOD: Orchestrates the Day Phase using a pipeline pattern.
+        Will be replaced by handle_task driving a state machine.
         """
         try:
             # 1. Dream Phase (Preparation)
@@ -258,6 +259,32 @@ class FosterProtocol:
             logging.error(f"execute_day_simulation died: {e}", exc_info=True)
             await FosterPresenter.send_system_error(ctx, str(e))
             return None
+
+    # --- TASK PIPELINE (NEW STATE MACHINE) ---
+    async def handle_task(self, generic_state: dict, payload: dict, ctx, tools) -> Dict[str, Any]:
+        """
+        Main entry point for Cloud Tasks to drive the state machine.
+        """
+        game_data = Caisson(**generic_state.get('metadata', {}))
+        operation = payload.get("operation")
+        data = payload.get("data", {})
+
+        logging.info(f"FosterProtocol handling task: {operation} for game {ctx.game_id}")
+
+        if operation == "dream_phase":
+            # Will be implemented in Phase 3
+            pass
+        elif operation == "tick_hour":
+            # Will be implemented in Phase 3
+            pass
+        elif operation == "physics_arbitration":
+            # Will be implemented in Phase 3
+            pass
+        else:
+            logging.warning(f"Unknown operation: {operation}")
+
+        # Returns None for now until implemented, avoiding overwriting with empty states
+        return None
 
     # --- PIPELINE STAGES ---
 

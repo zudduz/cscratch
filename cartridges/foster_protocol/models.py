@@ -56,6 +56,7 @@ class Caisson(BaseModel):
     torpedo_bay_fuel: int = GameConfig.CAPACITY_TORPEDO_BAY
     
     cycle: int = 1
+    hour: int = 0
     phase: Literal["day", "night"] = "night"
     
     # RENAMED FROM 'bots' -> 'drones'

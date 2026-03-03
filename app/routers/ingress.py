@@ -47,7 +47,23 @@ class InteractionPayload(BaseModel):
     interaction_token: Optional[str] = None
     application_id: Optional[str] = None
 
+class TaskPayload(BaseModel):
+    operation: str
+    data: Optional[Dict[str, Any]] = {}
+
 # --- ENDPOINTS ---
+
+@router.post("/cartridge/{cartridge_id}/game/{game_id}")
+async def handle_internal_task(cartridge_id: str, game_id: str, payload: TaskPayload):
+    """
+    Internal endpoint for Cloud Tasks to trigger state machine operations.
+    """
+    try:
+        await game_engine.engine.dispatch_task(cartridge_id, game_id, payload.model_dump())
+        return {"status": "ok"}
+    except Exception as e:
+        logging.error(f"Task Dispatch Error for game {game_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/message")
 async def handle_message(payload: MessagePayload):

@@ -161,6 +161,41 @@ class GameEngine:
                 
                 return {"error": "startup_failed", "detail": str(e)}
 
+    def _create_context(self, game: GameState, channel_id: str, user_id: str, user_name: str = "system") -> EngineContext:
+        """Helper to build a standardized EngineContext."""
+        trigger_data = {
+            "channel_id": str(channel_id),
+            "user_id": str(user_id),
+            "user_name": str(user_name),
+            "interface": game.interface.model_dump(),
+            "metadata": game.metadata 
+        }
+        return EngineContext(
+            game_id=game.id,
+            _dispatcher=self._dispatch_message_to_interfaces,
+            _scheduler=self._schedule_background_task,
+            _ender=self.end_game,
+            trigger_data=trigger_data
+        )
+
+    async def _process_cartridge_patch(self, game_id: str, patch: Optional[Dict[str, Any]]):
+        """Helper to process standardized cartridge returns (channel_ops & state updates)."""
+        if not patch:
+            return
+
+        # --- EXTRACT OPS ---
+        if "channel_ops" in patch:
+            ops = patch.pop("channel_ops")
+            if ops:
+                for interface in self.interfaces:
+                    if hasattr(interface, 'execute_channel_ops'):
+                        await interface.execute_channel_ops(game_id, ops)
+        
+        # Check for metadata key or use root
+        state_update = patch.get("metadata", patch)
+        if state_update: 
+            await self._apply_state_patch(game_id, state_update)
+
     async def trigger_post_start(self, game_id: str):
         """
         Lifecycle hook called by the Interface (Discord) AFTER channels are created.
@@ -174,27 +209,13 @@ class GameEngine:
             cartridge = await self._load_cartridge(game.story_id)
             
             if hasattr(cartridge, 'post_game_start'):
-                trigger_data = {
-                    "user_id": "system",
-                    "channel_id": "system",
-                    "interface": game.interface.model_dump(),
-                    "metadata": game.metadata
-                }
-                
-                ctx = EngineContext(
-                    game_id=game.id,
-                    _dispatcher=self._dispatch_message_to_interfaces,
-                    _scheduler=self._schedule_background_task,
-                    _ender=self.end_game,
-                    trigger_data=trigger_data
-                )
+                ctx = self._create_context(game, channel_id="system", user_id="system")
                 
                 # 2. Execute Hook
                 patch = await cartridge.post_game_start(game.metadata, ctx, Toolbox(self.ai))
 
-                # 3. Save State Updates (e.g. Chat Logs from Intros)
-                if patch and "metadata" in patch:
-                    await self._apply_state_patch(game.id, patch["metadata"])
+                # 3. Save State Updates
+                await self._process_cartridge_patch(game.id, patch)
 
     async def end_game(self, game_id: str):
         await persistence.db.mark_game_ended(game_id)
@@ -212,22 +233,7 @@ class GameEngine:
             if not game or game.status != 'active':
                 return
             
-            trigger_data = {
-                "channel_id": str(channel_id),
-                "user_id": str(user_id),
-                "user_name": str(user_name),
-                "interface": game.interface.model_dump(),
-                "metadata": game.metadata 
-            }
-
-            ctx = EngineContext(
-                game_id=game.id,
-                _dispatcher=self._dispatch_message_to_interfaces,
-                _scheduler=self._schedule_background_task,
-                _ender=self.end_game,
-                trigger_data=trigger_data
-            )
-
+            ctx = self._create_context(game, channel_id, user_id, user_name)
             cartridge = await self._load_cartridge(game.story_id)
             
             patch = await cartridge.handle_input(
@@ -237,22 +243,32 @@ class GameEngine:
                 Toolbox(self.ai)
             )
 
-            if patch:
-                # --- EXTRACT OPS ---
-                if "channel_ops" in patch:
-                    ops = patch.pop("channel_ops")
-                    if ops:
-                        for interface in self.interfaces:
-                            if hasattr(interface, 'execute_channel_ops'):
-                                await interface.execute_channel_ops(game.id, ops)
-                
-                # Check for metadata key or use root
-                state_update = patch
-                if "metadata" in patch:
-                    state_update = patch["metadata"]
+            await self._process_cartridge_patch(game.id, patch)
 
-                if state_update: 
-                    await self._apply_state_patch(game.id, state_update)
+    async def dispatch_task(self, cartridge_id: str, game_id: str, payload: dict):
+        """
+        Routes an incoming task from Cloud Tasks to the appropriate cartridge.
+        """
+        game = await persistence.db.get_game_by_id(game_id)
+        if not game or game.status != 'active':
+            logging.warning(f"Task ignored: Game {game_id} is not active.")
+            return
+
+        cartridge = await self._load_cartridge(cartridge_id)
+        if not hasattr(cartridge, 'handle_task'):
+            logging.error(f"Task Error: Cartridge {cartridge_id} is missing handle_task.")
+            return
+
+        ctx = self._create_context(game, channel_id="system", user_id="system")
+
+        patch = await cartridge.handle_task(
+            game.model_dump(),
+            payload,
+            ctx,
+            Toolbox(self.ai)
+        )
+
+        await self._process_cartridge_patch(game.id, patch)
 
     async def dispatch_immediate_result(self, game_id: str, result: dict):
         msgs = result.get('messages', [])

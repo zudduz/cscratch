@@ -58,7 +58,7 @@ class FosterProtocol:
             drone_role = "saboteur" if (i == saboteur_index) else "loyal"
             game_data.drones[drone_id] = Drone(
                 id=drone_id, foster_id=u_id, role=drone_role, 
-                model_version="gemini-flash-latest"
+                model_version="gemini-2.5-flash"
             )
 
             messages.append({
@@ -417,7 +417,7 @@ class FosterProtocol:
     async def _handle_mainframe_chat(self, user_input, ctx, tools):
         sys_prompt, user_msg = ai_templates.compose_mainframe_turn(user_input)
         response = await tools.ai.generate_response(
-            sys_prompt, f"{ctx.game_id}_mainframe", user_msg, "gemini-flash-latest", game_id=ctx.game_id
+            sys_prompt, f"{ctx.game_id}_mainframe", user_msg, "gemini-2.5-flash", game_id=ctx.game_id
         )
         await ctx.reply(response)
         return None

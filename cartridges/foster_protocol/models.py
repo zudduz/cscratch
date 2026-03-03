@@ -20,7 +20,7 @@ class Drone(BaseModel):
     name: Optional[str] = None
     foster_id: Optional[str] = None
     role: Literal["loyal", "saboteur"] = "loyal"
-    model_version: str = "gemini-flash-latest" 
+    model_version: str = "gemini-2.5-flash" 
     
     location_id: str = "stasis_bay"
     battery: int = 100        

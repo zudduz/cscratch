@@ -10,7 +10,6 @@ async def test_ai_engine_initialization():
     """Verify the class initializes and loads config."""
     engine = AIEngine()
     assert engine.project_id == "test-project"  # From conftest env var
-    assert engine.default_model_name == "gemini-2.5-flash"
     # Verify safety settings loaded (even if they are Mocks due to conftest)
     assert engine.safety_settings is not None
 

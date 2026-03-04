@@ -87,23 +87,41 @@ def test_tool_charge_success(game_state):
     drone = game_state.drones["unit_01"]
     drone.location_id = "charging_station"
     drone.battery = 10
+    game_state.add_fuel(5) # Give 5 fuel
+    initial_fuel = game_state.fuel
     
     result = execute_tool("charge", {}, "unit_01", game_state)
     
     assert result.success is True
     assert drone.battery == 100
+    assert game_state.fuel == initial_fuel - 1
+    assert "unit_01" in result.message
 
 def test_tool_charge_disassembly(game_state):
     drone = game_state.drones["unit_01"]
     drone.location_id = "charging_station"
     game_state.station.pending_deactivation.append("unit_01")
+    game_state.add_fuel(5)
+    initial_fuel = game_state.fuel
     
     result = execute_tool("charge", {}, "unit_01", game_state)
     
     assert result.success is True
     assert "DESTROYED" in result.message
+    assert "unit_01" in result.message
     assert drone.destroyed is True
     assert drone.battery == 0
+    assert game_state.fuel == initial_fuel - 1
+
+def test_tool_charge_fail_no_fuel(game_state):
+    drone = game_state.drones["unit_01"]
+    drone.location_id = "charging_station"
+    game_state.fuel = 0
+    
+    result = execute_tool("charge", {}, "unit_01", game_state)
+    
+    assert result.success is False
+    assert "depleted" in result.message
 
 def test_tool_tow_success(game_state):
     drone = game_state.drones["unit_01"]

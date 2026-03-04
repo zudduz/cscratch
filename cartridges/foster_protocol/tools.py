@@ -185,21 +185,25 @@ class ChargeTool(BaseTool):
     usage = "charge()"
     COST = -100
     VISIBILITY = "Global"
-    effect_desc = "[Station] Recharge battery to 100%."
+    effect_desc = "[Station] Recharge battery to 100%. Costs 1 Ship Fuel. Broadcasts Drone ID to Aux-Comm."
     required_location = "charging_station"
 
     def validate(self, context: ToolContext) -> Tuple[bool, str]:
+        if context.game_data.fuel < 1:
+            return False, "Ship fuel depleted. Cannot charge."
         return True, ""
 
     def execute(self, context: ToolContext) -> ToolExecutionResult:
+        context.game_data.fuel -= 1
+
         if context.actor.id in context.game_data.station.pending_deactivation:
             context.actor.destroyed = True
             context.actor.battery = 0
             context.game_data.station.pending_deactivation.remove(context.actor.id)
-            return ToolExecutionResult(True, "Disassembly sequence initiated. UNIT DESTROYED.", 0, "global", event_type="disassembly")
+            return ToolExecutionResult(True, f"Disassembly sequence initiated for {context.actor.id}. UNIT DESTROYED.", 0, "global", event_type="disassembly")
         
         context.actor.battery = 100
-        return ToolExecutionResult(True, "Connected to Main Grid. Recharged to 100%.", self.COST, "global")
+        return ToolExecutionResult(True, f"Unit {context.actor.id} connected to Main Grid. Recharged to 100%. (Consumed 1 Fuel)", self.COST, "global")
 
 
 class TowTool(BaseTool):

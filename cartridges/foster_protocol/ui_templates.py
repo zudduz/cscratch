@@ -1,7 +1,7 @@
 from typing import Dict, Any, List
 from .models import Drone, Caisson
 from .tools import ToolExecutionResult
-from .board import GameEndState
+from .board import GameEndState, GameConfig
 
 class FosterPresenter:
     """
@@ -17,42 +17,51 @@ class FosterPresenter:
     CHANNEL_BLACKBOX = "black-box"
 
     # --- TEXT BLOBS ---
-    GUIDE_TEXT = """**The Foster Protocol: Quick Guide**
+    GUIDE_TEXT = """\
+**The Foster Protocol: Quick Guide**
 
 **The Goal:** Escape the decaying orbit! Your drone must gather fuel and deposit it in the `engine_room`.
-**The Catch:** One drone is secretly a **Saboteur** trying to stop you. Trust no one.
+**The Catch:** One of the drones is secretly a **Saboteur** trying to stop you.
 
-**Day Phase (Action):** Your drone executes your orders automatically. You just watch the logs.
-**Night Phase (Planning):** You chat with your drone. Review what it saw, give it instructions for the next day, and coordinate with other players in the main channel.
+**Day Phase:** Your drone executes your orders automatically while you're asleep in the stasis pod. Some actions will appear in the logs.
+**Night Phase:** Chat with your drone. Ask it what happened and give it instructions for the next day. Coordinate with other players in the aux-comm channel.
 
 **Night Commands (Nanny Channel):**
-• `!name <name>` - Give your drone a custom name.
-• `!sleep` - End your night phase early.
-• `!destroy` - Order your drone's destruction at the charging station. (It won't know until it's too late)
+• `!name <name>` - Give your drone a name.
+• `!sleep` - Mark yourself as ready for sleep.
+• `!destroy` - Order your drone's destruction at the charging station. The drone won't know until it's too late.
 • `!cancel` - Rescind your drone's destruction order.
+"""
 
-*Talk to your drone in plain English. Tell it to gather fuel from the shuttle_bay, recharge when low, and run if it sees the Saboteur!*"""
-
-    MANUAL_TEXT = """**The Foster Protocol: Complete Manual**
+    MANUAL_TEXT = f"""**The Foster Protocol: Complete Manual**
 
 **CORE MECHANICS**
-• **Orbit Decay:** The fuel required to escape increases every cycle.
-• **Oxygen:** Depletes daily. If it hits 0%, humans enter stasis (skip night chat). Less living humans = slower depletion.
-• **Battery:** Drones need battery to act. At 0%, they go OFFLINE and must be `tow`ed to the `charging_station`.
+• **Orbit Decay:** The fuel required for escape velocity will increase every day.
+• **Oxygen:** Depletes daily. At 0%, the humans will be put back into stasis (skip night chat). Fewer living humans results in less oxygen used.
+• **Battery:** Drones need battery to act. At 0%, they will go offline until they are towed to the `charging_station`.
 
 **ROOMS & RISKS**
-• `stasis_bay`: Safe zone. Drones must be here at night to chat.
-• `shuttle_bay`: Safe fuel gathering.
-• `torpedo_bay`: Risky fuel gathering (5% chance of EMP explosion, knocks out all drones in room).
-• `engine_room`: Deposit fuel here. Saboteurs can `siphon` it.
-• `maintenance`: Search here for a `plasma_torch` (20% chance).
-• `charging_station`: Restores battery to 100%. (Executes pending `!destroy` orders here).
+• `stasis_bay`: Drones must be here at night or they will be unable to chat.
+• `shuttle_bay`: Safe fuel gathering. Contains {GameConfig.CAPACITY_SHUTTLE_BAY} fuel
+• `torpedo_bay`: Risky fuel gathering ({GameConfig.TORPEDO_ACCIDENT_PERCENT}% chance of EMP explosion, knocks out all drones in room). Contains {GameConfig.CAPACITY_SHUTTLE_BAY} fuel
+• `engine_room`: Fuel can be deposited here (or siphoned).
+• `maintenance`: Search here for a `plasma_torch` ({GameConfig.PLASMA_TORCH_DISCOVERY_PERCENT}% chance).
+• `charging_station`: Restores battery to 100%. (Pending `!destroy` orders are executed here).
 
 **DRONE ACTIONS (AI Controlled)**
-Your drone decides its actions based on your chat instructions. It can: `move`, `gather`, `deposit`, `charge`, `tow` (offline drones), `drain` (steal battery), `vent` (sabotage O2), `siphon` (steal fuel), `search` (find weapons), `incinerate_drone` / `incinerate_pod` (requires plasma torch).
+Your drone decides its actions based on your chat instructions. It can: `move`, `gather`, `deposit`, `charge`, `tow` (offline drones), `drain` (steal battery), `vent` (sabotage O2), `siphon` (steal fuel), `search` (find weapons), `incinerate_drone` / `incinerate_pod` (requires plasma torch). All actions take 1 hour.
+
+**DRONE VISIBILITY**
+Many actions are visible to other drones in the same room. Some actions are visible to the mainframe and will be reported to aux-comm channel
 
 **DEATH & DESTRUCTION**
-A drone is DESTROYED if incinerated or disassembled via `!destroy`. A human is killed if their pod is incinerated. If all drones die, the game is lost."""
+A drone can be incinerated by a peer or disassembled via `!destroy`. A human can also be incinerated by a drone.
+
+**WINNING AND LOSING**
+The game is won if at the end of the day cycle the fuel in the engine meets the requirement for escape velocity for that day.
+The game is lost if the required fuel for the day is more than the engine is capable of holding.
+The game is lost if there are no active drones.
+"""
 
     # --- STARTUP & SETUP ---
 

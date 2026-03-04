@@ -4,14 +4,18 @@ class EngineContext:
     def __init__(
         self,
         game_id: str,
+        cartridge_id: str,
         _dispatcher: Callable[[str, str, str], Awaitable[None]],
         _scheduler: Callable[[str, Any], None],
+        _task_scheduler: Callable[[str, str, str, dict, int], None],
         _ender: Callable[[str], Awaitable[None]],
         trigger_data: Dict[str, Any]
     ):
         self.game_id = game_id
+        self.cartridge_id = cartridge_id
         self._dispatcher = _dispatcher
         self._scheduler = _scheduler
+        self._task_scheduler = _task_scheduler
         self._ender = _ender
         self.trigger_data = trigger_data
 
@@ -34,9 +38,14 @@ class EngineContext:
 
     def schedule(self, coro: Any):
         """
-        Schedules a background task (fire-and-forget).
-        This was the missing happy little tree!
+        LEGACY: Schedules a background task (fire-and-forget).
         """
         if self._scheduler:
-            # The game_engine._schedule_background_task expects (game_id, coroutine)
             self._scheduler(self.game_id, coro)
+
+    def schedule_task(self, operation: str, data: dict = None, delay: int = 0):
+        """
+        Schedules an event-driven task via Google Cloud Tasks (or local fallback).
+        """
+        if self._task_scheduler:
+            self._task_scheduler(self.game_id, self.cartridge_id, operation, data, delay)

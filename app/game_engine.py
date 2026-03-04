@@ -9,6 +9,7 @@ from . import persistence
 from .models import GameState, LobbyPlayer, GameInterface
 from .engine_context import EngineContext
 from .ai_engine import AIEngine
+from .task_queue import dispatcher as task_dispatcher
 
 CARTRIDGE_MAP = {
     "foster-protocol": "cartridges.foster_protocol.logic"
@@ -110,6 +111,10 @@ class GameEngine:
             "max": max_players
         }
 
+    def _schedule_cloud_task(self, game_id: str, cartridge_id: str, operation: str, data: dict = None, delay: int = 0):
+        """Passes task scheduling to the infrastructure layer."""
+        task_dispatcher.enqueue_task(cartridge_id, game_id, operation, data, delay)
+
     async def register_interface_data(self, game_id: str, interface_data: dict):
         interface = GameInterface(**interface_data)
         await persistence.db.update_game_interface(game_id, interface)
@@ -172,8 +177,10 @@ class GameEngine:
         }
         return EngineContext(
             game_id=game.id,
+            cartridge_id=game.story_id,
             _dispatcher=self._dispatch_message_to_interfaces,
             _scheduler=self._schedule_background_task,
+            _task_scheduler=self._schedule_cloud_task,
             _ender=self.end_game,
             trigger_data=trigger_data
         )

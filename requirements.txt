@@ -12,3 +12,4 @@ nest_asyncio
 pytest
 pytest-asyncio
 Jinja2
+google-cloud-tasks

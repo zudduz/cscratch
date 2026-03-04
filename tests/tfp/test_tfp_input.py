@@ -60,18 +60,19 @@ async def test_input_blocked_during_day_phase(cartridge, mock_ctx, mock_tools, b
     # Modify state to be in 'day' phase (Fix: Access phase directly on the state dict)
     base_state['phase'] = 'day'
     
-    await cartridge.handle_input({"metadata": base_state}, "!destroy d1", mock_ctx, mock_tools)
+    await cartridge.handle_input({"metadata": base_state}, "!destroy", mock_ctx, mock_tools)
     
     # Should reply with snarky message, not execute command
     mock_ctx.reply.assert_called_with("Day cycle in progress\nYou are sleeping now\nPretend to snore or something")
     assert "d1" not in base_state['station']['pending_deactivation'] # Should not have triggered
 
 @pytest.mark.asyncio
-async def test_destroy_permission_owner(cartridge, mock_ctx, mock_tools, base_state):
-    """User u1 should be able to destroy d1 (their own drone)."""
+async def test_destroy_nanny_channel(cartridge, mock_ctx, mock_tools, base_state):
+    """User u1 should be able to destroy d1 (their own drone) via nanny channel."""
     mock_ctx.trigger_data["user_id"] = "u1"
+    mock_ctx.trigger_data["channel_id"] = "nanny_u1_id"
     
-    result = await cartridge.handle_input({"metadata": base_state}, "!destroy d1", mock_ctx, mock_tools)
+    result = await cartridge.handle_input({"metadata": base_state}, "!destroy", mock_ctx, mock_tools)
     
     # Check return patch
     assert "station" in result
@@ -79,29 +80,20 @@ async def test_destroy_permission_owner(cartridge, mock_ctx, mock_tools, base_st
     assert "DESTRUCTION AUTHORIZED" in mock_ctx.reply.call_args[0][0]
 
 @pytest.mark.asyncio
-async def test_destroy_permission_denied_non_owner(cartridge, mock_ctx, mock_tools, base_state):
-    """User u1 should NOT be able to destroy d2 (Bob's drone)."""
+async def test_cancel_nanny_channel(cartridge, mock_ctx, mock_tools, base_state):
+    """User u1 should be able to cancel destruction for d1 via nanny channel."""
     mock_ctx.trigger_data["user_id"] = "u1"
+    mock_ctx.trigger_data["channel_id"] = "nanny_u1_id"
     
-    result = await cartridge.handle_input({"metadata": base_state}, "!destroy d2", mock_ctx, mock_tools)
+    # Set state so d1 is pending deactivation
+    base_state["station"]["pending_deactivation"].append("d1")
     
-    assert result is None
-    assert "DENIED" in mock_ctx.reply.call_args[0][0]
-
-@pytest.mark.asyncio
-async def test_destroy_permission_allowed_orphan(cartridge, mock_ctx, mock_tools, base_state):
-    """User u1 SHOULD be able to destroy d2 IF Bob is dead."""
-    # Kill Bob
-    state_obj = Caisson(**base_state)
-    state_obj.players["u2"].alive = False
-    serialized_state = state_obj.model_dump()
+    result = await cartridge.handle_input({"metadata": base_state}, "!cancel", mock_ctx, mock_tools)
     
-    mock_ctx.trigger_data["user_id"] = "u1"
-    
-    result = await cartridge.handle_input({"metadata": serialized_state}, "!destroy d2", mock_ctx, mock_tools)
-    
+    # Check return patch
     assert "station" in result
-    assert "d2" in result["station"]["pending_deactivation"]
+    assert "d1" not in result["station"]["pending_deactivation"]
+    assert "ORDER RESCINDED" in mock_ctx.reply.call_args[0][0]
 
 @pytest.mark.asyncio
 async def test_sleep_consensus_partial(cartridge, mock_ctx, mock_tools, base_state):

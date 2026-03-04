@@ -22,36 +22,23 @@ class BaseCommand(ABC):
     async def execute(self, args: List[str], context: CommandContext) -> Optional[Dict[str, Any]]:
         pass
 
-# --- AUX COMM COMMANDS ---
+
+# --- NANNY COMMANDS ---
 
 class DestroyDroneCommand(BaseCommand):
-    allowed_contexts = ["aux"]
+    allowed_contexts = ["nanny"]
 
     async def execute(self, args: List[str], context: CommandContext) -> Optional[Dict[str, Any]]:
-        if len(args) < 1:
-            await context.ctx.reply("USAGE: !destroy <drone_id>")
+        my_drone = next((b for b in context.game_data.drones.values() if b.foster_id == context.user_id), None)
+        
+        if not my_drone:
+            await context.ctx.reply("No drone assigned to this channel.")
             return None
             
-        target_id = args[0]
-        target_drone = context.game_data.drones.get(target_id)
-        
-        if not target_drone:
-            await context.ctx.reply(f"Unit '{target_id}' not found.")
-            return None
-        
-        owner_id = target_drone.foster_id
-        owner_state = context.game_data.players.get(owner_id)
-        is_orphan = False
-        if owner_state and not owner_state.alive:
-            is_orphan = True
-        
-        # Permission Check
-        if target_drone.foster_id != context.user_id and not is_orphan:
-            await context.ctx.reply("DENIED. You are not the bonded supervisor.")
-            return None
+        target_id = my_drone.id
         
         if target_id not in context.game_data.station.pending_deactivation:
-            context.game_data.station.pending_deactivation.append(target_drone.id)
+            context.game_data.station.pending_deactivation.append(target_id)
             await context.ctx.reply(f"**DESTRUCTION AUTHORIZED.**\nDrone {target_id} will be destroyed upon next Charging Cycle.")
             return {"station": context.game_data.station.model_dump()}
         else:
@@ -59,21 +46,21 @@ class DestroyDroneCommand(BaseCommand):
             return None
 
 class AbortCommand(BaseCommand):
-    allowed_contexts = ["aux"]
+    allowed_contexts = ["nanny"]
 
     async def execute(self, args: List[str], context: CommandContext) -> Optional[Dict[str, Any]]:
-        if len(args) < 1: return None
-        target_id = args[0]
+        my_drone = next((b for b in context.game_data.drones.values() if b.foster_id == context.user_id), None)
+        
+        if not my_drone:
+            return None
+            
+        target_id = my_drone.id
         
         if target_id in context.game_data.station.pending_deactivation:
-            target_drone = context.game_data.drones.get(target_id)
-            if target_drone and target_drone.foster_id == context.user_id:
-                context.game_data.station.pending_deactivation.remove(target_id)
-                await context.ctx.reply(f"**ORDER RESCINDED.** Drone {target_id} is safe.")
-                return {"station": context.game_data.station.model_dump()}
+            context.game_data.station.pending_deactivation.remove(target_id)
+            await context.ctx.reply(f"**ORDER RESCINDED.** Drone {target_id} is safe.")
+            return {"station": context.game_data.station.model_dump()}
         return None
-
-# --- NANNY COMMANDS ---
 
 class NameDroneCommand(BaseCommand):
     allowed_contexts = ["nanny"]

@@ -28,7 +28,8 @@ class FosterPresenter:
 **Night Commands (Nanny Channel):**
 • `!name <name>` - Give your drone a custom name.
 • `!sleep` - End your night phase early.
-• `!destroy <drone_id>` - Order a drone's destruction at the charging station.
+• `!destroy` - Order your drone's destruction at the charging station. (It won't know until it's too late)
+• `!cancel` - Rescind your drone's destruction order.
 
 *Talk to your drone in plain English. Tell it to gather fuel from the shuttle_bay, recharge when low, and run if it sees the Saboteur!*"""
 

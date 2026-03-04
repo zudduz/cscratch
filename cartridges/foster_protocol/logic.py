@@ -471,7 +471,7 @@ class FosterProtocol:
 
             foster_msgs = [msg for msg in my_drone.night_chat_log if msg.startswith("Foster:")]
             if len(foster_msgs) >= 10:
-                await ctx.reply("Buffer full")
+                await ctx.reply("Message not delivered\nBuffer full")
                 return None
 
             log_line = ai_templates.format_foster_log_line(user_input)

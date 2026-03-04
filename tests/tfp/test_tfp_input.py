@@ -184,6 +184,6 @@ async def test_nanny_chat_buffer_full(cartridge, mock_ctx, mock_tools, base_stat
     await cartridge.handle_input({"metadata": serialized_state}, "One more message", mock_ctx, mock_tools)
     
     # Check reply
-    mock_ctx.reply.assert_called_with("Buffer full")
+    mock_ctx.reply.assert_called_with("Message not delivered\nBuffer full")
     # Check AI not called
     mock_tools.ai.generate_response.assert_not_called()

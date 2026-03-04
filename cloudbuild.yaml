@@ -35,6 +35,9 @@ steps:
   - '--min-instances=1'
   - '--set-env-vars'
   - 'ADMIN_USER_IDS=545309591827906587'
+  - 'TASK_QUEUE_NAME=cscratch'
+  - 'GCP_REGION=us-central1'
+  - 'WORKER_URL=https://cscratch-171510694317.us-central1.run.app'
   - '--set-secrets'
   - 'INTERNAL_API_KEY=cscratch-internal-api-key:latest,DISCORD_TOKEN=cscratch-discord-token:latest,OPS_KEY=cscratch-ops-key:latest'
 

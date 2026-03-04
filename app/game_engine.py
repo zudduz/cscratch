@@ -3,7 +3,6 @@ import logging
 import asyncio
 import datetime
 from typing import Dict, Any, List, Optional
-from collections import defaultdict
 
 from . import persistence
 from .models import GameState, LobbyPlayer, GameInterface
@@ -18,7 +17,6 @@ CARTRIDGE_MAP = {
 class GameEngine:
     def __init__(self):
         self.ai = AIEngine()
-        self.locks = defaultdict(asyncio.Lock)
         self.interfaces = []
         self.running = False
         self.cron_task = None
@@ -120,51 +118,49 @@ class GameEngine:
         await persistence.db.update_game_interface(game_id, interface)
 
     async def launch_match(self, game_id: str) -> dict:
-        # Acquire lock to prevent double-click race conditions
-        async with self.locks[game_id]:
-            game = await persistence.db.get_game_by_id(game_id)
-            if not game: return {"error": "no_game"}
+        game = await persistence.db.get_game_by_id(game_id)
+        if not game: return {"error": "no_game"}
 
-            # Safety check: If game is already active, ignore this request
-            if game.status != "setup":
-                return {"error": "already_started"}
+        # Safety check: If game is already active, ignore this request
+        if game.status != "setup":
+            return {"error": "already_started"}
 
-            cartridge = await self._load_cartridge(game.story_id)
+        cartridge = await self._load_cartridge(game.story_id)
             
-            # --- ECONOMY CHECK ---
-            cost_func = getattr(cartridge, "calculate_start_cost", lambda n: max(4, n))
-            cost = cost_func(len(game.players))
+        # --- ECONVjOMY CHECK ---
+        cost_func = getattr(cartridge, "calculate_start_cost", lambda n: max(4, n))
+        cost = cost_func(len(game.players))
+        
+        # 1. DEDUCT (The Gate)
+        # We try to take the money first. If they don't have it, we stop here.
+        if not await persistence.db.deduct_balance_if_sufficient(game.host_id, cost):
+            return {"error": "insufficient_funds", "cost": cost}
+        
+        # 2. ATTEMPT START (Safe Mode)
+        # If anything crashes below, we MUST refund the user.
+        try:
+            result = {}
             
-            # 1. DEDUCT (The Gate)
-            # We try to take the money first. If they don't have it, we stop here.
-            if not await persistence.db.deduct_balance_if_sufficient(game.host_id, cost):
-                return {"error": "insufficient_funds", "cost": cost}
+            if hasattr(cartridge, 'on_game_start'):
+                result = await cartridge.on_game_start(game.model_dump())
+                if 'metadata' in result:
+                    await persistence.db.update_game_metadata(game_id, result['metadata'], game.version)
+
+            await persistence.db.set_game_active(game_id)
+            return result
+
+        except Exception as e:
+            # 3. CATASTROPHIC FAILURE -> REFUND
+            logging.critical(f"GAME_START_FAILED: Game {game_id}, Host {game.host_id}, Cost {cost}. Error: {e}")
             
-            # 2. ATTEMPT START (Safe Mode)
-            # If anything crashes below, we MUST refund the user.
             try:
-                result = {}
-                
-                if hasattr(cartridge, 'on_game_start'):
-                    result = await cartridge.on_game_start(game.model_dump())
-                    if 'metadata' in result:
-                        await persistence.db.update_game_metadata(game_id, result['metadata'], game.version)
-
-                await persistence.db.set_game_active(game_id)
-                return result
-
-            except Exception as e:
-                # 3. CATASTROPHIC FAILURE -> REFUND
-                logging.critical(f"GAME_START_FAILED: Game {game_id}, Host {game.host_id}, Cost {cost}. Error: {e}")
-                
-                try:
-                    new_bal = await persistence.db.adjust_user_balance(game.host_id, cost)
-                    logging.info(f"REFUND_SUCCESSFUL: User {game.host_id} refunded {cost}. New Balance: {new_bal}")
-                except Exception as refund_err:
-                    # If this fails, we have a major DB issue, but we log it for manual audit.
-                    logging.critical(f"REFUND_FAILED: User {game.host_id} could NOT be refunded {cost}. Error: {refund_err}")
-                
-                return {"error": "startup_failed", "detail": str(e)}
+                new_bal = await persistence.db.adjust_user_balance(game.host_id, cost)
+                logging.info(f"REFUND_SUCCESSFUL: User {game.host_id} refunded {cost}. New Balance: {new_bal}")
+            except Exception as refund_err:
+                # If this fails, we have a major DB issue, but we log it for manual audit.
+                logging.critical(f"REFUND_FAILED: User {game.host_id} could NOT be refunded {cost}. Error: {refund_err}")
+            
+            return {"error": "startup_failed", "detail": str(e)}
 
     def _create_context(self, game: GameState, channel_id: str, user_id: str, user_name: str = "system") -> EngineContext:
         """Helper to build a standardized EngineContext."""
@@ -206,23 +202,20 @@ class GameEngine:
     async def trigger_post_start(self, game_id: str):
         """
         Lifecycle hook called by the Interface (Discord) AFTER channels are created.
-        Acquires lock to ensure safe state updates during the wakeup protocol.
         """
-        # 1. Acquire Lock (Safety against eager player input)
-        async with self.locks[game_id]:
-            game = await persistence.db.get_game_by_id(game_id)
-            if not game: return
+        game = await persistence.db.get_game_by_id(game_id)
+        if not game: return
 
-            cartridge = await self._load_cartridge(game.story_id)
+        cartridge = await self._load_cartridge(game.story_id)
+        
+        if hasattr(cartridge, 'post_game_start'):
+            ctx = self._create_context(game, channel_id="system", user_id="system")
             
-            if hasattr(cartridge, 'post_game_start'):
-                ctx = self._create_context(game, channel_id="system", user_id="system")
-                
-                # 2. Execute Hook
-                patch = await cartridge.post_game_start(game.metadata, ctx, Toolbox(self.ai))
+            # 2. Execute Hook
+            patch = await cartridge.post_game_start(game.metadata, ctx, Toolbox(self.ai))
 
-                # 3. Save State Updates
-                await self._process_cartridge_patch(game.id, patch)
+            # 3. Save State Updates
+            await self._process_cartridge_patch(game.id, patch)
 
     async def end_game(self, game_id: str):
         await persistence.db.mark_game_ended(game_id)
@@ -235,22 +228,21 @@ class GameEngine:
                 await interface.lock_channels(game_id, game.interface.model_dump())
 
     async def dispatch_input(self, channel_id: str, user_id: str, user_name: str, user_input: str, game_id: str):
-        async with self.locks[game_id]:
-            game = await persistence.db.get_game_by_id(game_id)
-            if not game or game.status != 'active':
-                return
-            
-            ctx = self._create_context(game, channel_id, user_id, user_name)
-            cartridge = await self._load_cartridge(game.story_id)
-            
-            patch = await cartridge.handle_input(
-                game.model_dump(), 
-                user_input, 
-                ctx, 
-                Toolbox(self.ai)
-            )
+        game = await persistence.db.get_game_by_id(game_id)
+        if not game or game.status != 'active':
+            return
+        
+        ctx = self._create_context(game, channel_id, user_id, user_name)
+        cartridge = await self._load_cartridge(game.story_id)
+        
+        patch = await cartridge.handle_input(
+            game.model_dump(), 
+            user_input, 
+            ctx, 
+            Toolbox(self.ai)
+        )
 
-            await self._process_cartridge_patch(game.id, patch)
+        await self._process_cartridge_patch(game.id, patch)
 
     async def dispatch_task(self, cartridge_id: str, game_id: str, payload: dict):
         """
@@ -290,9 +282,8 @@ class GameEngine:
         try:
             patch = await coro
             if patch:
-                async with self.locks[game_id]:
-                    # Assume simple patch for background tasks
-                    await self._apply_state_patch(game_id, patch)
+                # Assume simple patch for background tasks
+                await self._apply_state_patch(game_id, patch)
         except Exception as e:
             logging.error(f"Background Task Error (Game {game_id}): {e}")
 

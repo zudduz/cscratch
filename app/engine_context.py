@@ -18,6 +18,9 @@ class EngineContext:
         self._task_scheduler = _task_scheduler
         self._ender = _ender
         self.trigger_data = trigger_data
+        
+        # Buffer for deferred task scheduling
+        self.pending_tasks = []
 
     async def send(self, channel_key: str, message: str):
         """Sends a message to a specific channel key (e.g., 'aux-comm')."""
@@ -45,7 +48,6 @@ class EngineContext:
 
     def schedule_task(self, operation: str, data: dict = None, delay: int = 0):
         """
-        Schedules an event-driven task via Google Cloud Tasks (or local fallback).
+        Buffers an event-driven task. Will be dispatched by the engine after state saves.
         """
-        if self._task_scheduler:
-            self._task_scheduler(self.game_id, self.cartridge_id, operation, data, delay)
+        self.pending_tasks.append((operation, data, delay))

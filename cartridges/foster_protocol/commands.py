@@ -116,8 +116,6 @@ class SleepCommand(BaseCommand):
             return {f"players.{user_id}.requested_sleep": True}
         return None
 
-# --- REGISTRY ---
-
 REGISTRY = {
     "!destroy": DestroyDroneCommand(),
     "!cancel": AbortCommand(),

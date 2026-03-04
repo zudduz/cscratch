@@ -181,23 +181,27 @@ class GameEngine:
             trigger_data=trigger_data
         )
 
-    async def _process_cartridge_patch(self, game_id: str, patch: Optional[Dict[str, Any]]):
-        """Helper to process standardized cartridge returns (channel_ops & state updates)."""
-        if not patch:
-            return
+    async def _process_cartridge_patch(self, game_id: str, patch: Optional[Dict[str, Any]], ctx: Optional[EngineContext] = None):
+        """Helper to process standardized cartridge returns (channel_ops & state updates) and flush tasks."""
+        if patch:
+            # --- EXTRACT OPS ---
+            if "channel_ops" in patch:
+                ops = patch.pop("channel_ops")
+                if ops:
+                    for interface in self.interfaces:
+                        if hasattr(interface, 'execute_channel_ops'):
+                            await interface.execute_channel_ops(game_id, ops)
+            
+            # Check for metadata key or use root
+            state_update = patch.get("metadata", patch)
+            if state_update: 
+                await self._apply_state_patch(game_id, state_update)
 
-        # --- EXTRACT OPS ---
-        if "channel_ops" in patch:
-            ops = patch.pop("channel_ops")
-            if ops:
-                for interface in self.interfaces:
-                    if hasattr(interface, 'execute_channel_ops'):
-                        await interface.execute_channel_ops(game_id, ops)
-        
-        # Check for metadata key or use root
-        state_update = patch.get("metadata", patch)
-        if state_update: 
-            await self._apply_state_patch(game_id, state_update)
+        # Flush pending tasks AFTER state writes
+        if ctx and hasattr(ctx, 'pending_tasks'):
+            for op, data, delay in ctx.pending_tasks:
+                self._schedule_cloud_task(game_id, ctx.cartridge_id, op, data, delay)
+            ctx.pending_tasks.clear()
 
     async def trigger_post_start(self, game_id: str):
         """
@@ -214,8 +218,8 @@ class GameEngine:
             # 2. Execute Hook
             patch = await cartridge.post_game_start(game.metadata, ctx, Toolbox(self.ai))
 
-            # 3. Save State Updates
-            await self._process_cartridge_patch(game.id, patch)
+            # 3. Save State Updates and Flush Tasks
+            await self._process_cartridge_patch(game.id, patch, ctx)
 
     async def end_game(self, game_id: str):
         await persistence.db.mark_game_ended(game_id)
@@ -242,7 +246,7 @@ class GameEngine:
             Toolbox(self.ai)
         )
 
-        await self._process_cartridge_patch(game.id, patch)
+        await self._process_cartridge_patch(game.id, patch, ctx)
 
     async def dispatch_task(self, cartridge_id: str, game_id: str, payload: dict):
         """
@@ -267,7 +271,7 @@ class GameEngine:
             Toolbox(self.ai)
         )
 
-        await self._process_cartridge_patch(game.id, patch)
+        await self._process_cartridge_patch(game.id, patch, ctx)
 
     async def dispatch_immediate_result(self, game_id: str, result: dict):
         msgs = result.get('messages', [])

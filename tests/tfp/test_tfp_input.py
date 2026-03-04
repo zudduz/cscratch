@@ -165,3 +165,25 @@ async def test_nanny_chat_routing(cartridge, mock_ctx, mock_tools, base_state):
     
     # Check log update returned
     mock_ctx.reply.assert_called_with("AI_RESPONSE")
+
+@pytest.mark.asyncio
+async def test_nanny_chat_buffer_full(cartridge, mock_ctx, mock_tools, base_state):
+    """Input should be rejected if the drone has already received 10 messages."""
+    mock_ctx.trigger_data["user_id"] = "u1"
+    mock_ctx.trigger_data["channel_id"] = "nanny_u1_id"
+    
+    # Fill the buffer with 10 messages
+    state_obj = Caisson(**base_state)
+    drone = state_obj.drones["d1"]
+    for i in range(10):
+        drone.night_chat_log.append(f"Foster: message {i}")
+        drone.night_chat_log.append(f"You: response {i}")
+        
+    serialized_state = state_obj.model_dump()
+    
+    await cartridge.handle_input({"metadata": serialized_state}, "One more message", mock_ctx, mock_tools)
+    
+    # Check reply
+    mock_ctx.reply.assert_called_with("Buffer full")
+    # Check AI not called
+    mock_tools.ai.generate_response.assert_not_called()

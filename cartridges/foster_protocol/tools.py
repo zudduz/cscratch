@@ -210,7 +210,7 @@ class TowTool(BaseTool):
     usage = "tow(target_id, room_id)"
     COST = 20
     VISIBILITY = "Global"
-    effect_desc = "Move another drone."
+    effect_desc = "Move an offline drone."
     required_args = ("target_id", "room_id")
 
     def validate(self, context: ToolContext) -> Tuple[bool, str]:
@@ -220,6 +220,9 @@ class TowTool(BaseTool):
         target = context.game_data.drones.get(target_id)
         if not target or target.location_id != context.actor.location_id:
             return False, "Target missing/out of range."
+            
+        if target.status == "active":
+            return False, "Target drone is active and cannot be towed."
             
         try:
             Room(dest_id)

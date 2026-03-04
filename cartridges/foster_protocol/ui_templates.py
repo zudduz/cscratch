@@ -46,7 +46,7 @@ class FosterPresenter:
 • `torpedo_bay`: Risky fuel gathering ({GameConfig.TORPEDO_ACCIDENT_PERCENT}% chance of EMP explosion, knocks out all drones in room). Contains {GameConfig.CAPACITY_SHUTTLE_BAY} fuel
 • `engine_room`: Fuel can be deposited here (or siphoned).
 • `maintenance`: Search here for a `plasma_torch` ({GameConfig.PLASMA_TORCH_DISCOVERY_PERCENT}% chance).
-• `charging_station`: Restores battery to 100% at the cost of 1 Ship Fuel. (Pending `!destroy` orders are executed here).
+• `charging_station`: Restores battery to 100% at the cost of 1 Ship Fuel. Offline drones will be automatically charged. (Pending `!destroy` orders are executed here).
 
 **DRONE ACTIONS (AI Controlled)**
 Your drone decides its actions based on your chat instructions. It can: `move`, `gather`, `deposit`, `charge`, `tow` (offline drones), `drain` (steal battery), `vent` (sabotage O2), `siphon` (steal fuel), `search` (find weapons), `incinerate_drone` / `incinerate_pod` (requires plasma torch). All actions take 1 hour.

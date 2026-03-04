@@ -344,44 +344,51 @@ class FosterProtocol:
 
     async def _run_single_hour(self, game_data: Caisson, ctx, tools, hour: int):
         """Simulates the passage of 1 specific hour."""
-        active_drones = [b for b in game_data.drones.values() if b.status == "active"]
-        random.shuffle(active_drones)
         hourly_activity = False 
         
-        for drone in active_drones:
+        # Drones acting this hour: active ones, plus offline ones waiting at the charging station
+        acting_drones = [
+            b for b in game_data.drones.values() 
+            if b.status == "active" or (b.status == "offline" and b.location_id == "charging_station")
+        ]
+        random.shuffle(acting_drones)
+        
+        for drone in acting_drones:
             try:
-                res = await self.run_single_drone_turn(drone, game_data, hour, tools, ctx.game_id)
-                drone_state = res['drone']
-                result = res['result']
+                if drone.status == "active":
+                    res = await self.run_single_drone_turn(drone, game_data, hour, tools, ctx.game_id)
+                    activity = await self._process_turn_result(ctx, tools, hour, game_data, res['drone'], res['result'], res['thought'])
+                else:
+                    # Offline drone at the station auto-charges
+                    result = drone_tools.execute_tool("charge", {}, drone.id, game_data)
+                    activity = await self._process_turn_result(ctx, tools, hour, game_data, drone, result, "SYSTEM: Auto-Charge Executed")
                 
-                if result.event_type == "disassembly":
-                    await self._send_public_eulogy(ctx, tools, drone_state, game_data)
-
-                # Report to Black Box
-                await FosterPresenter.report_blackbox_event(ctx, hour, drone_state, result, res['thought'])
-
-                # Memory Append
-                log_entry = f"[Hour {hour}] {result.message}"
-                drone_state.daily_memory.append(log_entry)
-                
-                # Witness Logic
-                if result.visibility in ["room", "global"]:
-                    witnesses = [b for b in game_data.drones.values() if b.location_id == drone_state.location_id and b.id != drone_state.id]
-                    for w in witnesses: 
-                        w.daily_memory.append(f"[Hour {hour}] I saw {drone_state.id}: {result.message}")
-                        
-                # Global Reporting
-                if result.visibility == "global":
-                    public_msg = await FosterPresenter.report_public_event(ctx, hour, result.message)
-                    game_data.daily_logs.append(public_msg)
-                    hourly_activity = True
-                    
+                hourly_activity = hourly_activity or activity
             except Exception as e:
                 logging.error(f"Error running turn for drone {drone.id}: {e}", exc_info=True)
 
         if not hourly_activity:
             msg = await FosterPresenter.report_hourly_status_nominal(ctx, hour)
             game_data.daily_logs.append(msg)
+
+    async def _process_turn_result(self, ctx, tools, hour: int, game_data: Caisson, drone, result, thought: str) -> bool:
+        """Handles logging, visibility, and side-effects for a single action."""
+        if result.event_type == "disassembly":
+            await self._send_public_eulogy(ctx, tools, drone, game_data)
+
+        await FosterPresenter.report_blackbox_event(ctx, hour, drone, result, thought)
+        drone.daily_memory.append(f"[Hour {hour}] {result.message}")
+        
+        if result.visibility in ["room", "global"]:
+            for w in game_data.drones.values():
+                if w.location_id == drone.location_id and w.id != drone.id: 
+                    w.daily_memory.append(f"[Hour {hour}] I saw {drone.id}: {result.message}")
+                    
+        if result.visibility == "global":
+            public_msg = await FosterPresenter.report_public_event(ctx, hour, result.message)
+            game_data.daily_logs.append(public_msg)
+            return True
+        return False
 
     def _calculate_physics(self, game_data: Caisson) -> Dict[str, int]:
         """Calculates environmental decay and requirements."""

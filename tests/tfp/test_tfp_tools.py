@@ -126,6 +126,7 @@ def test_tool_charge_fail_no_fuel(game_state):
 def test_tool_tow_success(game_state):
     drone = game_state.drones["unit_01"]
     target = game_state.drones["unit_02"]
+    target.battery = 0 # Must be offline to tow
     
     # Both in same room
     drone.location_id = "shuttle_bay"
@@ -136,6 +137,19 @@ def test_tool_tow_success(game_state):
     assert result.success is True
     assert drone.location_id == "engine_room"
     assert target.location_id == "engine_room"
+
+def test_tool_tow_fails_active(game_state):
+    drone = game_state.drones["unit_01"]
+    target = game_state.drones["unit_02"]
+    target.battery = 50 # Active
+    
+    drone.location_id = "shuttle_bay"
+    target.location_id = "shuttle_bay"
+    
+    result = execute_tool("tow", {"target_id": "unit_02", "room_id": "charging_station"}, "unit_01", game_state)
+    
+    assert result.success is False
+    assert "cannot be towed" in result.message
 
 def test_tool_drain_success(game_state):
     drone = game_state.drones["unit_01"]

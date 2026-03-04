@@ -20,6 +20,13 @@ class FosterProtocol:
             "version": "2.49",
             **default_state.model_dump()
         }
+        
+        # Explicit Task Dispatcher Registry
+        self._task_handlers = {
+            "dream_phase": self._handle_dream_phase,
+            "tick_hour": self._handle_tick_hour,
+            "physics_arbitration": self._handle_physics_arbitration
+        }
 
     @property
     def MAX_PLAYERS(self):
@@ -234,29 +241,14 @@ class FosterProtocol:
 
     async def execute_day_simulation(self, game_data: Caisson, ctx, tools) -> Dict[str, Any]:
         """
-        LEGACY METHOD: Orchestrates the Day Phase using a pipeline pattern.
-        Will be replaced by handle_task driving a state machine.
+        LEGACY TRIGGER: This used to run the whole loop. Now it simply kicks off the task queue.
+        Usually called by a player command like `!sleep`.
         """
         try:
-            # 1. Dream Phase (Preparation)
-            await self._run_dream_phase(game_data, tools)
-
-            # 2. Work Shift Phase (The Loop)
-            await self._run_work_shift(game_data, ctx, tools)
-
-            # 3. Physics Phase (Calculations)
-            physics_report = self._calculate_physics(game_data)
-
-            # 4. Arbitration Phase (Rules)
-            game_end_state = self._evaluate_arbitration(game_data, physics_report)
-
-            # 5. Transition Phase (Routing)
-            result_payload = await self._handle_transition(game_data, game_end_state, physics_report, ctx, tools)
-
-            return result_payload
-            
+            ctx.schedule_task("dream_phase")
+            return None
         except Exception as e:
-            logging.error(f"execute_day_simulation died: {e}", exc_info=True)
+            logging.error(f"execute_day_simulation kickoff failed: {e}", exc_info=True)
             await FosterPresenter.send_system_error(ctx, str(e))
             return None
 
@@ -271,20 +263,75 @@ class FosterProtocol:
 
         logging.info(f"FosterProtocol handling task: {operation} for game {ctx.game_id}")
 
-        if operation == "dream_phase":
-            # Will be implemented in Phase 3
-            pass
-        elif operation == "tick_hour":
-            # Will be implemented in Phase 3
-            pass
-        elif operation == "physics_arbitration":
-            # Will be implemented in Phase 3
-            pass
-        else:
-            logging.warning(f"Unknown operation: {operation}")
-
-        # Returns None for now until implemented, avoiding overwriting with empty states
+        handler = self._task_handlers.get(operation)
+        if handler:
+            return await handler(game_data, data, ctx, tools)
+            
+        logging.warning(f"Unknown operation: {operation}")
         return None
+
+    async def _handle_dream_phase(self, game_data: Caisson, data: dict, ctx, tools) -> Dict[str, Any]:
+        await self._run_dream_phase(game_data, tools)
+        game_data.phase = "day"
+        game_data.hour = 1
+        ctx.schedule_task("tick_hour")
+        return {"metadata": game_data.model_dump()}
+
+    async def _handle_tick_hour(self, game_data: Caisson, data: dict, ctx, tools) -> Dict[str, Any]:
+        current_hour = game_data.hour
+        if current_hour == 0 or current_hour > GameConfig.HOURS_PER_SHIFT:
+            logging.warning(f"tick_hour called with invalid hour: {current_hour}")
+            return None
+            
+        await self._run_single_hour(game_data, ctx, tools, current_hour)
+        
+        game_data.hour += 1
+        if game_data.hour <= GameConfig.HOURS_PER_SHIFT:
+            ctx.schedule_task("tick_hour")
+        else:
+            ctx.schedule_task("physics_arbitration")
+        return {"metadata": game_data.model_dump()}
+
+    async def _handle_physics_arbitration(self, game_data: Caisson, data: dict, ctx, tools) -> Dict[str, Any]:
+        physics_report = self._calculate_physics(game_data)
+        game_end_state = self._evaluate_arbitration(game_data, physics_report)
+        
+        # Report Status
+        await FosterPresenter.report_cycle_status(
+            ctx, 
+            physics_report["cycle_report_idx"], 
+            game_data.oxygen, 
+            physics_report["oxygen_drop"], 
+            game_data.fuel, 
+            physics_report["req_today"]
+        )
+
+        game_data.hour = 0
+        channel_ops = []
+
+        if game_end_state == GameEndState.CONTINUE_GAME:
+            await FosterPresenter.report_cycle_continuation(ctx, physics_report["req_tomorrow"])
+            
+            # Auto-Continue Logic (If Oxygen is 0, crew is in stasis, we skip night chat)
+            if game_data.is_ready_for_day:
+                if game_data.oxygen <= 0:
+                    await FosterPresenter.report_stasis_engaged(ctx)
+
+                game_data.phase = "day"
+                ctx.schedule_task("dream_phase")
+            else:
+                await self.speak_all_drones(game_data, ctx, tools)
+                game_data.phase = "night"
+        else:
+            # Game over
+            await FosterPresenter.report_game_end(ctx, game_end_state)
+            await self.generate_epilogues(game_data, ctx, tools, game_end_state)
+            await ctx.end()
+
+        return {
+            "metadata": game_data.model_dump(),
+            "channel_ops": channel_ops if channel_ops else None
+        }
 
     # --- PIPELINE STAGES ---
 
@@ -295,47 +342,46 @@ class FosterProtocol:
         for b in game_data.drones.values():
             b.daily_memory.clear()
 
-    async def _run_work_shift(self, game_data: Caisson, ctx, tools):
-        """Simulates the passage of 1 day's work."""
-        for hour in range(1, GameConfig.HOURS_PER_SHIFT + 1):
-            active_drones = [b for b in game_data.drones.values() if b.status == "active"]
-            random.shuffle(active_drones)
-            hourly_activity = False 
-            
-            for drone in active_drones:
-                try:
-                    res = await self.run_single_drone_turn(drone, game_data, hour, tools, ctx.game_id)
-                    drone_state = res['drone']
-                    result = res['result']
-                    
-                    if result.event_type == "disassembly":
-                        await self._send_public_eulogy(ctx, tools, drone_state, game_data)
+    async def _run_single_hour(self, game_data: Caisson, ctx, tools, hour: int):
+        """Simulates the passage of 1 specific hour."""
+        active_drones = [b for b in game_data.drones.values() if b.status == "active"]
+        random.shuffle(active_drones)
+        hourly_activity = False 
+        
+        for drone in active_drones:
+            try:
+                res = await self.run_single_drone_turn(drone, game_data, hour, tools, ctx.game_id)
+                drone_state = res['drone']
+                result = res['result']
+                
+                if result.event_type == "disassembly":
+                    await self._send_public_eulogy(ctx, tools, drone_state, game_data)
 
-                    # Report to Black Box
-                    await FosterPresenter.report_blackbox_event(ctx, hour, drone_state, result, res['thought'])
+                # Report to Black Box
+                await FosterPresenter.report_blackbox_event(ctx, hour, drone_state, result, res['thought'])
 
-                    # Memory Append
-                    log_entry = f"[Hour {hour}] {result.message}"
-                    drone_state.daily_memory.append(log_entry)
-                    
-                    # Witness Logic
-                    if result.visibility in ["room", "global"]:
-                        witnesses = [b for b in game_data.drones.values() if b.location_id == drone_state.location_id and b.id != drone_state.id]
-                        for w in witnesses: 
-                            w.daily_memory.append(f"[Hour {hour}] I saw {drone_state.id}: {result.message}")
-                            
-                    # Global Reporting
-                    if result.visibility == "global":
-                        public_msg = await FosterPresenter.report_public_event(ctx, hour, result.message)
-                        game_data.daily_logs.append(public_msg)
-                        hourly_activity = True
+                # Memory Append
+                log_entry = f"[Hour {hour}] {result.message}"
+                drone_state.daily_memory.append(log_entry)
+                
+                # Witness Logic
+                if result.visibility in ["room", "global"]:
+                    witnesses = [b for b in game_data.drones.values() if b.location_id == drone_state.location_id and b.id != drone_state.id]
+                    for w in witnesses: 
+                        w.daily_memory.append(f"[Hour {hour}] I saw {drone_state.id}: {result.message}")
                         
-                except Exception as e:
-                    logging.error(f"Error running turn for drone {drone.id}: {e}", exc_info=True)
+                # Global Reporting
+                if result.visibility == "global":
+                    public_msg = await FosterPresenter.report_public_event(ctx, hour, result.message)
+                    game_data.daily_logs.append(public_msg)
+                    hourly_activity = True
+                    
+            except Exception as e:
+                logging.error(f"Error running turn for drone {drone.id}: {e}", exc_info=True)
 
-            if not hourly_activity:
-                msg = await FosterPresenter.report_hourly_status_nominal(ctx, hour)
-                game_data.daily_logs.append(msg)
+        if not hourly_activity:
+            msg = await FosterPresenter.report_hourly_status_nominal(ctx, hour)
+            game_data.daily_logs.append(msg)
 
     def _calculate_physics(self, game_data: Caisson) -> Dict[str, int]:
         """Calculates environmental decay and requirements."""
@@ -371,46 +417,6 @@ class FosterProtocol:
             return GameEndState.NO_ACTIVE_DRONES
 
         return GameEndState.CONTINUE_GAME
-
-    async def _handle_transition(self, game_data: Caisson, game_end_state: str, physics: Dict[str, int], ctx, tools) -> Dict[str, Any]:
-        """Handles the outcome of arbitration and returns the state patch."""
-        
-        # Report Status
-        await FosterPresenter.report_cycle_status(
-            ctx, 
-            physics["cycle_report_idx"], 
-            game_data.oxygen, 
-            physics["oxygen_drop"], 
-            game_data.fuel, 
-            physics["req_today"]
-        )
-
-        channel_ops = []
-
-        if game_end_state == GameEndState.CONTINUE_GAME:
-            await FosterPresenter.report_cycle_continuation(ctx, physics["req_tomorrow"])
-            
-            # Auto-Continue Logic (If Oxygen is 0, crew is in stasis, we skip night chat)
-            if game_data.is_ready_for_day:
-                if game_data.oxygen <= 0:
-                    await FosterPresenter.report_stasis_engaged(ctx)
-
-                game_data.phase = "day"
-                # Schedule recursive call for next day
-                ctx.schedule(self.execute_day_simulation(game_data, ctx, tools))
-            else:
-                # Normal Night Phase
-                await self.speak_all_drones(game_data, ctx, tools)
-                game_data.phase = "night"
-        else:
-            # Game over
-            await FosterPresenter.report_game_end(ctx, game_end_state)
-            await self.generate_epilogues(game_data, ctx, tools, game_end_state)
-            await ctx.end()
-
-        result = game_data.model_dump()
-        result["channel_ops"] = channel_ops if channel_ops else None
-        return result
 
     # --- INPUT HANDLERS ---
 

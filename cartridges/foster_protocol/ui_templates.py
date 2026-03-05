@@ -21,7 +21,7 @@ class FosterPresenter:
 **The Foster Protocol: Quick Guide**
 
 **The Goal:** Escape the decaying orbit! Your drone must gather fuel and deposit it in the `engine_room`.
-**The Catch:** One of the drones is secretly a **Saboteur** trying to stop you.
+**The Catch:** One (and only one) of the drones is secretly a **Saboteur** trying to stop you.
 
 **Day Phase:** Your drone executes your orders automatically while you're asleep in the stasis pod. Some actions will appear in the logs.
 **Night Phase:** Chat with your drone. Ask it what happened and give it instructions for the next day. Coordinate with other players in the aux-comm channel.

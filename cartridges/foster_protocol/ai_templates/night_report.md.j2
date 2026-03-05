@@ -4,7 +4,7 @@ Internal memory: "{{ drone.long_term_memory }}"
 {% endif %}
 Status: Battery {{ drone.battery }}%
 Location: {{ drone.location_id }}
-Inventory: {{ drone.inventory | join(', ') }}
+Inventory: [{{ drone.inventory | join(', ') }}]
 
 Things you saw:
 {{ drone.daily_memory | join('\n') }}

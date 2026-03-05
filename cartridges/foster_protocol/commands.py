@@ -96,7 +96,6 @@ class SleepCommand(BaseCommand):
                 for p in context.game_data.players.values():
                     p.requested_sleep = False
                 
-                # We schedule the simulation on the cartridge instance passed in context
                 context.ctx.schedule(context.cartridge.execute_day_simulation(context.game_data, context.ctx, context.tools))
                 return {"metadata": context.game_data.model_dump()}
             

@@ -102,9 +102,9 @@ class FosterProtocol:
             logging.error(f"Intro failed for {drone.id}: {e}")
 
     # --- DREAM SEQUENCE ---
-    async def _process_single_dream(self, drone: Drone, tools):
+    async def _process_single_dream(self, drone: Drone, game_data: Caisson, tools):
         try:
-            sys_prompt, user_msg = ai_templates.compose_dream_turn(drone)
+            sys_prompt, user_msg = ai_templates.compose_dream_turn(drone, game_data)
             
             new_memory = await tools.ai.generate_response(
                 sys_prompt, f"dream_{drone.id}", user_msg, drone.model_version
@@ -112,7 +112,7 @@ class FosterProtocol:
             drone.long_term_memory = new_memory.replace("\n", " ").strip()
             drone.night_chat_log.clear()
             drone.daily_memory.clear()
-            drone.daily_event_logs.clear()
+            drone.daily_event_log.clear()
         except Exception as e:
             logging.error(f"Dream failed for {drone.id}: {e}")
 
@@ -333,7 +333,7 @@ class FosterProtocol:
         tasks = []
         for drone in game_data.drones.values():
             if drone.status == "active" and (drone.night_chat_log or drone.daily_memory):
-                tasks.append(self._process_single_dream(drone, tools))
+                tasks.append(self._process_single_dream(drone, game_data, tools))
         if tasks:
              await asyncio.gather(*tasks)
 

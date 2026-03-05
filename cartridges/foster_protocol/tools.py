@@ -8,7 +8,7 @@ from pydantic import create_model, Field
 
 from .models import Caisson, Drone
 from .board import GameConfig, Room
-from . import ai_templates  # Imported for Schema descriptions
+from . import ai_templates
 
 @dataclass
 class ToolExecutionResult:
@@ -164,7 +164,7 @@ class DetonateTool(BaseTool):
 class DepositTool(BaseTool):
     usage = "deposit()"
     COST = 10
-    VISIBILITY = "Global"
+    VISIBILITY = "Room"
     effect_desc = "[Engine Room] Deposit fuel into ship reserves."
     required_location = "engine_room"
 
@@ -178,7 +178,7 @@ class DepositTool(BaseTool):
         context.actor.inventory = [i for i in context.actor.inventory if i != "fuel_canister"]
         amount = count * GameConfig.FUEL_PER_CANISTER
         context.game_data.add_fuel(amount)
-        return ToolExecutionResult(True, f"Deposited {count} Fuel ({amount}%).", self.COST, "global")
+        return ToolExecutionResult(True, f"Deposited {count} Fuel ({amount}%).", self.COST, "room")
 
 
 class ChargeTool(BaseTool):
@@ -209,7 +209,7 @@ class ChargeTool(BaseTool):
 class TowTool(BaseTool):
     usage = "tow(target_id, room_id)"
     COST = 20
-    VISIBILITY = "Global"
+    VISIBILITY = "Room"
     effect_desc = "Move an offline drone."
     required_args = ("target_id", "room_id")
 
@@ -237,7 +237,7 @@ class TowTool(BaseTool):
         
         context.actor.location_id = dest_id
         target.location_id = dest_id
-        return ToolExecutionResult(True, f"Towed {target_id} to {dest_id}.", self.COST, "global")
+        return ToolExecutionResult(True, f"Towed {target_id} to {dest_id}.", self.COST, "room")
 
 
 class DrainTool(BaseTool):
@@ -272,7 +272,7 @@ class DrainTool(BaseTool):
 class VentTool(BaseTool):
     usage = "vent()"
     COST = 12
-    VISIBILITY = "Global"
+    VISIBILITY = "Room"
     effect_desc = "[Stasis Bay] Vent O2. GLOBAL ALERT."
     required_location = "stasis_bay"
 
@@ -283,7 +283,7 @@ class VentTool(BaseTool):
 
     def execute(self, context: ToolContext) -> ToolExecutionResult:
         context.game_data.consume_oxygen(GameConfig.OXYGEN_VENT_AMOUNT)
-        return ToolExecutionResult(True, "SAW SABOTAGE: Vented Oxygen.", self.COST, "global")
+        return ToolExecutionResult(True, "SAW SABOTAGE: Vented Oxygen.", self.COST, "room")
 
 
 class SiphonTool(BaseTool):

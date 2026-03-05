@@ -32,6 +32,7 @@ class Drone(BaseModel):
     
     inventory: List[str] = Field(default_factory=list)
     daily_memory: List[str] = Field(default_factory=list)
+    daily_event_log: List[str] = Field(default_factory=list)
 
     @property
     def status(self) -> str:
@@ -64,7 +65,7 @@ class Caisson(BaseModel):
     
     players: Dict[str, Player] = Field(default_factory=dict)
     station: ChargingStation = Field(default_factory=ChargingStation)
-    daily_logs: List[str] = Field(default_factory=list)
+    ship_logs: List[str] = Field(default_factory=list)
 
     # Pydantic V2 Config
     model_config = ConfigDict(populate_by_name=True)

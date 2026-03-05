@@ -4,8 +4,11 @@ Internal memory: "{{ drone.long_term_memory }}"
 {% endif %}
 Status: Battery {{ drone.battery }}% | Location: {{ drone.location_id }}
 
-Daily logs:
-{{ drone_memory | join('\n') }}
+Things you saw:
+{{ drone.daily_memory | join('\n') }}
+
+Things you did:
+{{ drone.daily_event_log | join('\n') }}
 
 {% if is_first_message %}
 INSTRUCTION: The work day is over. Start the conversation with your foster.
@@ -15,7 +18,7 @@ INSTRUCTION: The work day is over. Start the conversation with your foster.
 
 It is the night cycle.
 
-{% for msg in chat_history %}
+{% for msg in drone.night_chat_log %}
 {{ msg }}
 {% endfor %}
 You: 

@@ -102,24 +102,17 @@ class FosterProtocol:
             logging.error(f"Intro failed for {drone.id}: {e}")
 
     # --- DREAM SEQUENCE ---
-    async def process_dreams(self, game_data, tools):
-        tasks = []
-        for drone in game_data.drones.values():
-            if drone.status == "active" and (drone.night_chat_log or drone.daily_memory):
-                tasks.append(self._process_single_dream(drone, tools))
-        if tasks: await asyncio.gather(*tasks)
-
-    async def _process_single_dream(self, drone, tools):
+    async def _process_single_dream(self, drone: Drone, tools):
         try:
-            sys_prompt, user_msg = ai_templates.compose_dream_turn(
-                drone.long_term_memory, drone.daily_memory, drone.night_chat_log
-            )
+            sys_prompt, user_msg = ai_templates.compose_dream_turn(drone)
             
             new_memory = await tools.ai.generate_response(
                 sys_prompt, f"dream_{drone.id}", user_msg, drone.model_version
             )
             drone.long_term_memory = new_memory.replace("\n", " ").strip()
-            drone.night_chat_log = [] 
+            drone.night_chat_log.clear()
+            drone.daily_memory.clear()
+            drone.daily_event_logs.clear()
         except Exception as e:
             logging.error(f"Dream failed for {drone.id}: {e}")
 
@@ -337,10 +330,12 @@ class FosterProtocol:
 
     async def _run_dream_phase(self, game_data: Caisson, tools):
         """Processes logs from previous night into long term memory."""
-        await self.process_dreams(game_data, tools)
-        game_data.daily_logs.clear()
-        for b in game_data.drones.values():
-            b.daily_memory.clear()
+        tasks = []
+        for drone in game_data.drones.values():
+            if drone.status == "active" and (drone.night_chat_log or drone.daily_memory):
+                tasks.append(self._process_single_dream(drone, tools))
+        if tasks:
+             await asyncio.gather(*tasks)
 
     async def _run_single_hour(self, game_data: Caisson, ctx, tools, hour: int):
         """Simulates the passage of 1 specific hour."""
@@ -369,7 +364,7 @@ class FosterProtocol:
 
         if not hourly_activity:
             msg = await FosterPresenter.report_hourly_status_nominal(ctx, hour)
-            game_data.daily_logs.append(msg)
+            game_data.ship_logs.append(msg)
 
     async def _process_turn_result(self, ctx, tools, hour: int, game_data: Caisson, drone, result, thought: str) -> bool:
         """Handles logging, visibility, and side-effects for a single action."""
@@ -382,11 +377,11 @@ class FosterProtocol:
         if result.visibility in ["room", "global"]:
             for w in game_data.drones.values():
                 if w.location_id == drone.location_id and w.id != drone.id: 
-                    w.daily_memory.append(f"[Hour {hour}] I saw {drone.id}: {result.message}")
+                    w.daily_event_log.append(f"[Hour {hour}] I saw {drone.id}: {result.message}")
                     
         if result.visibility == "global":
             public_msg = await FosterPresenter.report_public_event(ctx, hour, result.message)
-            game_data.daily_logs.append(public_msg)
+            game_data.ship_logs.append(public_msg)
             return True
         return False
 

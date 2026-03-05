@@ -28,7 +28,6 @@ DUMMY_CONTEXT.update({
     "drone_id": "UNIT_TEST_01",
     "drone": Drone(id="unit_301", battery=75, location_id="engine_room", inventory=["fuel_canister", "plasma_torch"],
         long_term_memory="I am a drone. I love my foster.",
-        drone_memory=["Log 1: Woke up.", "Log 2: Ate batteries."],
     ),
     "foster_name": "Test Subject",
     "is_saboteur": True,
@@ -41,7 +40,6 @@ DUMMY_CONTEXT.update({
     "location": "stasis_bay",
     "location_id": "engine_room",
     "long_term_memory": "I am a drone. I love my foster.",
-    "drone_memory": ["Log 1: Woke up.", "Log 2: Ate batteries."],
     "user_input": "Good job, drone.",
     "chat_history": ["Foster: You like apples?", "You:Absolutely!"],
 
@@ -57,6 +55,7 @@ DUMMY_CONTEXT.update({
     "inventory": ["fuel_canister", "plasma_torch"],
     "schema": "schema",
     "daily_memory": ["Stared at the wall for 5 hours", "Ate a carrot but failed because I'm not a biological entity"],
+    "daily_event_log": ["The bank is stately", "The butler did it"],
     
     # Instructions & Speak
     "instruction": "Report status.",

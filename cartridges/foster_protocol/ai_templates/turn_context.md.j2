@@ -6,18 +6,17 @@ Battery: {{ drone.battery }}%
 Inventory: {{ drone.inventory }}
 Visible: {{ visible_drones }}
 
-Your activity log so far today:
-{% for log in drone.daily_memory %}
-{{ log }}
-{% else %}
-(No activity yet today)
-{% endfor %}
+Things you saw today:
+{{ drone.daily_memory | join('\n') }}
+
+Things you did today:
+{{ drone.daily_event_log | join('\n') }}
 
 {% if hour == end_hour %}
-Shift ending. Move to 'stasis_bay' to sync with your Foster.
+Shift ending. Moving to the 'stasis_bay' now will let you speak with your Foster.
 
 {% endif %}
-{% if drone.battery < 30 %}
+{% if drone.battery < 20 %}
 Warning: Battery low. Consider charging at the 'charging_station'.
 
 {% endif %}

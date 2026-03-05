@@ -108,15 +108,13 @@ def compose_tactical_turn(drone: Drone, game_data: Caisson, hour: int) -> Tuple[
     
     return system_prompt, user_input
 
-def compose_dream_turn(old_memory: str, daily_logs: list, chat_log: list) -> Tuple[str, str]:
-    system = "You are an archival system."
+def compose_dream_turn(drone: Drone, game_data: Caisson) -> Tuple[str, str]:
+    system_prompt = _compose_dynamic_system_prompt(drone.id, game_data)
     user_input = render(
         "dream_consolidation.md.j2",
-        old_memory=old_memory,
-        daily_logs=daily_logs,
-        chat_log=chat_log
+        drone=drone
     )
-    return system, user_input
+    return system_prompt, user_input
 
 def compose_nanny_chat_turn(drone_id: str, game_data: Caisson, user_message: str) -> Tuple[str, str]:
     return _compose_night_report(drone_id, game_data, False, user_message)
@@ -128,15 +126,11 @@ def _compose_night_report(drone_id: str, game_data: Caisson, is_first_message: b
     drone = game_data.drones.get(drone_id)
     system_prompt = _compose_dynamic_system_prompt(drone_id, game_data)
     
-    recent_logs = drone.daily_memory[-15:]
-
     user_input = render(
         "night_report.md.j2",
         drone=drone,
-        drone_memory=recent_logs,
         user_input=user_message,
-        is_first_message=is_first_message,
-        chat_history=drone.night_chat_log
+        is_first_message=is_first_message
     )
 
     return system_prompt, user_input

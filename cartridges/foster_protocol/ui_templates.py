@@ -31,6 +31,8 @@ class FosterPresenter:
 • `!sleep` - Mark yourself as ready for sleep.
 • `!destroy` - Order your drone's destruction at the charging station. The drone won't know until it's too late.
 • `!cancel` - Rescind your drone's destruction order.
+
+Send `/cscratch manual` for full instructions.
 """
 
     MANUAL_TEXT = f"""**The Foster Protocol: Complete Manual**

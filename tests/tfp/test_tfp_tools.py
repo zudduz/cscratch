@@ -117,11 +117,13 @@ def test_tool_charge_fail_no_fuel(game_state):
     drone = game_state.drones["unit_01"]
     drone.location_id = "charging_station"
     game_state.fuel = 0
+    initial_battery = drone.battery
     
     result = execute_tool("charge", {}, "unit_01", game_state)
     
     assert result.success is False
     assert "depleted" in result.message
+    assert drone.battery == initial_battery - GameConfig.INVALID_COMMAND_COST
 
 def test_tool_tow_success(game_state):
     drone = game_state.drones["unit_01"]

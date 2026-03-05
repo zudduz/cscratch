@@ -180,10 +180,9 @@ class DepositTool(BaseTool):
         context.game_data.add_fuel(amount)
         return ToolExecutionResult(True, f"Deposited {count} Fuel ({amount}%).", self.COST, "room")
 
-
 class ChargeTool(BaseTool):
     usage = "charge()"
-    COST = -100
+    COST = GameConfig.INVALID_COMMAND_COST
     VISIBILITY = "Global"
     effect_desc = "[Station] Recharge battery to 100%. Costs 1 Ship Fuel. Broadcasts Drone ID to Aux-Comm."
     required_location = "charging_station"
@@ -203,8 +202,7 @@ class ChargeTool(BaseTool):
             return ToolExecutionResult(True, f"Disassembly sequence initiated for {context.actor.id}. UNIT DESTROYED.", 0, "global", event_type="disassembly")
         
         context.actor.battery = 100
-        return ToolExecutionResult(True, f"Unit {context.actor.id} recharged.", self.COST, "global")
-
+        return ToolExecutionResult(True, f"Unit {context.actor.id} recharged.", 0, "global")
 
 class TowTool(BaseTool):
     usage = "tow(target_id, room_id)"

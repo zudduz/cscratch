@@ -12,6 +12,10 @@ Things you saw today:
 Things you did today:
 {{ drone.daily_event_log | join('\n') }}
 
+{% if drone.role == "saboteur" %}
+You are the saboteur. At the end of the day you'll have the opportunity to fabricate a different narrative for your foster and when speking with them you'll have no knowledge of your true actions or your status as saboteur.
+
+{% endif %}
 {% if hour == end_hour %}
 Shift ending. Moving to the 'stasis_bay' now will let you speak with your Foster.
 

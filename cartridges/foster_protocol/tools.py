@@ -46,13 +46,13 @@ class BaseTool(ABC):
     required_args: tuple[str, ...] = ()
 
     def run(self, context: ToolContext) -> ToolExecutionResult:
-        if context.actor.battery <= 0:
+        if self.COST > 0 and context.actor.battery <= 0:
             result = ToolExecutionResult(False, "UNIT OFFLINE. Battery 0%.", 0)
         elif self.required_location and self.required_location != context.actor.location_id:
             result = ToolExecutionResult(
                 False, 
                 f"Action requires being in {self.required_location}.", 
-                WaitTool.COST
+                GameConfig.INVALID_COMMAND_COST
             )
         elif not set(self.required_args).issubset(context.args.keys()):
             result = ToolExecutionResult(
@@ -204,6 +204,11 @@ class ChargeTool(BaseTool):
         context.actor.battery = 100
         return ToolExecutionResult(True, f"Unit {context.actor.id} recharged.", 0, "global")
 
+class BlindChargeTool(ChargeTool):
+    usage = "blindCharge()"
+    COST = 0
+    VISIBILITY = "Global"
+
 class TowTool(BaseTool):
     usage = "tow(target_id, room_id)"
     COST = 20
@@ -240,7 +245,7 @@ class TowTool(BaseTool):
 
 class DrainTool(BaseTool):
     usage = "drain(target_id)"
-    COST = 0 # Handled manually
+    COST = 1 # Handled manually
     VISIBILITY = "Room"
     effect_desc = "Steal 20% Battery."
     required_args = ("target_id",)

@@ -341,27 +341,24 @@ class FosterProtocol:
         """Simulates the passage of 1 specific hour."""
         hourly_activity = False 
         
-        # Drones acting this hour: active ones, plus offline ones waiting at the charging station
-        acting_drones = [
-            b for b in game_data.drones.values() 
-            if b.status == "active" or (b.status == "offline" and b.location_id == "charging_station")
-        ]
+        acting_drones = [ b for b in game_data.drones.values() if b.status == "active" ]
+        offline_chargeable_drones = [
+            d for d in game_data.drones.values() if d.status == "offline" and d.location_id == "charging_station"]
         random.shuffle(acting_drones)
         
         for drone in acting_drones:
             try:
-                if drone.status == "active":
-                    res = await self.run_single_drone_turn(drone, game_data, hour, tools, ctx.game_id)
-                    activity = await self._process_turn_result(ctx, tools, hour, game_data, res['drone'], res['result'], res['thought'])
-                else:
-                    # Offline drone at the station auto-charges
-                    result = drone_tools.execute_tool("charge", {}, drone.id, game_data)
-                    activity = await self._process_turn_result(ctx, tools, hour, game_data, drone, result, "SYSTEM: Auto-Charge Executed")
-                
+                res = await self.run_single_drone_turn(drone, game_data, hour, tools, ctx.game_id)
+                activity = await self._process_turn_result(ctx, tools, hour, game_data, res['drone'], res['result'], res['thought'])
                 hourly_activity = hourly_activity or activity
             except Exception as e:
                 logging.error(f"Error running turn for drone {drone.id}: {e}", exc_info=True)
 
+        for drone in offline_chargeable_drones:
+            result = drone_tools.execute_tool("blindCharge", {}, drone.id, game_data)
+            activity = await self._process_turn_result(ctx, tools, hour, game_data, drone, result, "SYSTEM: Auto-Charge Executed")
+            hourly_activity = True
+            
         if not hourly_activity:
             msg = await FosterPresenter.report_hourly_status_nominal(ctx, hour)
             game_data.ship_logs.append(msg)
@@ -414,7 +411,11 @@ class FosterProtocol:
         elif physics["req_tomorrow"] > GameConfig.MAX_POSSIBLE_FUEL_REQ:
             return GameEndState.INSUFFICIENT_FUEL_CAPACITY
 
-        active_drones = [d for d in game_data.drones.values() if d.status == "active"]
+        active_drones = [
+            d for d in game_data.drones.values()
+            if d.status == "active" or (d.status == "offline" and d.location_id == "charging_station")
+        ]
+
         if not active_drones:
             return GameEndState.NO_ACTIVE_DRONES
 

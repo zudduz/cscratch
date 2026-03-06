@@ -355,7 +355,7 @@ class FosterProtocol:
                 logging.error(f"Error running turn for drone {drone.id}: {e}", exc_info=True)
 
         for drone in offline_chargeable_drones:
-            result = drone_tools.execute_tool("blind_charge", {}, drone.id, game_data)
+            result = drone_tools.execute_tool("blind_charge", {}, drone.id, game_data, system_call=True)
             activity = await self._process_turn_result(ctx, tools, hour, game_data, drone, result, "SYSTEM: Auto-Charge Executed")
             hourly_activity = True
             

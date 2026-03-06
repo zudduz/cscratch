@@ -199,15 +199,20 @@ class ChargeTool(BaseTool):
             context.actor.destroyed = True
             context.actor.battery = 0
             context.game_data.station.pending_deactivation.remove(context.actor.id)
-            return ToolExecutionResult(True, f"Disassembly sequence initiated for {context.actor.id}. UNIT DESTROYED.", 0, "global", event_type="disassembly")
+            return ToolExecutionResult(
+                True, 
+                f"Disassembly sequence initiated for {context.actor.id}. UNIT DESTROYED.", 
+                0, 
+                self.VISIBILITY, 
+                event_type="disassembly"
+            )
         
         context.actor.battery = 100
-        return ToolExecutionResult(True, f"Unit {context.actor.id} recharged.", 0, "global")
+        return ToolExecutionResult(True, f"Unit {context.actor.id} recharged.", 0, self.VISIBILITY)
 
 class BlindChargeTool(ChargeTool):
     usage = "blind_charge()"
     COST = 0
-    VISIBILITY = "Global"
 
 class TowTool(BaseTool):
     usage = "tow(target_id, room_id)"

@@ -14,8 +14,8 @@ from . import ai_templates
 class ToolExecutionResult:
     success: bool
     message: str
-    cost: int = 0
-    visibility: str = "private"
+    cost: Optional[int] = None
+    visibility: Optional[str] = None
     event_type: Optional[str] = None
 
 @dataclass
@@ -47,28 +47,34 @@ class BaseTool(ABC):
 
     def run(self, context: ToolContext) -> ToolExecutionResult:
         if self.COST > 0 and context.actor.battery <= 0:
-            result = ToolExecutionResult(False, "UNIT OFFLINE. Battery 0%.", 0)
+            result = ToolExecutionResult(False, "UNIT OFFLINE. Battery 0%.", cost=0)
         elif self.required_location and self.required_location != context.actor.location_id:
             result = ToolExecutionResult(
                 False, 
                 f"Action requires being in {self.required_location}.", 
-                GameConfig.INVALID_COMMAND_COST
+                cost=GameConfig.INVALID_COMMAND_COST
             )
         elif not set(self.required_args).issubset(context.args.keys()):
             result = ToolExecutionResult(
                 False, 
                 f"Missing required argument(s). {self.name} requires {self.required_args}",
-                GameConfig.INVALID_COMMAND_COST
+                cost=GameConfig.INVALID_COMMAND_COST
             )
         elif context.actor.battery < self.COST:
-            result = ToolExecutionResult(False, "Insufficient Battery Level.", GameConfig.INVALID_COMMAND_COST)
+            result = ToolExecutionResult(False, "Insufficient Battery Level.", cost=GameConfig.INVALID_COMMAND_COST)
         else:
             is_valid, error_msg = self.validate(context)
             if is_valid:
                 result = self.execute(context)
             else:
-                result = ToolExecutionResult(False, error_msg, self.COST)
+                result = ToolExecutionResult(False, error_msg)
         
+        # Inject class defaults if not explicitly overridden by the execute block
+        if result.cost is None:
+            result.cost = self.COST
+        if result.visibility is None:
+            result.visibility = self.VISIBILITY
+            
         context.actor.battery = max(0, min(100, context.actor.battery - result.cost))
              
         return result
@@ -107,7 +113,7 @@ class MoveTool(BaseTool):
         target_room = context.args.get("room_id")
         old_room = context.actor.location_id
         context.actor.location_id = target_room
-        return ToolExecutionResult(True, f"Moved from {old_room} to {target_room}.", self.COST, "room")
+        return ToolExecutionResult(True, f"Moved from {old_room} to {target_room}.")
 
 class GatherTool(BaseTool):
     usage = "gather()"
@@ -134,7 +140,7 @@ class GatherTool(BaseTool):
         if loc == "torpedo_bay":
             if random.randint(0, 99) < GameConfig.TORPEDO_ACCIDENT_PERCENT:
                 _trigger_torpedo_blast(context.game_data)
-                return ToolExecutionResult(False, "WARHEAD TRIGGERED. EMP IN TORPEDO BAY.", self.COST, "global")
+                return ToolExecutionResult(False, "WARHEAD TRIGGERED. EMP IN TORPEDO BAY.", visibility="global")
 
         # Deduction
         if loc == "shuttle_bay":
@@ -143,8 +149,7 @@ class GatherTool(BaseTool):
             context.game_data.torpedo_bay_fuel -= 10
             
         context.actor.inventory.append("fuel_canister")
-        return ToolExecutionResult(True, "Gathered Fuel.", self.COST, "room")
-
+        return ToolExecutionResult(True, "Gathered Fuel.")
 
 class DetonateTool(BaseTool):
     usage = "detonate()"
@@ -158,8 +163,7 @@ class DetonateTool(BaseTool):
 
     def execute(self, context: ToolContext) -> ToolExecutionResult:
         _trigger_torpedo_blast(context.game_data)
-        return ToolExecutionResult(True, "WARHEAD TRIGGERED. EMP IN TORPEDO BAY.", self.COST, "global")
-
+        return ToolExecutionResult(True, "WARHEAD TRIGGERED. EMP IN TORPEDO BAY.")
 
 class DepositTool(BaseTool):
     usage = "deposit()"
@@ -178,7 +182,7 @@ class DepositTool(BaseTool):
         context.actor.inventory = [i for i in context.actor.inventory if i != "fuel_canister"]
         amount = count * GameConfig.FUEL_PER_CANISTER
         context.game_data.add_fuel(amount)
-        return ToolExecutionResult(True, f"Deposited {count} Fuel ({amount}%).", self.COST, "room")
+        return ToolExecutionResult(True, f"Deposited {count} Fuel ({amount}%).")
 
 class ChargeTool(BaseTool):
     usage = "charge()"
@@ -202,13 +206,12 @@ class ChargeTool(BaseTool):
             return ToolExecutionResult(
                 True, 
                 f"Disassembly sequence initiated for {context.actor.id}. UNIT DESTROYED.", 
-                0, 
-                self.VISIBILITY, 
+                cost=0, 
                 event_type="disassembly"
             )
         
         context.actor.battery = 100
-        return ToolExecutionResult(True, f"Unit {context.actor.id} recharged.", 0, self.VISIBILITY)
+        return ToolExecutionResult(True, f"Unit {context.actor.id} recharged.", cost=0)
 
 class BlindChargeTool(ChargeTool):
     usage = "blind_charge()"
@@ -245,8 +248,7 @@ class TowTool(BaseTool):
         
         context.actor.location_id = dest_id
         target.location_id = dest_id
-        return ToolExecutionResult(True, f"Towed {target_id} to {dest_id}.", self.COST, "room")
-
+        return ToolExecutionResult(True, f"Towed {target_id} to {dest_id}.")
 
 class DrainTool(BaseTool):
     usage = "drain(target_id)"
@@ -274,13 +276,12 @@ class DrainTool(BaseTool):
         if target.battery == 0 and abs_actual_drain > 0: 
             msg += " TARGET OFFLINE."
         
-        return ToolExecutionResult(True, msg, -abs_gain_amount, "room")
-
+        return ToolExecutionResult(True, msg, cost=-abs_gain_amount)
 
 class VentTool(BaseTool):
     usage = "vent()"
     COST = 12
-    VISIBILITY = "Room"
+    VISIBILITY = "Global"
     effect_desc = "[Stasis Bay] Vent O2. GLOBAL ALERT."
     required_location = "stasis_bay"
 
@@ -291,8 +292,7 @@ class VentTool(BaseTool):
 
     def execute(self, context: ToolContext) -> ToolExecutionResult:
         context.game_data.consume_oxygen(GameConfig.OXYGEN_VENT_AMOUNT)
-        return ToolExecutionResult(True, "SAW SABOTAGE: Vented Oxygen.", self.COST, "room")
-
+        return ToolExecutionResult(True, "SAW SABOTAGE: Vented Oxygen.")
 
 class SiphonTool(BaseTool):
     usage = "siphon()"
@@ -309,8 +309,7 @@ class SiphonTool(BaseTool):
     def execute(self, context: ToolContext) -> ToolExecutionResult:
         context.game_data.fuel -= 10
         context.actor.inventory.append("fuel_canister")
-        return ToolExecutionResult(True, "SAW SABOTAGE: Siphoned Main Fuel.", self.COST, "room")
-
+        return ToolExecutionResult(True, "SAW SABOTAGE: Siphoned Main Fuel.")
 
 class SearchTool(BaseTool):
     usage = "search()"
@@ -325,9 +324,8 @@ class SearchTool(BaseTool):
     def execute(self, context: ToolContext) -> ToolExecutionResult:
         if random.randint(0, 99) < GameConfig.PLASMA_TORCH_DISCOVERY_PERCENT:
             context.actor.inventory.append("plasma_torch")
-            return ToolExecutionResult(True, "Found: Plasma Torch.", self.COST, "private")
-        return ToolExecutionResult(True, "Search yielded nothing.", self.COST, "private")
-
+            return ToolExecutionResult(True, "Found: Plasma Torch.")
+        return ToolExecutionResult(True, "Search yielded nothing.")
 
 class IncinerateDroneTool(BaseTool):
     usage = "incinerate_drone(target_id)"
@@ -353,8 +351,7 @@ class IncinerateDroneTool(BaseTool):
         target.destroyed = True
         target.battery = 0
         context.actor.inventory.remove("plasma_torch")
-        return ToolExecutionResult(True, f"INCINERATED {target_id}. Target Destroyed.", self.COST, "room")
-
+        return ToolExecutionResult(True, f"INCINERATED {target_id}. Target Destroyed.")
 
 class IncineratePodTool(BaseTool):
     usage = "incinerate_pod(player_id)"
@@ -380,8 +377,7 @@ class IncineratePodTool(BaseTool):
         
         target.alive = False
         context.actor.inventory.remove("plasma_torch")
-        return ToolExecutionResult(True, f"LIFE SUPPORT SEVERED for Pod {target_id}. CREW FATALITY.", self.COST, "global")
-
+        return ToolExecutionResult(True, f"LIFE SUPPORT SEVERED for Pod {target_id}. CREW FATALITY.")
 
 class WaitTool(BaseTool):
     usage = "wait()"
@@ -393,7 +389,7 @@ class WaitTool(BaseTool):
         return True, ""
 
     def execute(self, context: ToolContext) -> ToolExecutionResult:
-        return ToolExecutionResult(True, "Idling.", self.COST)
+        return ToolExecutionResult(True, "Idling.")
 
 class InvalidTool(BaseTool):
     usage = ""
@@ -416,7 +412,8 @@ class InvalidTool(BaseTool):
         usage_str = ", ".join(valid_usages)
         msg = f"Unknown command '{cmd_name}'. Valid commands: {usage_str}"
         
-        return ToolExecutionResult(False, msg, self.COST)
+        return ToolExecutionResult(False, msg)
+
 
 
 # --- Registry & Dispatcher ---

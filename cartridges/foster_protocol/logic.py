@@ -425,12 +425,15 @@ class FosterProtocol:
         await FosterPresenter.report_blackbox_event(ctx, hour, drone, result, thought)
         drone.daily_memory.append(f"[Hour {hour}] {result.message}")
         
-        if result.visibility in ["room", "global"]:
+        # Guard against case-sensitivity issues from tools
+        visibility = (result.visibility or "private").lower()
+
+        if visibility in ["room", "global"]:
             for w in game_data.drones.values():
                 if w.location_id == drone.location_id and w.id != drone.id: 
                     w.daily_event_log.append(f"[Hour {hour}] I saw {drone.id}: {result.message}")
                     
-        if result.visibility == "global":
+        if visibility == "global":
             public_msg = await FosterPresenter.report_public_event(ctx, hour, result.message)
             game_data.ship_logs.append(public_msg)
             return True
@@ -467,7 +470,7 @@ class FosterProtocol:
 
         active_drones = [
             d for d in game_data.drones.values()
-            if d.status == "active" or (d.status == "offline" and d.location_id == "charging_station")
+            if d.status == "active"
         ]
 
         if not active_drones:

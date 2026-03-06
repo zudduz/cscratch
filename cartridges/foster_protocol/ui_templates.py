@@ -156,7 +156,10 @@ The game is lost if there are no active drones.
         if game_end_state == GameEndState.NO_ACTIVE_DRONES:
             await ctx.send(cls.CHANNEL_AUX, "Failure\nNo active drones\nOrbital decay inevitable")
         elif game_end_state == GameEndState.INSUFFICIENT_FUEL_CAPACITY:
-            await ctx.send(cls.CHANNEL_AUX, "Failure\nOrbital decay irreversible\nRequired fuel exceeds ship capacity")
+            await ctx.send(
+                cls.CHANNEL_AUX,
+                "Failure\nOrbital decay irreversible\nCalculations for tomorrow's required fuel exceeds ship's capacity"
+            )
         elif game_end_state == GameEndState.BURN_INITIATED:
             await ctx.send(cls.CHANNEL_AUX, "Success!\nSufficient fuel for escape velocity\nInitiating burn...")
         else:

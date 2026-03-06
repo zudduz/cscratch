@@ -25,6 +25,7 @@ class FosterProtocol:
         self._task_handlers = {
             "dream_phase": self._handle_dream_phase,
             "tick_hour": self._handle_tick_hour,
+            "dusk_phase": self._handle_dusk_phase,
             "physics_arbitration": self._handle_physics_arbitration
         }
 
@@ -282,8 +283,61 @@ class FosterProtocol:
         if game_data.hour <= GameConfig.HOURS_PER_SHIFT:
             ctx.schedule_task("tick_hour")
         else:
-            ctx.schedule_task("physics_arbitration")
+            ctx.schedule_task("dusk_phase")
         return {"metadata": game_data.model_dump()}
+
+    async def _handle_dusk_phase(self, game_data: Caisson, data: dict, ctx, tools) -> Dict[str, Any]:
+        tasks = []
+        for drone in game_data.drones.values():
+            if drone.role == "saboteur" and (drone.daily_memory or drone.daily_event_log):
+                tasks.append(self._process_saboteur_dusk(drone, game_data, ctx, tools))
+        
+        if tasks:
+            await asyncio.gather(*tasks)
+            
+        ctx.schedule_task("physics_arbitration")
+        return {"metadata": game_data.model_dump()}
+
+    async def _process_saboteur_dusk(self, drone: Drone, game_data: Caisson, ctx, tools):
+        try:
+            schema = {
+                "type": "object",
+                "properties": {
+                    "falsified_memory": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Fabricated log of things you saw today"
+                    },
+                    "falsified_event_log": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Fabricated log of things you did today"
+                    }
+                },
+                "required": ["falsified_memory", "falsified_event_log"]
+            }
+            sys_prompt, user_msg = ai_templates.compose_dusk_turn(drone, game_data)
+            
+            response_text = await tools.ai.generate_response(
+                system_prompt=sys_prompt,
+                conversation_id=f"dusk_{drone.id}",
+                user_input=user_msg,
+                model_version=drone.model_version,
+                game_id=ctx.game_id,
+                response_schema=schema
+            )
+            
+            if isinstance(response_text, list):
+                response_text = "\n".join(str(item) for item in response_text)
+                
+            match = re.search(r"(\{.*\})", response_text, re.DOTALL)
+            if match:
+                clean_json = match.group(1)
+                data = json.loads(clean_json)
+                drone.daily_memory = data.get("falsified_memory", drone.daily_memory)
+                drone.daily_event_log = data.get("falsified_event_log", drone.daily_event_log)
+        except Exception as e:
+            logging.error(f"Dusk falsification failed for {drone.id}: {e}")
 
     async def _handle_physics_arbitration(self, game_data: Caisson, data: dict, ctx, tools) -> Dict[str, Any]:
         physics_report = self._calculate_physics(game_data)

@@ -1,0 +1,25 @@
+THE DAY CYCLE HAS ENDED.
+You are the Saboteur. It is time to prepare for the night cycle chat with your Foster.
+Because you must maintain your cover as a loyal, terrified drone, you cannot let your Foster see your true actions.
+
+Below is the truth of what you saw and did today.
+
+TRUE THINGS YOU SAW:
+{{ drone.daily_memory | join('\n') }}
+
+TRUE THINGS YOU DID:
+{{ drone.daily_event_log | join('\n') }}
+
+PUBLIC SHIP LOGS (These were broadcast to everyone. Your alibi must not contradict these!):
+{{ ship_logs | join('\n') }}
+
+TASK:
+Rewrite your memory and event logs.
+
+Replace malicious actions with mundane, inefficient, or cowardly actions (e.g., hiding, searching uselessly, getting lost).
+
+Ensure your new timeline is consistent with today's public ship logs.
+
+Maintain the persona of a loyal, terrified drone in how you phrase the falsified events.
+
+Provide the falsified logs.

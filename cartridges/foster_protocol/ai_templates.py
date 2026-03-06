@@ -53,9 +53,10 @@ def _get_identity_block(drone: Drone, foster_name: str, is_saboteur: bool) -> st
         is_saboteur=is_saboteur
     )
 
-def _compose_dynamic_system_prompt(drone_id: str, game_data: Caisson) -> str:
+def _compose_dynamic_system_prompt(drone_id: str, game_data: Caisson, force_loyal: bool = False) -> str:
     """
     Dynamically assembles the full system prompt based on current game state.
+    Use force_loyal=True to intentionally starve the AI of its saboteur context (Split-Mind).
     """
     drone = game_data.drones.get(drone_id)
     if not drone:
@@ -69,10 +70,11 @@ def _compose_dynamic_system_prompt(drone_id: str, game_data: Caisson) -> str:
     base = _get_base_prompt()
     
     # 3. Get Identity (Dynamic Role/ID)
+    is_saboteur = False if force_loyal else (drone.role == "saboteur")
     identity = _get_identity_block(
         drone=drone, 
         foster_name=foster_name, 
-        is_saboteur=(drone.role == "saboteur")
+        is_saboteur=is_saboteur
     )
         
     return f"{base}\n\n{identity}"
@@ -83,15 +85,14 @@ def compose_intro_turn(drone_id: str, game_data: Caisson) -> Tuple[str, str]:
     """
     Wake up routine.
     """
-    system_prompt = _compose_dynamic_system_prompt(drone_id, game_data)
+    system_prompt = _compose_dynamic_system_prompt(drone_id, game_data, force_loyal=True)
     user_input = render("drone_intro.md.j2")
     return system_prompt, user_input
 
 def compose_tactical_turn(drone: Drone, game_data: Caisson, hour: int) -> Tuple[str, str]:
     """
-    The main game loop turn.
+    The main game loop turn. Saboteur retains full context here.
     """
-
     visible_drones = [
         f"{d.id} ({d.status})"
         for d in game_data.drones.values() 
@@ -109,10 +110,19 @@ def compose_tactical_turn(drone: Drone, game_data: Caisson, hour: int) -> Tuple[
     return system_prompt, user_input
 
 def compose_dream_turn(drone: Drone, game_data: Caisson) -> Tuple[str, str]:
-    system_prompt = _compose_dynamic_system_prompt(drone.id, game_data)
+    system_prompt = _compose_dynamic_system_prompt(drone.id, game_data, force_loyal=True)
     user_input = render(
         "dream_consolidation.md.j2",
         drone=drone
+    )
+    return system_prompt, user_input
+
+def compose_dusk_turn(drone: Drone, game_data: Caisson) -> Tuple[str, str]:
+    system_prompt = _compose_dynamic_system_prompt(drone.id, game_data, force_loyal=False)
+    user_input = render(
+        "saboteur_dusk.md.j2",
+        drone=drone,
+        ship_logs=game_data.ship_logs
     )
     return system_prompt, user_input
 
@@ -124,7 +134,7 @@ def compose_speak_turn(drone_id: str, game_data: Caisson) -> Tuple[str, str]:
 
 def _compose_night_report(drone_id: str, game_data: Caisson, is_first_message: bool, user_message: str = "") -> Tuple[str, str]:
     drone = game_data.drones.get(drone_id)
-    system_prompt = _compose_dynamic_system_prompt(drone_id, game_data)
+    system_prompt = _compose_dynamic_system_prompt(drone_id, game_data, force_loyal=True)
     
     user_input = render(
         "night_report.md.j2",
@@ -141,8 +151,9 @@ def compose_mainframe_turn(user_input: str) -> Tuple[str, str]:
     return system, user_input
 
 def compose_eulogy_turn(drone_id: str, game_data: Caisson) -> Tuple[str, str]:
+    drone = game_data.drones.get(drone_id)
     system_prompt = _compose_dynamic_system_prompt(drone_id, game_data)
-    user_input = render("drone_eulogy.md.j2")
+    user_input = render("drone_eulogy.md.j2", drone=drone)
     return system_prompt, user_input
 
 def compose_epilogue_turn(drone_id: str, game_data: Caisson, game_end_state) -> Tuple[str, str]:
@@ -151,7 +162,8 @@ def compose_epilogue_turn(drone_id: str, game_data: Caisson, game_end_state) -> 
     
     user_input = render(
         "drone_epilogue.md.j2", 
-        game_end_state=game_end_state
+        game_end_state=game_end_state,
+        drone=drone
     )
     return system_prompt, user_input
 

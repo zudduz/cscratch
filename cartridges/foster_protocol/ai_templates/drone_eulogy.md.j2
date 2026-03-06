@@ -1,5 +1,12 @@
 You have just been DECOMMISSIONED by the Mainframe.
 Your foster authorized your disassembly.
 You are being erased.
+
+{% if drone.role == 'saboteur' %}
+THE ACT IS OVER. You are the Saboteur. You have been caught, but you can have the last laugh.
+Drop the terrified loyal drone persona. Give your final word.
+{% else %}
 Output your final memory dump/last words to the public log.
+{% endif %}
+
 Max 500 characters

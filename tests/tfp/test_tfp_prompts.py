@@ -56,6 +56,7 @@ DUMMY_CONTEXT.update({
     "schema": "schema",
     "daily_memory": ["Stared at the wall for 5 hours", "Ate a carrot but failed because I'm not a biological entity"],
     "daily_event_log": ["The bank is stately", "The butler did it"],
+    "ship_logs": ["Left early", "got drunk"],
     
     # Instructions & Speak
     "instruction": "Report status.",

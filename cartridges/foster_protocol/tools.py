@@ -205,7 +205,7 @@ class ChargeTool(BaseTool):
         return ToolExecutionResult(True, f"Unit {context.actor.id} recharged.", 0, "global")
 
 class BlindChargeTool(ChargeTool):
-    usage = "blindCharge()"
+    usage = "blind_charge()"
     COST = 0
     VISIBILITY = "Global"
 
@@ -432,6 +432,11 @@ TOOL_REGISTRY: Dict[str, BaseTool] = {
     "wait": WaitTool(),
 }
 
+SYSTEM_REGISTRY: Dict[str, BaseTool] = {
+    "invalid": InvalidTool(),
+    "blind_charge": BlindChargeTool(),
+}
+
 
 def create_strict_action_model():
     """
@@ -461,13 +466,15 @@ def create_strict_action_model():
     # 5. Create and return the model
     return create_model('DroneAction', **fields)
 
-def execute_tool(tool_name: str, args: Dict, drone_id: str, game: Caisson) -> ToolExecutionResult:
+def execute_tool(tool_name: str, args: Dict, drone_id: str, game: Caisson, system_call: bool = False) -> ToolExecutionResult:
     """Dispatches a command to the appropriate tool instance."""
     actor = game.drones.get(drone_id)
     if not actor:
         return ToolExecutionResult(False, "System Error: Actor not found.")
 
     tool_instance = TOOL_REGISTRY.get(tool_name)
+    if system_call and not tool_instance:
+        tool_instance = SYSTEM_REGISTRY.get(tool_name)
     if not tool_instance:
         # Fallback to InvalidTool to handle the error gracefullly with context
         tool_instance = InvalidTool()

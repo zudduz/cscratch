@@ -17,6 +17,7 @@ class GameInterface(BaseModel):
     listener_ids: List[str] = Field(default_factory=list)
     
     channel_id: Optional[str] = None
+    is_external_lobby: bool = False
 
 class GameState(BaseModel):
     id: str

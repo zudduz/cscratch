@@ -46,6 +46,7 @@ def slash_command(name: str):
 
 # --- HANDLERS ---
 
+@slash_command("cscratch.start")
 @slash_command("start")
 async def handle_start(ctx: Dict[str, Any], params: Dict[str, Any]):
     cartridge = params.get("cartridge", "foster-protocol")
@@ -72,6 +73,34 @@ async def handle_start(ctx: Dict[str, Any], params: Dict[str, Any]):
             presentation.CMD_FAILED.format(error=str(e))
         )
 
+@slash_command("cscratch.lobby")
+@slash_command("lobby")
+async def handle_lobby(ctx: Dict[str, Any], params: Dict[str, Any]):
+    cartridge = params.get("cartridge", "foster-protocol")
+    
+    try:
+        await game_engine.engine.setup_game_in_channel(
+            story_id=cartridge, 
+            host_id=ctx["user_id"], 
+            host_name=ctx["user_name"],
+            guild_id=ctx["guild_id"],
+            origin_channel_id=ctx["channel_id"]
+        )
+        
+        # Delete the "is thinking..." message
+        await discord_client.client.delete_response(
+            ctx["interaction_token"], 
+            ctx["application_id"]
+        )
+    except Exception as e:
+        logging.error(f"Lobby CMD Failed: {e}")
+        await discord_client.client.edit_response(
+            ctx["interaction_token"], 
+            ctx["application_id"], 
+            presentation.CMD_FAILED.format(error=str(e))
+        )
+
+@slash_command("cscratch.end")
 @slash_command("end")
 async def handle_end(ctx: Dict[str, Any], params: Dict[str, Any]):
     channel_id = ctx["channel_id"]

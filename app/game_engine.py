@@ -65,6 +65,16 @@ class GameEngine:
                 
         return game_id
 
+    async def setup_game_in_channel(self, story_id: str, host_id: str, host_name: str, guild_id: str, origin_channel_id: str) -> str:
+        """Orchestrates game creation but converts the origin channel to a lobby directly."""
+        game_id = await self.start_new_game(story_id, host_id, host_name)
+        
+        for interface in self.interfaces:
+            if hasattr(interface, 'convert_to_lobby'):
+                await interface.convert_to_lobby(game_id, story_id, guild_id, host_id, origin_channel_id)
+                
+        return game_id
+
     async def join_game(self, game_id: str, user_id: str, user_name: str) -> dict:
         """
         Attempts to add a player to the game.

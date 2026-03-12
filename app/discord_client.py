@@ -56,6 +56,27 @@ class DiscordRESTInterface:
         await self.client.close()
 
     # --- LOBBY CREATION ---
+
+    async def _setup_lobby_channel(self, game_id: str, cartridge: str, guild_id: str, host_id: str, chan: discord.TextChannel, interface_data: dict):
+        """Helper to deduplicate DB registration and UI setup for lobbies."""
+        interface = GameInterface(**interface_data)
+        await persistence.db.update_game_interface(game_id, interface)
+        await persistence.db.register_channel_association(str(chan.id), game_id)
+        
+        embed = discord.Embed(
+            title=presentation.format_lobby_title(cartridge),
+            description=presentation.LOBBY_DESC,
+            color=0x00ff00
+        )
+        
+        view = discord.ui.View()
+        view.add_item(discord.ui.Button(label=presentation.BTN_JOIN, style=discord.ButtonStyle.green, custom_id="join_btn"))
+        view.add_item(discord.ui.Button(label=presentation.BTN_START, style=discord.ButtonStyle.danger, custom_id="start_btn"))
+        
+        await chan.send(embed=embed, view=view)
+        await chan.send(presentation.MSG_LOBBY_INSTRUCTIONS)
+
+        await self.check_and_warn_admin(guild_id, host_id, str(chan.id))
     
     async def create_lobby(self, game_id: str, cartridge: str, guild_id: str, host_id: str, origin_channel_id: str):
         try:
@@ -69,30 +90,36 @@ class DiscordRESTInterface:
                 "guild_id": guild_id,
                 "category_id": str(cat.id),
                 "main_channel_id": str(chan.id),
-                "listener_ids": [str(chan.id)]
+                "listener_ids": [str(chan.id)],
+                "is_external_lobby": False
             }
             
-            interface = GameInterface(**interface_data)
-            await persistence.db.update_game_interface(game_id, interface)
-            await persistence.db.register_channel_association(str(chan.id), game_id)
-            
-            embed = discord.Embed(
-                title=presentation.format_lobby_title(cartridge),
-                description=presentation.LOBBY_DESC,
-                color=0x00ff00
-            )
-            
-            view = discord.ui.View()
-            view.add_item(discord.ui.Button(label=presentation.BTN_JOIN, style=discord.ButtonStyle.green, custom_id="join_btn"))
-            view.add_item(discord.ui.Button(label=presentation.BTN_START, style=discord.ButtonStyle.danger, custom_id="start_btn"))
-            
-            await chan.send(embed=embed, view=view)
-            await chan.send(presentation.MSG_LOBBY_INSTRUCTIONS)
-
-            await self.check_and_warn_admin(guild_id, host_id, str(chan.id))
+            await self._setup_lobby_channel(game_id, cartridge, guild_id, host_id, chan, interface_data)
             await self.send_message(origin_channel_id, presentation.format_lobby_created_msg(chan.mention))
         except Exception as e:
             logging.error(f"Failed to create Discord lobby for {game_id}: {e}")
+            raise e
+
+    async def convert_to_lobby(self, game_id: str, cartridge: str, guild_id: str, host_id: str, origin_channel_id: str):
+        """
+        Converts the calling channel into a lobby instead of making new ones.
+        """
+        try:
+            chan = await self.client.fetch_channel(int(origin_channel_id))
+            cat_id = str(chan.category_id) if chan.category_id else None
+            
+            interface_data = {
+                "type": "discord",
+                "guild_id": guild_id,
+                "category_id": cat_id,
+                "main_channel_id": str(chan.id),
+                "listener_ids": [str(chan.id)],
+                "is_external_lobby": True
+            }
+            
+            await self._setup_lobby_channel(game_id, cartridge, guild_id, host_id, chan, interface_data)
+        except Exception as e:
+            logging.error(f"Failed to convert channel to lobby for {game_id}: {e}")
             raise e
 
     # --- OUTPUT METHODS ---
@@ -320,14 +347,19 @@ class DiscordRESTInterface:
     async def cleanup_game_channels(self, guild_id_str: str, interface_data: dict):
         if not interface_data: return
         
-        # Note: interface_data is a dict here
         cat_id = interface_data.get('category_id')
+        is_external = interface_data.get('is_external_lobby', True)
         
         try:
             # We iterate known channels from the interface to delete them
-            known_channels = [interface_data.get('main_channel_id')] + list(interface_data.get('channels', {}).values())
+            bot_created_channels = list(interface_data.get('channels', {}).values())
+            main_chan_id = interface_data.get('main_channel_id')
             
-            for cid in known_channels:
+            # If we created the lobby channel, we delete it
+            if not is_external and main_chan_id:
+                bot_created_channels.append(main_chan_id)
+            
+            for cid in bot_created_channels:
                 if cid:
                     try:
                         c = await self.client.fetch_channel(int(cid))
@@ -338,8 +370,12 @@ class DiscordRESTInterface:
                     except Exception as e:
                         logging.warning(f"Failed to delete channel {cid}: {e}")
 
-            # 2. Delete Category
-            if cat_id:
+            # If we didn't create the lobby, we don't delete it, but we MUST remove its association
+            if is_external and main_chan_id:
+                await persistence.db.remove_channel_association(main_chan_id)
+
+            # 2. Delete Category (Only if we created the lobby/category)
+            if cat_id and not is_external:
                 try:
                     cat = await self.client.fetch_channel(int(cat_id))
                     await cat.delete()

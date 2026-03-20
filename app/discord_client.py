@@ -279,9 +279,16 @@ class DiscordRESTInterface:
 
             for op in ops:
                 if op['op'] == 'create':
+                    # Fix: Give the bot explicit manage_channels and manage_roles so 
+                    # it isn't locked out of channels when they disconnect from category sync.
                     overwrites = {
                         guild.default_role: discord.PermissionOverwrite(read_messages=False),
-                        bot_member: discord.PermissionOverwrite(read_messages=True, send_messages=True)
+                        bot_member: discord.PermissionOverwrite(
+                            read_messages=True, 
+                            send_messages=True,
+                            manage_channels=True,
+                            manage_roles=True
+                        )
                     }
                     if op.get('audience') == 'public':
                          overwrites[guild.default_role] = discord.PermissionOverwrite(read_messages=True)

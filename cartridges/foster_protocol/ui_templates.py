@@ -121,9 +121,14 @@ The game is lost if there are no active drones.
         return msg
 
     @classmethod
-    async def report_public_event(cls, ctx, hour: int, message: str):
+    async def report_public_event(cls, ctx, hour: int, drone: Drone, tool_name: str, message: str):
         """Broadcasts a global event to the main comms."""
-        public_msg = f"[Hour {hour}] {message}"
+        if tool_name in ["charge", "blind_charge"]:
+            display_id = f"{drone.name} ({drone.id})" if drone.name else drone.id
+            public_msg = f"[Hour {hour}] [Action: {tool_name}] {display_id} -> {message}"
+        else:
+            public_msg = f"[Hour {hour}] [Action: {tool_name}] {message}"
+            
         await ctx.send(cls.CHANNEL_AUX, public_msg)
         return public_msg
 

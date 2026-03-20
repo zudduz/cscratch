@@ -403,21 +403,22 @@ class FosterProtocol:
         for drone in acting_drones:
             try:
                 res = await self.run_single_drone_turn(drone, game_data, hour, tools, ctx.game_id)
-                activity = await self._process_turn_result(ctx, tools, hour, game_data, res['drone'], res['result'], res['thought'])
+                activity = await self._process_turn_result(ctx, tools, hour, game_data, res['drone'], res['action'], res['result'], res['thought'])
                 hourly_activity = hourly_activity or activity
             except Exception as e:
                 logging.error(f"Error running turn for drone {drone.id}: {e}", exc_info=True)
 
         for drone in offline_chargeable_drones:
             result = drone_tools.execute_tool("blind_charge", {}, drone.id, game_data, system_call=True)
-            activity = await self._process_turn_result(ctx, tools, hour, game_data, drone, result, "SYSTEM: Auto-Charge Executed")
+            action = {"tool": "blind_charge"}
+            activity = await self._process_turn_result(ctx, tools, hour, game_data, drone, action, result, "SYSTEM: Auto-Charge Executed")
             hourly_activity = True
             
         if not hourly_activity:
             msg = await FosterPresenter.report_hourly_status_nominal(ctx, hour)
             game_data.ship_logs.append(msg)
 
-    async def _process_turn_result(self, ctx, tools, hour: int, game_data: Caisson, drone, result, thought: str) -> bool:
+    async def _process_turn_result(self, ctx, tools, hour: int, game_data: Caisson, drone, action: dict, result, thought: str) -> bool:
         """Handles logging, visibility, and side-effects for a single action."""
         if result.event_type == "disassembly":
             await self._send_public_eulogy(ctx, tools, drone, game_data)
@@ -435,7 +436,8 @@ class FosterProtocol:
                     w.daily_event_log.append(f"[Hour {hour}] I saw {drone.id}: {result.message}")
                     
         if visibility == "global":
-            public_msg = await FosterPresenter.report_public_event(ctx, hour, result.message)
+            tool_name = action.get("tool", "unknown")
+            public_msg = await FosterPresenter.report_public_event(ctx, hour, drone, tool_name, result.message)
             game_data.ship_logs.append(public_msg)
             return True
         return False

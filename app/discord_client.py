@@ -41,6 +41,17 @@ class DiscordRESTInterface:
         self.client = discord.Client(intents=intents)
         self.is_ready = False
 
+    async def _fetch_channel_safe(self, channel_id: int, retries: int = 3, delay: float = 1.0):
+        """Handles Discord API's eventual consistency read-after-write delays."""
+        for attempt in range(retries):
+            try:
+                return await self.client.fetch_channel(channel_id)
+            except discord.NotFound:
+                if attempt < retries - 1:
+                    await asyncio.sleep(delay)
+                else:
+                    raise
+
     async def start(self, token: str):
         """Authenticates the HTTP session."""
         try:
@@ -148,7 +159,7 @@ class DiscordRESTInterface:
     async def send_message(self, channel_id: str, text: str):
         if not text: return
         try:
-            channel = await self.client.fetch_channel(int(channel_id))
+            channel = await self._fetch_channel_safe(int(channel_id))
             if len(text) > 2000: text = text[:1990] + "..."
             await channel.send(text)
         except discord.NotFound:
@@ -208,7 +219,7 @@ class DiscordRESTInterface:
 
     async def unlock_channel(self, channel_id: str, guild_id: str):
         try:
-            channel = await self.client.fetch_channel(int(channel_id))
+            channel = await self._fetch_channel_safe(int(channel_id))
             guild = await self.client.fetch_guild(int(guild_id))
             
             overwrite = channel.overwrites_for(guild.default_role)
@@ -235,7 +246,7 @@ class DiscordRESTInterface:
         aux_chan_id = interface_data.get('channels', {}).get('aux-comm')
         if aux_chan_id:
             try:
-                channel = await self.client.fetch_channel(int(aux_chan_id))
+                channel = await self._fetch_channel_safe(int(aux_chan_id))
                 lobby_name = presentation.format_lobby_title(game.story_id, callsign)
                 embed = discord.Embed(
                     title=presentation.format_game_complete_title(lobby_name),
@@ -250,6 +261,8 @@ class DiscordRESTInterface:
                 )
                 view.add_item(btn)
                 await channel.send(embed=embed, view=view)
+            except discord.NotFound:
+                logging.warning(f"Lock Channels: Aux-comm {aux_chan_id} not found (deleted early?)")
             except Exception as e:
                 logging.error(f"Lock Channels Failed: {e}")
 
@@ -334,7 +347,7 @@ class DiscordRESTInterface:
             for cid in known_channels:
                 if cid:
                     try:
-                        c = await self.client.fetch_channel(int(cid))
+                        c = await self._fetch_channel_safe(int(cid))
                         await c.delete()
                         await persistence.db.remove_channel_association(cid)
                     except discord.NotFound:

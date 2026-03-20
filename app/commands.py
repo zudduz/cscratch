@@ -10,7 +10,6 @@ from . import config
 import importlib
 
 # --- REGISTRY ---
-# Maps command keys (e.g. "lobby", "admin.gift") to handler functions
 REGISTRY: Dict[str, Callable[[Dict[str, Any], Dict[str, Any]], Awaitable[None]]] = {}
 
 UI_MAP = {
@@ -18,10 +17,7 @@ UI_MAP = {
 }
 
 async def _get_ui_presenter(ctx: Dict[str, Any], params: Dict[str, Any]):
-    """Dynamically loads the UI Presenter for the current game context."""
     cartridge_id = params.get("cartridge")
-    
-    # If not explicitly provided, try to infer from the channel's active game
     if not cartridge_id:
         channel_id = ctx.get("channel_id")
         if channel_id:
@@ -30,10 +26,7 @@ async def _get_ui_presenter(ctx: Dict[str, Any], params: Dict[str, Any]):
                 game = await persistence.db.get_game_by_id(game_id)
                 if game:
                     cartridge_id = game.story_id
-                    
-    # Fallback to default
     cartridge_id = cartridge_id or "foster-protocol"
-    
     module_path, class_name = UI_MAP.get(cartridge_id, UI_MAP["foster-protocol"])
     module = importlib.import_module(module_path)
     return getattr(module, class_name)
@@ -59,12 +52,21 @@ async def handle_lobby(ctx: Dict[str, Any], params: Dict[str, Any]):
             guild_id=ctx["guild_id"],
             origin_channel_id=ctx["channel_id"]
         )
-        
-        # Delete the "is thinking..." message
         await discord_client.client.delete_response(
             ctx["interaction_token"], 
             ctx["application_id"]
         )
+    except ValueError as ve:
+        if str(ve) == "NO_CATEGORY":
+            await discord_client.client.edit_response(
+                ctx["interaction_token"], 
+                ctx["application_id"], 
+                presentation.ERR_NO_CATEGORY
+            )
+        else:
+            await discord_client.client.edit_response(
+                ctx["interaction_token"], ctx["application_id"], presentation.CMD_FAILED.format(error=str(ve))
+            )
     except Exception as e:
         logging.error(f"Lobby CMD Failed: {e}")
         await discord_client.client.edit_response(
@@ -81,13 +83,11 @@ async def handle_kill(ctx: Dict[str, Any], params: Dict[str, Any]):
     app_id = ctx["application_id"]
 
     game_id = await persistence.db.get_game_id_by_channel_index(channel_id)
-    
     if not game_id:
         await discord_client.client.edit_response(token, app_id, presentation.ERR_NO_GAME)
         return
 
     game = await persistence.db.get_game_by_id(game_id)
-    
     if not game:
         await discord_client.client.edit_response(token, app_id, presentation.ERR_NO_GAME)
         return
@@ -101,8 +101,8 @@ async def handle_kill(ctx: Dict[str, Any], params: Dict[str, Any]):
     await discord_client.client.cleanup_game_channels(ctx["guild_id"], game.interface.model_dump())
     await game_engine.engine.end_game(game.id)
 
-@slash_command("cscratch.balance") # Handling namespaced
-@slash_command("balance")          # Handling root (just in case)
+@slash_command("cscratch.balance")
+@slash_command("balance")
 async def handle_balance(ctx: Dict[str, Any], params: Dict[str, Any]):
     user_id = ctx["user_id"]
     balance = await persistence.db.get_user_balance(user_id)
@@ -110,15 +110,12 @@ async def handle_balance(ctx: Dict[str, Any], params: Dict[str, Any]):
     
     if ctx.get("interaction_token"):
         await discord_client.client.edit_response(
-            ctx["interaction_token"], 
-            ctx["application_id"], 
-            report
+            ctx["interaction_token"], ctx["application_id"], report
         )
     else:
         await discord_client.client.send_message(ctx["channel_id"], report)
 
 async def _handle_info_command(ctx: Dict[str, Any], params: Dict[str, Any], attr_name: str, doc_name: str):
-    """Helper to retrieve documentation (Guide/Manual) from the active cartridge."""
     channel_id = ctx["channel_id"]
     game_id = await persistence.db.get_game_id_by_channel_index(channel_id)
     
@@ -132,11 +129,7 @@ async def _handle_info_command(ctx: Dict[str, Any], params: Dict[str, Any], attr
             text = presentation.ERR_DOC_LOAD_FAILED.format(doc_name=doc_name, error=str(e))
 
     if ctx.get("interaction_token"):
-        await discord_client.client.edit_response(
-            ctx["interaction_token"], 
-            ctx["application_id"], 
-            text
-        )
+        await discord_client.client.edit_response(ctx["interaction_token"], ctx["application_id"], text)
     else:
         await discord_client.client.send_message(channel_id, text)
 

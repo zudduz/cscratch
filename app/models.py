@@ -11,6 +11,7 @@ class GameInterface(BaseModel):
     type: str = "discord"
     guild_id: Optional[str] = None
     category_id: Optional[str] = None
+    callsign: Optional[str] = None
     
     main_channel_id: Optional[str] = None 
     channels: Dict[str, str] = Field(default_factory=dict)

@@ -34,6 +34,8 @@ ERR_NO_GAME = "No game"
 ERR_NO_ACTIVE_GAME = "No active game"
 ERR_NOT_HOST = "Denied\nHost only"
 ERR_DENIED_ADMIN = "Denied\nAdmin access required"
+ERR_NO_CATEGORY = "You must run this command inside a designated game category."
+ERR_CATEGORY_FULL = "The server's game category is full (Discord 50-channel limit). Please wait for a game to end."
 MSG_TEARDOWN = "Teardown"
 ERR_DOC_NOT_FOUND = "{doc_name} not found for this cartridge"
 ERR_DOC_LOAD_FAILED = "Failed to load {doc_name}: {error}"
@@ -48,10 +50,9 @@ EMBED_DESC_ENDED = "The host may now delete the channels"
 
 ERR_NOT_HOST_START = "Only the host may start the game"
 ERR_GENERIC = "Error"
-MSG_STARTING = "Starting game"
+MSG_STARTING = "Starting game..."
 GAME_ALREADY_STARTED = "Game already started"
 LOBBY_FULL = "Lobby is full"
-
 
 # --- LOGIC & FORMATTERS ---
 
@@ -70,11 +71,11 @@ def format_announcement(message: str) -> str:
     rev = os.environ.get('K_REVISION', 'Local-Dev')
     return f"{message}: `{rev}`"
 
-def format_lobby_title(cartridge_name: str) -> str:
-    return f"Lobby: {cartridge_name}"
+def format_lobby_title(cartridge_name: str, callsign: str) -> str:
+    return f"Lobby [{callsign}]: {cartridge_name}"
 
-def format_lobby_created_msg(mention: str) -> str:
-    return f"Lobby: {mention}"
+def format_game_started(callsign: str) -> str:
+    return f"**Game Started!**\nYour callsign is **{callsign}**.\nProceed to your newly created channels."
 
 def format_player_joined(name: str, count: int, max_p: int, cost: int) -> str:
     return f"**{name}** joined! ({count}/{max_p})\nStart button will cost {cost} scratch"

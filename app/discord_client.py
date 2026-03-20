@@ -2,6 +2,8 @@ import logging
 import discord
 import asyncio
 import aiohttp
+import random
+import string
 from discord.ext import commands
 
 from . import persistence
@@ -26,8 +28,6 @@ class ChickenBot(commands.Bot):
     async def setup_hook(self):
         logging.info(presentation.LOG_HYDRATING)
         self.active_game_channels = await persistence.db.get_active_game_channels()
-        # Note: We don't sync commands here in legacy mode to avoid conflicts if needed,
-        # but original code did. Kept simple.
         await self.tree.sync()
 
 # --- HEADLESS REST INTERFACE (HTTP) ---
@@ -37,8 +37,6 @@ class DiscordRESTInterface:
     Uses discord.py's HTTP capabilities without a WebSocket connection.
     """
     def __init__(self):
-        # We need a client instance to access the HTTP adapter and state models
-        # We will login() but NEVER connect()
         intents = discord.Intents.default()
         self.client = discord.Client(intents=intents)
         self.is_ready = False
@@ -60,40 +58,60 @@ class DiscordRESTInterface:
     async def create_lobby(self, game_id: str, cartridge: str, guild_id: str, host_id: str, origin_channel_id: str):
         try:
             guild = await self.client.fetch_guild(int(guild_id))
+            origin_channel = await self.client.fetch_channel(int(origin_channel_id))
             
-            cat = await guild.create_category(f"Lobby {game_id}")
-            chan = await guild.create_text_channel("cscratch-lobby", category=cat)
+            # BYOC (Bring Your Own Category) Enforcment
+            if not origin_channel.category_id:
+                raise ValueError("NO_CATEGORY")
+                
+            callsign = "".join(random.choices(string.ascii_uppercase, k=3))
             
             interface_data = {
                 "type": "discord",
                 "guild_id": guild_id,
-                "category_id": str(cat.id),
-                "main_channel_id": str(chan.id),
-                "listener_ids": [str(chan.id)]
+                "category_id": str(origin_channel.category_id),
+                "main_channel_id": str(origin_channel.id),
+                "callsign": callsign,
+                "listener_ids": [] # Don't listen to the dispatch channel
             }
             
             interface = GameInterface(**interface_data)
             await persistence.db.update_game_interface(game_id, interface)
-            await persistence.db.register_channel_association(str(chan.id), game_id)
+            
+            # NOTE: We specifically DO NOT register the origin (dispatch) channel into the persistence layer.
+            # Interactions will rely on the embedded game_id in the button custom_ids.
             
             embed = discord.Embed(
-                title=presentation.format_lobby_title(cartridge),
+                title=presentation.format_lobby_title(cartridge, callsign),
                 description=presentation.LOBBY_DESC,
                 color=0x00ff00
             )
             
             view = discord.ui.View()
-            view.add_item(discord.ui.Button(label=presentation.BTN_JOIN, style=discord.ButtonStyle.green, custom_id="join_btn"))
-            view.add_item(discord.ui.Button(label=presentation.BTN_START, style=discord.ButtonStyle.danger, custom_id="start_btn"))
+            view.add_item(discord.ui.Button(label=presentation.BTN_JOIN, style=discord.ButtonStyle.green, custom_id=f"join_btn_{game_id}"))
+            view.add_item(discord.ui.Button(label=presentation.BTN_START, style=discord.ButtonStyle.danger, custom_id=f"start_btn_{game_id}"))
             
-            await chan.send(embed=embed, view=view)
-            await chan.send(presentation.MSG_LOBBY_INSTRUCTIONS)
+            await origin_channel.send(embed=embed, view=view)
+            await origin_channel.send(presentation.MSG_LOBBY_INSTRUCTIONS)
 
-            await self.check_and_warn_admin(guild_id, host_id, str(chan.id))
-            await self.send_message(origin_channel_id, presentation.format_lobby_created_msg(chan.mention))
+            await self.check_and_warn_admin(guild_id, host_id, str(origin_channel.id))
+        except ValueError as ve:
+            raise ve
         except Exception as e:
             logging.error(f"Failed to create Discord lobby for {game_id}: {e}")
             raise e
+
+    async def check_category_capacity(self, guild_id: str, category_id: str, needed_slots: int) -> bool:
+        """Ensures the parent category won't hit the 50 channel limit."""
+        if not guild_id or not category_id: return False
+        try:
+            guild = await self.client.fetch_guild(int(guild_id))
+            channels = await guild.fetch_channels()
+            count = sum(1 for c in channels if getattr(c, 'category_id', None) == int(category_id))
+            return (count + needed_slots) <= 50
+        except Exception as e:
+            logging.error(f"Capacity check failed: {e}")
+            return True # Fail open to prevent locking up if the API lags
 
     # --- OUTPUT METHODS ---
 
@@ -105,8 +123,6 @@ class DiscordRESTInterface:
     async def send_message(self, channel_id: str, text: str):
         if not text: return
         try:
-            # fetch_channel makes an API call (Stateless)
-            # We cast to int because Discord IDs are integers
             channel = await self.client.fetch_channel(int(channel_id))
             if len(text) > 2000: text = text[:1990] + "..."
             await channel.send(text)
@@ -116,14 +132,8 @@ class DiscordRESTInterface:
             logging.error(f"Send Error {channel_id}: {e}")
 
     async def delete_response(self, interaction_token: str, application_id: str):
-        """
-        Deletes the original deferred interaction response.
-        """
-        if not interaction_token or not application_id:
-            return
-
+        if not interaction_token or not application_id: return
         url = f"https://discord.com/api/v10/webhooks/{application_id}/{interaction_token}/messages/@original"
-        
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.delete(url) as resp:
@@ -132,18 +142,14 @@ class DiscordRESTInterface:
         except Exception as e:
             logging.error(f"Delete Response Error: {e}")
 
-    async def edit_response(self, interaction_token: str, application_id: str, text: str):
-        """
-        Edits the original deferred interaction response (replaces 'is thinking...').
-        """
-        if not interaction_token or not application_id:
-            return
-
+    async def edit_response(self, interaction_token: str, application_id: str, text: str, clear_buttons: bool = False):
+        if not interaction_token or not application_id: return
         url = f"https://discord.com/api/v10/webhooks/{application_id}/{interaction_token}/messages/@original"
-        
         try:
             async with aiohttp.ClientSession() as session:
                 payload = {"content": text}
+                if clear_buttons:
+                    payload["components"] = []
                 headers = {"Content-Type": "application/json"}
                 
                 async with session.patch(url, json=payload, headers=headers) as resp:
@@ -153,39 +159,23 @@ class DiscordRESTInterface:
             logging.error(f"Edit Response Error: {e}")
 
     async def send_followup(self, interaction_token: str, application_id: str, text: str):
-        """
-        Sends a follow-up message using the Interaction Webhook.
-        """
-        if not interaction_token or not application_id:
-            logging.warning("Cannot send followup: Missing token or app_id")
-            return
-
+        if not interaction_token or not application_id: return
         url = f"https://discord.com/api/v10/webhooks/{application_id}/{interaction_token}"
-        
         try:
             async with aiohttp.ClientSession() as session:
                 payload = {"content": text}
-                # No special headers needed for webhooks usually, but Content-Type is good
                 headers = {"Content-Type": "application/json"}
-                
                 async with session.post(url, json=payload, headers=headers) as resp:
-                    if resp.status == 404:
-                        logging.warning(f"Followup 404: Interaction likely timed out (>15m) or invalid token.")
-                    elif resp.status >= 400:
+                    if resp.status >= 400:
                         logging.error(f"Followup Failed {resp.status}: {await resp.text()}")
         except Exception as e:
             logging.error(f"Followup Error: {e}")
 
     async def check_and_warn_admin(self, guild_id: str, user_id: str, channel_id: str):
-        """
-        Checks if a user is an Admin and sends the Fair Play warning if so.
-        Centralized here to avoid circular imports between commands.py and ingress.py.
-        """
         if not guild_id: return
         try:
             guild = await self.client.fetch_guild(int(guild_id))
             member = await guild.fetch_member(int(user_id))
-            
             if member.guild_permissions.administrator:
                 await self.send_message(channel_id, presentation.ADMIN_WARNING)
         except Exception as e:
@@ -196,7 +186,6 @@ class DiscordRESTInterface:
             channel = await self.client.fetch_channel(int(channel_id))
             guild = await self.client.fetch_guild(int(guild_id))
             
-            # Update permissions
             overwrite = channel.overwrites_for(guild.default_role)
             overwrite.read_messages = True
             await channel.set_permissions(guild.default_role, overwrite=overwrite)
@@ -205,13 +194,9 @@ class DiscordRESTInterface:
             logging.error(f"Unlock Failed: {e}")
 
     async def lock_channels(self, game_id: str, interface_data: dict):
-        """
-        End Game Logic: Show the 'Delete Channels' button.
-        """
         game = await persistence.db.get_game_by_id(game_id)
         if not game: return
 
-        # 1. Announce Costs
         report = presentation.build_cost_report(
             game_id=game.id,
             input_tokens=game.usage_input_tokens,
@@ -219,45 +204,38 @@ class DiscordRESTInterface:
         )
         await self.announce_state(report)
 
-        # 2. Show Button in Lobby
-        main_chan_id = interface_data.get('main_channel_id')
-        if main_chan_id:
+        # Show Button in Aux-Comm instead of Lobby Main (since Main is now shared dispatch)
+        aux_chan_id = interface_data.get('channels', {}).get('aux-comm')
+        if aux_chan_id:
             try:
-                channel = await self.client.fetch_channel(int(main_chan_id))
-                
+                channel = await self.client.fetch_channel(int(aux_chan_id))
                 embed = discord.Embed(
                     title=presentation.EMBED_TITLE_ENDED,
                     description=presentation.EMBED_DESC_ENDED,
                     color=0x992D22
                 )
-                
                 view = discord.ui.View()
                 btn = discord.ui.Button(
                     label=presentation.BTN_DELETE_CHANNELS, 
                     style=discord.ButtonStyle.danger, 
-                    custom_id="end_delete_btn"
+                    custom_id=f"end_delete_btn_{game_id}"
                 )
                 view.add_item(btn)
-                
                 await channel.send(embed=embed, view=view)
             except Exception as e:
                 logging.error(f"Lock Channels Failed: {e}")
 
     async def execute_channel_ops(self, game_id: str, ops: list):
         if not ops: return
-        
-        # We need the guild to perform creates
         game = await persistence.db.get_game_by_id(game_id)
         if not game or not game.interface.guild_id: return
 
         try:
             guild = await self.client.fetch_guild(int(game.interface.guild_id))
-            
-            # FIX: Explicitly fetch the bot member because `guild.me` is None in REST mode
             try:
                 bot_member = await guild.fetch_member(self.client.user.id)
             except Exception as e:
-                logging.error(f"Failed to fetch bot member (Permissions check failed): {e}")
+                logging.error(f"Failed to fetch bot member: {e}")
                 return
 
             category = None
@@ -265,10 +243,11 @@ class DiscordRESTInterface:
                 try:
                     category = await self.client.fetch_channel(int(game.interface.category_id))
                 except:
-                    pass # Category might be gone
+                    pass
 
             interface = game.interface
             changes = False
+            callsign = interface.callsign or "UNK"
 
             for op in ops:
                 if op['op'] == 'create':
@@ -276,24 +255,22 @@ class DiscordRESTInterface:
                         guild.default_role: discord.PermissionOverwrite(read_messages=False),
                         bot_member: discord.PermissionOverwrite(read_messages=True, send_messages=True)
                     }
-                    
                     if op.get('audience') == 'public':
                          overwrites[guild.default_role] = discord.PermissionOverwrite(read_messages=True)
                     elif op.get('audience') == 'private':
                         user_id = op.get('user_id')
                         if user_id:
-                            # We need to fetch the member to set permissions
                             try:
                                 member = await guild.fetch_member(int(user_id))
                                 overwrites[member] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
                             except:
                                 logging.warning(f"Member {user_id} not found for private channel")
 
+                    # Prefix channel name with Callsign
                     raw_name = op.get('name', presentation.CHANNEL_UNKNOWN)
-                    c_name = presentation.safe_channel_name(raw_name)
+                    c_name = presentation.safe_channel_name(f"{callsign}-{raw_name}")
                     
                     new_chan = await guild.create_text_channel(c_name, category=category, overwrites=overwrites)
-
                     if op.get('init_msg'): await new_chan.send(op['init_msg'])
                     
                     key = op.get('key') 
@@ -301,7 +278,6 @@ class DiscordRESTInterface:
                     if str(new_chan.id) not in interface.listener_ids:
                         interface.listener_ids.append(str(new_chan.id))
                     
-                    # UPDATE CACHE & INDEX
                     await persistence.db.register_channel_association(str(new_chan.id), game_id)
                     changes = True
                 
@@ -319,13 +295,9 @@ class DiscordRESTInterface:
 
     async def cleanup_game_channels(self, guild_id_str: str, interface_data: dict):
         if not interface_data: return
-        
-        # Note: interface_data is a dict here
-        cat_id = interface_data.get('category_id')
-        
         try:
-            # We iterate known channels from the interface to delete them
-            known_channels = [interface_data.get('main_channel_id')] + list(interface_data.get('channels', {}).values())
+            # We ONLY delete the generated game channels, NOT the main dispatch channel or category
+            known_channels = list(interface_data.get('channels', {}).values())
             
             for cid in known_channels:
                 if cid:
@@ -334,18 +306,9 @@ class DiscordRESTInterface:
                         await c.delete()
                         await persistence.db.remove_channel_association(cid)
                     except discord.NotFound:
-                        pass # Already deleted
+                        pass
                     except Exception as e:
                         logging.warning(f"Failed to delete channel {cid}: {e}")
-
-            # 2. Delete Category
-            if cat_id:
-                try:
-                    cat = await self.client.fetch_channel(int(cat_id))
-                    await cat.delete()
-                except:
-                    pass
-                    
         except Exception as e:
             logging.error(f"Cleanup failed: {e}")
 

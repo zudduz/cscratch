@@ -279,48 +279,30 @@ class DiscordRESTInterface:
 
             for op in ops:
                 if op['op'] == 'create':
-                    # We avoid deep cloning the category overwrites here to prevent 403 Forbidden
-                    # errors. If the category has overwrites granting permissions the bot lacks 
-                    # (e.g., admin giving another role Manage Webhooks), the bot cannot clone them.
-                    overwrites = {
-                        guild.default_role: discord.PermissionOverwrite(read_messages=False)
-                    }
-                    
-                    # 2. Audience rules
-                    if op.get('audience') == 'public':
-                         overwrites[guild.default_role].read_messages = True
-                    elif op.get('audience') == 'private':
-                        user_id = op.get('user_id')
-                        if user_id:
-                            try:
-                                member = await guild.fetch_member(int(user_id))
-                                overwrites[member] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
-                            except:
-                                logging.warning(f"Member {user_id} not found for private channel")
-
-                    # 3. Explicit dynamic bot fallback
-                    # This guarantees the bot retains full control over the channel regardless 
-                    # of how the discord admins configured its authority (global vs category roles).
-                    bot_perms = category.permissions_for(bot_member) if category else bot_member.guild_permissions
-                    bot_overwrite = discord.PermissionOverwrite()
-                    
-                    essential_perms = [
-                        'read_messages', 'send_messages', 'manage_channels', 'manage_roles',
-                        'manage_messages', 'embed_links', 'attach_files', 'read_message_history',
-                        'add_reactions', 'use_external_emojis'
-                    ]
-                    
-                    for perm in essential_perms:
-                        if getattr(bot_perms, perm, False):
-                            setattr(bot_overwrite, perm, True)
-                            
-                    overwrites[bot_member] = bot_overwrite
-
                     # Prefix channel name with Callsign
                     raw_name = op.get('name', presentation.CHANNEL_UNKNOWN)
                     c_name = presentation.safe_channel_name(f"{callsign}-{raw_name}")
                     
-                    new_chan = await guild.create_text_channel(c_name, category=category, overwrites=overwrites)
+                    # 1. Create channel with pure inheritance. 
+                    # This avoids 403 errors by completely bypassing the overwrites payload validation.
+                    new_chan = await guild.create_text_channel(c_name, category=category)
+                    
+                    # 2. Layer our specific privacy requirements on top of the inherited permissions.
+                    try:
+                        if op.get('audience') == 'public':
+                             await new_chan.set_permissions(guild.default_role, read_messages=True)
+                        elif op.get('audience') == 'private':
+                            await new_chan.set_permissions(guild.default_role, read_messages=False)
+                            user_id = op.get('user_id')
+                            if user_id:
+                                try:
+                                    member = await guild.fetch_member(int(user_id))
+                                    await new_chan.set_permissions(member, read_messages=True, send_messages=True)
+                                except:
+                                    logging.warning(f"Member {user_id} not found for private channel")
+                    except Exception as perm_error:
+                        logging.error(f"Failed to apply privacy overwrites to {c_name}: {perm_error}")
+
                     if op.get('init_msg'): await new_chan.send(op['init_msg'])
                     
                     key = op.get('key') 

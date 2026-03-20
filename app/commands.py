@@ -10,7 +10,7 @@ from . import config
 import importlib
 
 # --- REGISTRY ---
-# Maps command keys (e.g. "start", "admin.gift") to handler functions
+# Maps command keys (e.g. "lobby", "admin.gift") to handler functions
 REGISTRY: Dict[str, Callable[[Dict[str, Any], Dict[str, Any]], Awaitable[None]]] = {}
 
 UI_MAP = {
@@ -46,8 +46,9 @@ def slash_command(name: str):
 
 # --- HANDLERS ---
 
-@slash_command("start")
-async def handle_start(ctx: Dict[str, Any], params: Dict[str, Any]):
+@slash_command("cscratch.lobby")
+@slash_command("lobby")
+async def handle_lobby(ctx: Dict[str, Any], params: Dict[str, Any]):
     cartridge = params.get("cartridge", "foster-protocol")
     
     try:
@@ -65,15 +66,16 @@ async def handle_start(ctx: Dict[str, Any], params: Dict[str, Any]):
             ctx["application_id"]
         )
     except Exception as e:
-        logging.error(f"Start CMD Failed: {e}")
+        logging.error(f"Lobby CMD Failed: {e}")
         await discord_client.client.edit_response(
             ctx["interaction_token"], 
             ctx["application_id"], 
             presentation.CMD_FAILED.format(error=str(e))
         )
 
-@slash_command("end")
-async def handle_end(ctx: Dict[str, Any], params: Dict[str, Any]):
+@slash_command("cscratch.kill")
+@slash_command("kill")
+async def handle_kill(ctx: Dict[str, Any], params: Dict[str, Any]):
     channel_id = ctx["channel_id"]
     token = ctx["interaction_token"]
     app_id = ctx["application_id"]

@@ -15,8 +15,8 @@ CHANNEL_UNKNOWN = "unknown"
 # Commands
 CMD_VERSION_DESC = "Check container"
 CMD_GRP_SCRATCH = "Engine Controls"
-CMD_START_DESC = "Open Lobby"
-CMD_END_DESC = "Cleanup"
+CMD_LOBBY_DESC = "Open Lobby"
+CMD_KILL_DESC = "Cleanup"
 
 # Lobby & Admin
 ADMIN_WARNING = (

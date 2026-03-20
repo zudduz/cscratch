@@ -57,20 +57,37 @@ class DiscordRESTInterface:
     
     async def create_lobby(self, game_id: str, cartridge: str, guild_id: str, host_id: str, origin_channel_id: str):
         try:
+            # 1. Fetch full guild (includes roles) for correct permission evaluation
             guild = await self.client.fetch_guild(int(guild_id))
             origin_channel = await self.client.fetch_channel(int(origin_channel_id))
             
             # BYOC (Bring Your Own Category) Enforcment
-            if not origin_channel.category_id:
+            if not getattr(origin_channel, 'category_id', None):
                 raise ValueError("NO_CATEGORY")
                 
-            # Verify bot permissions on the category
-            category = await self.client.fetch_channel(origin_channel.category_id)
+            # 2. Fetch channels BOUND to this hydrated guild so permissions map correctly
+            channels = await guild.fetch_channels()
+            category = next((c for c in channels if c.id == origin_channel.category_id), None)
+            
+            # Fallback direct fetch with manual guild bind if not found in list
+            if not category:
+                category = await self.client.fetch_channel(origin_channel.category_id)
+                category.guild = guild
+                
             bot_member = await guild.fetch_member(self.client.user.id)
             perms = category.permissions_for(bot_member)
             
-            if not (perms.read_messages and perms.send_messages and perms.manage_channels):
-                raise ValueError("MISSING_BOT_PERMS")
+            # 3. Dynamic Permission Check
+            required_perms = {
+                "View Channels": perms.read_messages,
+                "Send Messages": perms.send_messages,
+                "Manage Channels": perms.manage_channels,
+                "Manage Roles (Permissions)": perms.manage_roles
+            }
+            
+            missing = [name for name, has_perm in required_perms.items() if not has_perm]
+            if missing:
+                raise ValueError(f"MISSING_BOT_PERMS:{', '.join(missing)}")
                 
             callsign = "".join(random.choices(string.ascii_uppercase, k=3))
             

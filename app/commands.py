@@ -57,21 +57,23 @@ async def handle_lobby(ctx: Dict[str, Any], params: Dict[str, Any]):
             ctx["application_id"]
         )
     except ValueError as ve:
-        if str(ve) == "NO_CATEGORY":
+        err_str = str(ve)
+        if err_str == "NO_CATEGORY":
             await discord_client.client.edit_response(
                 ctx["interaction_token"], 
                 ctx["application_id"], 
                 presentation.ERR_NO_CATEGORY
             )
-        elif str(ve) == "MISSING_BOT_PERMS":
+        elif err_str.startswith("MISSING_BOT_PERMS"):
+            missing = err_str.split(":", 1)[1] if ":" in err_str else "Unknown"
             await discord_client.client.edit_response(
                 ctx["interaction_token"], 
                 ctx["application_id"], 
-                presentation.ERR_MISSING_BOT_PERMS
+                presentation.ERR_MISSING_BOT_PERMS.format(missing=missing)
             )
         else:
             await discord_client.client.edit_response(
-                ctx["interaction_token"], ctx["application_id"], presentation.CMD_FAILED.format(error=str(ve))
+                ctx["interaction_token"], ctx["application_id"], presentation.CMD_FAILED.format(error=err_str)
             )
     except Exception as e:
         logging.error(f"Lobby CMD Failed: {e}")

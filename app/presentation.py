@@ -19,12 +19,6 @@ CMD_LOBBY_DESC = "Open Lobby"
 CMD_KILL_DESC = "Cleanup"
 
 # Lobby & Admin
-ADMIN_WARNING = (
-    "**Fair play notice**\n"
-    "To the Administrator: You have permissions to view all private channels.\n"
-    "**FOR A FAIR GAME:** Please **mute** or **collapse** the private channels of other players.\n"
-)
-
 LOBBY_DESC = "Click to join"
 MSG_LOBBY_INSTRUCTIONS = 'Send "/cscratch guide" for how to play the game'
 CMD_FAILED = "Failed: {error}"
@@ -36,7 +30,6 @@ ERR_NOT_HOST = "Denied\nHost only"
 ERR_DENIED_ADMIN = "Denied\nAdmin access required"
 ERR_NO_CATEGORY = "You must run this command inside a designated game category."
 ERR_CATEGORY_FULL = "The server's game category is full (Discord 50-channel limit). Please wait for a game to end."
-MSG_TEARDOWN = "Teardown"
 ERR_DOC_NOT_FOUND = "{doc_name} not found for this cartridge"
 ERR_DOC_LOAD_FAILED = "Failed to load {doc_name}: {error}"
 
@@ -45,16 +38,32 @@ BTN_JOIN = "Join"
 BTN_START = "Start"
 BTN_DELETE_CHANNELS = "Delete Channels"
 
-EMBED_TITLE_ENDED = "Game Complete"
 EMBED_DESC_ENDED = "The host may now delete the channels"
 
 ERR_NOT_HOST_START = "Only the host may start the game"
 ERR_GENERIC = "Error"
 MSG_STARTING = "Starting game..."
-GAME_ALREADY_STARTED = "Game already started"
-LOBBY_FULL = "Lobby is full"
 
 # --- LOGIC & FORMATTERS ---
+
+def format_admin_warning(admin_name: str) -> str:
+    return (
+        f"**Fair play notice for {admin_name}**\n"
+        "To the Administrator: You have permissions to view all private channels.\n"
+        "**FOR A FAIR GAME:** Please **mute** or **collapse** the private channels of other players.\n"
+    )
+
+def format_teardown(lobby_name: str) -> str:
+    return f"Teardown initiated for {lobby_name}"
+
+def format_lobby_full(lobby_name: str) -> str:
+    return f"{lobby_name} is full"
+
+def format_game_already_started(lobby_name: str) -> str:
+    return f"{lobby_name} has already started"
+
+def format_game_complete_title(lobby_name: str) -> str:
+    return f"Game Complete: {lobby_name}"
 
 def safe_channel_name(name: str) -> str:
     """Sanitizes a string for use as a Discord channel name."""
@@ -74,13 +83,14 @@ def format_announcement(message: str) -> str:
 def format_lobby_title(cartridge_name: str, callsign: str) -> str:
     return f"Lobby [{callsign}]: {cartridge_name}"
 
-def format_game_started(callsign: str) -> str:
-    return f"**Game Started!**\nYour callsign is **{callsign}**.\nProceed to your newly created channels."
+def format_game_started(callsign: str, cartridge: str) -> str:
+    lobby_name = format_lobby_title(cartridge, callsign)
+    return f"**Game Started for {lobby_name}!**\nYour callsign is **{callsign}**.\nProceed to your newly created channels."
 
-def format_player_joined(name: str, count: int, max_p: int, cost: int) -> str:
-    return f"**{name}** joined! ({count}/{max_p})\nStart button will cost {cost} scratch"
+def format_player_joined(name: str, count: int, max_p: int, cost: int, lobby_name: str) -> str:
+    return f"**{name}** joined {lobby_name}! ({count}/{max_p})\nStart button will cost {cost} scratch"
 
-def build_cost_report(game_id: str, input_tokens: int, output_tokens: int) -> str:
+def build_cost_report(game_id: str, callsign: str, input_tokens: int, output_tokens: int) -> str:
     """Calculates costs (Gemini 2.5 Flash Pricing) and returns a formatted report."""
     COST_PER_1M_INPUT = 0.30
     COST_PER_1M_OUTPUT = 2.50
@@ -90,7 +100,7 @@ def build_cost_report(game_id: str, input_tokens: int, output_tokens: int) -> st
     total_cost = input_cost + output_cost
     
     return (
-        f"**GAME {game_id} COST REPORT**\n"
+        f"**GAME {game_id} [{callsign}] COST REPORT**\n"
         f"Input: {input_tokens} tok (${input_cost:.4f})\n"
         f"Output: {output_tokens} tok (${output_cost:.4f})\n"
         f"**TOTAL: ${total_cost:.4f}**"

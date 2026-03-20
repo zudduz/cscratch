@@ -68,7 +68,7 @@ class GameEngine:
     async def join_game(self, game_id: str, user_id: str, user_name: str) -> dict:
         """
         Attempts to add a player to the game.
-        Returns a dict containing status, player_count, max, and current_cost.
+        Returns a dict containing status, player_count, max, cost, cartridge, and callsign.
         """
         game = await persistence.db.get_game_by_id(game_id)
         if not game: 
@@ -88,12 +88,19 @@ class GameEngine:
                 "status": "joined", 
                 "player_count": current_count, 
                 "cost": cost, 
-                "max": max_players
+                "max": max_players,
+                "cartridge": game.story_id,
+                "callsign": game.interface.callsign
             }
 
         # Check limit
         if len(game.players) >= max_players:
-             return {"status": "full", "max": max_players}
+             return {
+                 "status": "full", 
+                 "max": max_players,
+                 "cartridge": game.story_id,
+                 "callsign": game.interface.callsign
+             }
 
         player = LobbyPlayer(id=user_id, name=user_name)
         await persistence.db.add_player_to_game(game_id, player)
@@ -106,7 +113,9 @@ class GameEngine:
             "status": "joined", 
             "player_count": current_count, 
             "cost": cost, 
-            "max": max_players
+            "max": max_players,
+            "cartridge": game.story_id,
+            "callsign": game.interface.callsign
         }
 
     def _schedule_cloud_task(self, game_id: str, cartridge_id: str, operation: str, data: dict = None, delay: int = 0):

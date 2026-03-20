@@ -96,7 +96,8 @@ async def handle_kill(ctx: Dict[str, Any], params: Dict[str, Any]):
         await discord_client.client.edit_response(token, app_id, presentation.ERR_NOT_HOST)
         return
         
-    await discord_client.client.edit_response(token, app_id, presentation.MSG_TEARDOWN)
+    lobby_name = presentation.format_lobby_title(game.story_id, game.interface.callsign or "UNK")
+    await discord_client.client.edit_response(token, app_id, presentation.format_teardown(lobby_name))
     
     await discord_client.client.cleanup_game_channels(ctx["guild_id"], game.interface.model_dump())
     await game_engine.engine.end_game(game.id)

@@ -177,7 +177,7 @@ class DiscordRESTInterface:
             guild = await self.client.fetch_guild(int(guild_id))
             member = await guild.fetch_member(int(user_id))
             if member.guild_permissions.administrator:
-                await self.send_message(channel_id, presentation.ADMIN_WARNING)
+                await self.send_message(channel_id, presentation.format_admin_warning(member.display_name))
         except Exception as e:
             logging.warning(f"Failed to perform admin check: {e}")
 
@@ -197,8 +197,10 @@ class DiscordRESTInterface:
         game = await persistence.db.get_game_by_id(game_id)
         if not game: return
 
+        callsign = game.interface.callsign or "UNK"
         report = presentation.build_cost_report(
             game_id=game.id,
+            callsign=callsign,
             input_tokens=game.usage_input_tokens,
             output_tokens=game.usage_output_tokens
         )
@@ -209,8 +211,9 @@ class DiscordRESTInterface:
         if aux_chan_id:
             try:
                 channel = await self.client.fetch_channel(int(aux_chan_id))
+                lobby_name = presentation.format_lobby_title(game.story_id, callsign)
                 embed = discord.Embed(
-                    title=presentation.EMBED_TITLE_ENDED,
+                    title=presentation.format_game_complete_title(lobby_name),
                     description=presentation.EMBED_DESC_ENDED,
                     color=0x992D22
                 )

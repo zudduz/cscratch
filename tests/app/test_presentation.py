@@ -38,14 +38,16 @@ def test_format_announcement_default():
 def test_build_cost_report():
     """Verify the math for the cost report (Gemini 2.5 Flash pricing)."""
     # 1M Input ($0.30), 1M Output ($2.50)
-    report = presentation.build_cost_report("game_1", 1_000_000, 1_000_000)
+    report = presentation.build_cost_report("game_1", "ABC", 1_000_000, 1_000_000)
     
     # Total should be $2.80
     assert "$0.3000" in report
     assert "$2.5000" in report
     assert "**TOTAL: $2.8000**" in report
+    assert "[ABC]" in report
 
 def test_build_cost_report_zero():
     """Verify zero usage results in zero cost."""
-    report = presentation.build_cost_report("game_0", 0, 0)
+    report = presentation.build_cost_report("game_0", "XYZ", 0, 0)
     assert "**TOTAL: $0.0000**" in report
+    assert "[XYZ]" in report

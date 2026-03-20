@@ -101,15 +101,21 @@ async def handle_interaction(payload: InteractionPayload):
         game_id = payload.custom_id.replace("join_btn_", "")
         result = await game_engine.engine.join_game(game_id, payload.user_id, payload.user_name)
         
+        lobby_name = presentation.format_lobby_title(
+            result.get("cartridge", "Unknown"), 
+            result.get("callsign", "UNK")
+        )
+        
         if result.get("status") == "full":
-            await discord_interface.send_followup(payload.interaction_token, payload.application_id, presentation.LOBBY_FULL)
+            await discord_interface.send_followup(payload.interaction_token, payload.application_id, presentation.format_lobby_full(lobby_name))
         
         elif result.get("status") == "joined":
             msg = presentation.format_player_joined(
                 payload.user_name, 
                 result.get("player_count"), 
                 result.get("max"), 
-                result.get("cost")
+                result.get("cost"),
+                lobby_name
             )
             await discord_interface.send_message(payload.channel_id, msg)
             await discord_interface.check_and_warn_admin(payload.guild_id, payload.user_id, payload.channel_id)
@@ -127,7 +133,8 @@ async def handle_interaction(payload: InteractionPayload):
             if game.host_id != payload.user_id:
                 return {"status": "denied"}
                 
-            await discord_interface.send_message(payload.channel_id, presentation.MSG_TEARDOWN)
+            lobby_name = presentation.format_lobby_title(game.story_id, game.interface.callsign or "UNK")
+            await discord_interface.send_message(payload.channel_id, presentation.format_teardown(lobby_name))
             await discord_interface.cleanup_game_channels(payload.guild_id, game.interface.model_dump())
             return {"status": "deleted"}
 
@@ -137,6 +144,7 @@ async def handle_interaction(payload: InteractionPayload):
 
 async def _trigger_launch(game_id, user_id, channel_id, token, app_id):
     game = await persistence.db.get_game_by_id(game_id)
+    lobby_name = presentation.format_lobby_title(game.story_id, game.interface.callsign or "UNK")
     
     # 1. Ephemeral Failure for Non-Hosts
     if game.host_id != user_id:
@@ -156,7 +164,7 @@ async def _trigger_launch(game_id, user_id, channel_id, token, app_id):
     
     # ALREADY STARTED (Race Condition Handling)
     if res.get("error") == "already_started":
-         await discord_interface.edit_response(token, app_id, presentation.GAME_ALREADY_STARTED, clear_buttons=True)
+         await discord_interface.edit_response(token, app_id, presentation.format_game_already_started(lobby_name), clear_buttons=True)
          return {"status": "ignored", "reason": "already_started"}
     
     # NOT ENOUGH MONEY
@@ -180,6 +188,7 @@ async def _trigger_launch(game_id, user_id, channel_id, token, app_id):
     
     # Final state: Overwrite the lobby embed with success
     callsign = game.interface.callsign or "UNK"
-    await discord_interface.edit_response(token, app_id, presentation.format_game_started(callsign), clear_buttons=True)
+    cartridge = game.story_id
+    await discord_interface.edit_response(token, app_id, presentation.format_game_started(callsign, cartridge), clear_buttons=True)
     
     return {"status": "launched"}

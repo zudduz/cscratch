@@ -205,7 +205,7 @@ class ChargeTool(BaseTool):
             context.game_data.station.pending_deactivation.remove(context.actor.id)
             return ToolExecutionResult(
                 True, 
-                f"Disassembly sequence initiated for {context.actor.id}. UNIT DESTROYED.", 
+                f"Disassembly sequence initiated for {context.actor.id}. Unit Destroyed.", 
                 cost=0, 
                 event_type="disassembly"
             )

@@ -95,7 +95,7 @@ def test_tool_charge_success(game_state):
     assert result.success is True
     assert drone.battery == 100
     assert game_state.fuel == initial_fuel - 1
-    assert "unit_01" in result.message
+    assert "recharged" in result.message
 
 def test_tool_charge_disassembly(game_state):
     drone = game_state.drones["unit_01"]
@@ -107,7 +107,7 @@ def test_tool_charge_disassembly(game_state):
     result = execute_tool("charge", {}, "unit_01", game_state)
     
     assert result.success is True
-    assert "DESTROYED" in result.message
+    assert "Destroyed" in result.message
     assert "unit_01" in result.message
     assert drone.destroyed is True
     assert drone.battery == 0

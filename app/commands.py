@@ -63,6 +63,12 @@ async def handle_lobby(ctx: Dict[str, Any], params: Dict[str, Any]):
                 ctx["application_id"], 
                 presentation.ERR_NO_CATEGORY
             )
+        elif str(ve) == "MISSING_BOT_PERMS":
+            await discord_client.client.edit_response(
+                ctx["interaction_token"], 
+                ctx["application_id"], 
+                presentation.ERR_MISSING_BOT_PERMS
+            )
         else:
             await discord_client.client.edit_response(
                 ctx["interaction_token"], ctx["application_id"], presentation.CMD_FAILED.format(error=str(ve))

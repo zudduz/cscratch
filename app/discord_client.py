@@ -64,6 +64,14 @@ class DiscordRESTInterface:
             if not origin_channel.category_id:
                 raise ValueError("NO_CATEGORY")
                 
+            # Verify bot permissions on the category
+            category = await self.client.fetch_channel(origin_channel.category_id)
+            bot_member = await guild.fetch_member(self.client.user.id)
+            perms = category.permissions_for(bot_member)
+            
+            if not (perms.read_messages and perms.send_messages and perms.manage_channels):
+                raise ValueError("MISSING_BOT_PERMS")
+                
             callsign = "".join(random.choices(string.ascii_uppercase, k=3))
             
             interface_data = {

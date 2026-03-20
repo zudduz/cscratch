@@ -211,7 +211,7 @@ class ChargeTool(BaseTool):
             )
         
         context.actor.battery = 100
-        return ToolExecutionResult(True, f"Unit {context.actor.id} recharged.", cost=0)
+        return ToolExecutionResult(True, f"Unit recharged.", cost=0)
 
 class BlindChargeTool(ChargeTool):
     usage = "blind_charge()"

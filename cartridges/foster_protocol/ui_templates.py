@@ -114,10 +114,11 @@ The game is lost if there are no active drones.
         
         msg = (
             f"*{thought}*\n"
-            f">> `{result.message}`" 
+            f">> `{result.message}`\n" 
             f"**[H{hour}] {role_icon} {display_id}** {status_str}\n"
         )
         await ctx.send(cls.CHANNEL_BLACKBOX, msg)
+        return msg
 
     @classmethod
     async def report_public_event(cls, ctx, hour: int, message: str):

@@ -17,7 +17,7 @@ class FosterProtocol:
         default_state = Caisson()
         self.meta = {
             "name": "The Foster Protocol",
-            "version": "2.49",
+            "version": default_state.version,
             **default_state.model_dump()
         }
         
@@ -422,7 +422,8 @@ class FosterProtocol:
         if result.event_type == "disassembly":
             await self._send_public_eulogy(ctx, tools, drone, game_data)
 
-        await FosterPresenter.report_blackbox_event(ctx, hour, drone, result, thought)
+        bb_msg = await FosterPresenter.report_blackbox_event(ctx, hour, drone, result, thought)
+        game_data.blackbox_logs.append(bb_msg)
         drone.daily_memory.append(f"[Hour {hour}] {result.message}")
         
         # Guard against case-sensitivity issues from tools

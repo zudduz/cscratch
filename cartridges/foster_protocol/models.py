@@ -47,7 +47,7 @@ class Drone(BaseModel):
         return self.status == "active" and self.location_id == "stasis_bay"
 
 class Caisson(BaseModel):
-    version: str = "2.44"
+    version: str = "2.45"
     oxygen: int = GameConfig.INITIAL_OXYGEN
     
     fuel: int = GameConfig.INITIAL_FUEL
@@ -66,6 +66,7 @@ class Caisson(BaseModel):
     players: Dict[str, Player] = Field(default_factory=dict)
     station: ChargingStation = Field(default_factory=ChargingStation)
     ship_logs: List[str] = Field(default_factory=list)
+    blackbox_logs: List[str] = Field(default_factory=list)
 
     # Pydantic V2 Config
     model_config = ConfigDict(populate_by_name=True)

@@ -305,14 +305,19 @@ class DiscordRESTInterface:
                         if op.get('audience') == 'public':
                              await new_chan.set_permissions(guild.default_role, read_messages=True)
                         elif op.get('audience') == 'private':
-                            await new_chan.set_permissions(guild.default_role, read_messages=False)
+                            # Atomic edit to prevent partial lock-outs
+                            overwrites = {
+                                guild.default_role: discord.PermissionOverwrite(read_messages=False),
+                                bot_member: discord.PermissionOverwrite(read_messages=True, send_messages=True)
+                            }
                             user_id = op.get('user_id')
                             if user_id:
-                                try:
-                                    member = await guild.fetch_member(int(user_id))
-                                    await new_chan.set_permissions(member, read_messages=True, send_messages=True)
-                                except:
-                                    logging.warning(f"Member {user_id} not found for private channel")
+                                # Use discord.Object to bypass the API fetch completely
+                                target_user = discord.Object(id=int(user_id))
+                                overwrites[target_user] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
+                                
+                            await new_chan.edit(overwrites=overwrites)
+                            
                     except Exception as perm_error:
                         logging.error(f"Failed to apply privacy overwrites to {c_name}: {perm_error}")
 

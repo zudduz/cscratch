@@ -308,12 +308,18 @@ class DiscordRESTInterface:
                             # Atomic edit to prevent partial lock-outs
                             overwrites = {
                                 guild.default_role: discord.PermissionOverwrite(read_messages=False),
-                                bot_member: discord.PermissionOverwrite(read_messages=True, send_messages=True)
+                                bot_member: discord.PermissionOverwrite(
+                                    read_messages=True, 
+                                    send_messages=True,
+                                    manage_channels=True,
+                                    manage_roles=True
+                                )
                             }
                             user_id = op.get('user_id')
                             if user_id:
                                 # Use discord.Object to bypass the API fetch completely
-                                target_user = discord.Object(id=int(user_id))
+                                # Specifying type=discord.Member prevents ValueError in discord.py 2.0+
+                                target_user = discord.Object(id=int(user_id), type=discord.Member)
                                 overwrites[target_user] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
                                 
                             await new_chan.edit(overwrites=overwrites)

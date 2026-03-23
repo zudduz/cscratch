@@ -302,27 +302,34 @@ class DiscordRESTInterface:
                     
                     # 2. Layer our specific privacy requirements on top of the inherited permissions.
                     try:
+                        # Always grant the bot explicit control to guarantee it can delete the channel later
+                        overwrites = {
+                            bot_member: discord.PermissionOverwrite(
+                                read_messages=True, 
+                                send_messages=True,
+                                manage_channels=True,
+                                manage_roles=True
+                            )
+                        }
+
                         if op.get('audience') == 'public':
-                             await new_chan.set_permissions(guild.default_role, read_messages=True)
-                        elif op.get('audience') == 'private':
-                            # Atomic edit to prevent partial lock-outs
-                            overwrites = {
-                                guild.default_role: discord.PermissionOverwrite(read_messages=False),
-                                bot_member: discord.PermissionOverwrite(
-                                    read_messages=True, 
-                                    send_messages=True,
-                                    manage_channels=True,
-                                    manage_roles=True
-                                )
-                            }
-                            user_id = op.get('user_id')
-                            if user_id:
-                                # Use discord.Object to bypass the API fetch completely
-                                # Specifying type=discord.Member prevents ValueError in discord.py 2.0+
-                                target_user = discord.Object(id=int(user_id), type=discord.Member)
-                                overwrites[target_user] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
-                                
-                            await new_chan.edit(overwrites=overwrites)
+                             overwrites[guild.default_role] = discord.PermissionOverwrite(read_messages=True)
+                        elif op.get('audience') in ['private', 'hidden']:
+                             overwrites[guild.default_role] = discord.PermissionOverwrite(read_messages=False)
+                             
+                             if op.get('audience') == 'private':
+                                 user_ids = list(op.get('user_ids', []))
+                                 if op.get('user_id') and op.get('user_id') not in user_ids:
+                                     user_ids.append(op.get('user_id'))
+                                     
+                                 for uid in user_ids:
+                                     # Use discord.Object to bypass the API fetch completely
+                                     # Specifying type=discord.Member prevents ValueError in discord.py 2.0+
+                                     target_user = discord.Object(id=int(uid), type=discord.Member)
+                                     overwrites[target_user] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
+                                     
+                        # Apply all overwrites atomically
+                        await new_chan.edit(overwrites=overwrites)
                             
                     except Exception as perm_error:
                         logging.error(f"Failed to apply privacy overwrites to {c_name}: {perm_error}")

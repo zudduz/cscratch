@@ -75,8 +75,16 @@ The game is lost if there are no active drones.
     @classmethod
     async def list_channel_ops(cls, players: List[dict], saboteur_index: int, guild_id: str = None) -> List[dict]:
         """Generates the initial channel creation operations."""
+        participant_ids = [p['id'] for p in players]
+        
         ops = [
-            {"op": "create", "key": cls.CHANNEL_AUX, "name": "aux-comm", "audience": "public"}
+            {
+                "op": "create", 
+                "key": cls.CHANNEL_AUX, 
+                "name": "aux-comm", 
+                "audience": "private", 
+                "user_ids": participant_ids
+            }
         ]
         
         # Only create the black box log channel on the cscratch-dev server

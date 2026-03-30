@@ -32,7 +32,7 @@ steps:
   - '--platform'
   - 'managed'
   - '--allow-unauthenticated'
-  - '--min-instances=1'
+  - '--min-instances=0'
   - '--set-env-vars'
   - "ADMIN_USER_IDS=545309591827906587,\
     TASK_QUEUE_NAME=cscratch,\

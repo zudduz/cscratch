@@ -2,7 +2,7 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-import nest_asyncio
+
 from fastapi import FastAPI, Response, status
 
 from .discord_client import client as discord_client
@@ -17,8 +17,6 @@ from .routers import ops
 
 # 1. SETUP STRUCTURED LOGGING IMMEDIATELY
 setup_logging()
-
-nest_asyncio.apply()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

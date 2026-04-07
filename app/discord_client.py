@@ -12,25 +12,7 @@ from . import state
 from .models import GameInterface
 from .state import sys as system_state
 
-# --- LEGACY CHICKEN BOT (WEBSOCKET) ---
-class ChickenBot(commands.Bot):
-    """
-    Legacy WebSocket Bot. 
-    Retained for local development or full-state modes.
-    """
-    def __init__(self):
-        intents = discord.Intents.default()
-        intents.message_content = True 
-        intents.members = True
-        super().__init__(command_prefix="!", intents=intents)
-        self.active_game_channels = {}
 
-    async def setup_hook(self):
-        logging.info(presentation.LOG_HYDRATING)
-        self.active_game_channels = await persistence.db.get_active_game_channels()
-        await self.tree.sync()
-
-# --- HEADLESS REST INTERFACE (HTTP) ---
 class DiscordRESTInterface:
     """
     Stateless Interface for the Gateway Architecture.

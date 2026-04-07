@@ -24,7 +24,5 @@
 * Slotfilling pattern for advanced config of a new game
 * Tell the humans how to play the game
 * Make github repository private
-* What if the websocket crashes and the server stays up?
-* Harden the solution for the websocket and dual server during deployment issue
 * Game Ids are too short
 * Turn mainfram back on

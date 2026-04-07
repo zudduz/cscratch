@@ -32,7 +32,7 @@ steps:
   - '--platform'
   - 'managed'
   - '--allow-unauthenticated'
-  - '--min-instances=0'
+  - '--min-instances=$_MIN_INSTANCES'
   - '--set-env-vars'
   - "ADMIN_USER_IDS=545309591827906587,\
     TASK_QUEUE_NAME=cscratch,\
@@ -42,6 +42,9 @@ steps:
   - "INTERNAL_API_KEY=cscratch-internal-api-key:latest,\
     DISCORD_TOKEN=cscratch-discord-token:latest,\
     OPS_KEY=cscratch-ops-key:latest"
+
+substitutions:
+  _MIN_INSTANCES: '0'
 
 images:
 - 'gcr.io/$PROJECT_ID/cscratch'

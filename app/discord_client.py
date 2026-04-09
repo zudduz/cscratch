@@ -9,7 +9,7 @@ from discord.ext import commands
 from . import persistence
 from . import presentation
 from .models import GameInterface
-from .state import sys as system_state
+
 
 
 class DiscordRESTInterface:

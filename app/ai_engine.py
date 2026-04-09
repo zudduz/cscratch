@@ -64,7 +64,6 @@ class AIEngine:
         # Default to sandbox ID but allow env override
         self.project_id = os.environ.get("GCP_PROJECT_ID", "sandbox-456821")
         self.location = "us-central1"
-        self.default_model_name = "gemini-2.5-flash"
         
         # PERMISSIVE SAFETY SETTINGS (Required for Horror/Survival themes)
         self.safety_settings = {

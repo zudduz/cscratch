@@ -2,21 +2,9 @@ import os
 
 # --- CONSTANTS ---
 
-# System Lifecycle & Logging
-LOG_HYDRATING = "System: Hydrating Game Channel Cache..."
-LOG_SYNCING = "System: Syncing Slash Commands..."
-SYSTEM_ONLINE = "**System Online**"
-SYSTEM_OFFLINE = "**System Offline**"
-
 # Channel Operations
 BLACK_BOX_OPEN = "**BLACK BOX DECLASSIFIED. LOGS AVAILABLE.**"
 CHANNEL_UNKNOWN = "unknown"
-
-# Commands
-CMD_VERSION_DESC = "Check container"
-CMD_GRP_SCRATCH = "Engine Controls"
-CMD_LOBBY_DESC = "Open Lobby"
-CMD_KILL_DESC = "Cleanup"
 
 # Lobby & Admin
 LOBBY_DESC = "Click to join"
@@ -27,7 +15,6 @@ CMD_FAILED = "Failed: {error}"
 ERR_NO_GAME = "No game"
 ERR_NO_ACTIVE_GAME = "No active game"
 ERR_NOT_HOST = "Denied\nHost only"
-ERR_DENIED_ADMIN = "Denied\nAdmin access required"
 ERR_NO_CATEGORY = "You must run this command inside a designated game category."
 ERR_MISSING_BOT_PERMS = "System Error: Missing required permissions on this category. Missing: **{missing}**"
 ERR_CATEGORY_FULL = "The server's game category is full (Discord 50-channel limit). Please wait for a game to end."
@@ -42,8 +29,6 @@ BTN_DELETE_CHANNELS = "Delete Channels"
 EMBED_DESC_ENDED = "The host may now delete the channels"
 
 ERR_NOT_HOST_START = "Only the host may start the game"
-ERR_GENERIC = "Error"
-MSG_STARTING = "Starting game..."
 
 # --- LOGIC & FORMATTERS ---
 
@@ -71,10 +56,6 @@ def safe_channel_name(name: str) -> str:
     if not name:
         name = CHANNEL_UNKNOWN
     return "".join(c for c in name if c.isalnum() or c == "-").lower()
-
-def format_version_response(revision: str) -> str:
-    """Formats the version command response."""
-    return f"**Active Node:** `{revision}`"
 
 def format_announcement(message: str) -> str:
     """Formats a system announcement with the current revision ID."""
@@ -109,12 +90,6 @@ def build_cost_report(game_id: str, callsign: str, input_tokens: int, output_tok
 
 def format_balance_report(user_id: str, balance: int) -> str:
     return f"<@{user_id}>, your balance is **{balance}** Scratch."
-
-def format_gift_report(amount: int, target_id: str, new_balance: int) -> str:
-    return f"**System Gift**\nSent **{amount}** Scratch to <@{target_id}>.\nNew Balance: {new_balance}"
-
-def format_admin_balance_report(target_id: str, balance: int) -> str:
-    return f"User <@{target_id}> balance: **{balance}** Scratch"
 
 def insufficient_funds(balance: int, cost: int) -> str:
     return f"This game costs {cost} Scratch to start\nPlease purchase more Scratch"

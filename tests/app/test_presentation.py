@@ -16,11 +16,6 @@ def test_safe_channel_name():
     assert presentation.safe_channel_name("") == presentation.CHANNEL_UNKNOWN
     assert presentation.safe_channel_name(None) == presentation.CHANNEL_UNKNOWN
 
-def test_format_version_response():
-    """Verify the version command output format."""
-    response = presentation.format_version_response("v1.0.0-sha123")
-    assert "**Active Node:** `v1.0.0-sha123`" in response
-
 def test_format_announcement_with_env():
     """Verify announcement picks up the K_REVISION env var."""
     with patch.dict(os.environ, {"K_REVISION": "cloud-run-v2"}):

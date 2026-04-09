@@ -122,10 +122,6 @@ class GameEngine:
         """Passes task scheduling to the infrastructure layer."""
         task_dispatcher.enqueue_task(cartridge_id, game_id, operation, data, delay)
 
-    async def register_interface_data(self, game_id: str, interface_data: dict):
-        interface = GameInterface(**interface_data)
-        await persistence.db.update_game_interface(game_id, interface)
-
     async def launch_match(self, game_id: str) -> dict:
         game = await persistence.db.get_game_by_id(game_id)
         if not game: return {"error": "no_game"}

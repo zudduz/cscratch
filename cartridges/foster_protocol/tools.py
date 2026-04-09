@@ -2,7 +2,7 @@ import logging
 import random
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Dict, Any, Tuple, Optional, List, Literal, Type
+from typing import Dict, Any, Tuple, Optional, List, Literal
 
 from pydantic import create_model, Field
 

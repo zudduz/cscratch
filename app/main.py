@@ -7,7 +7,6 @@ from fastapi import FastAPI, Response, status
 
 from .discord_client import client as discord_client
 from . import game_engine
-from .state import sys as system_state
 from .gcp_log import setup_logging
 from . import presentation
 from . import config
@@ -31,7 +30,6 @@ async def lifespan(app: FastAPI):
     
     # --- SHUTDOWN ---
     logging.info("System: Shutdown signal received.")
-    system_state.shutting_down = True
     
     game_engine.engine.stop()
     await discord_client.close()

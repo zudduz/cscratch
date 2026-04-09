@@ -104,21 +104,6 @@ class PersistenceLayer:
             "usage_output_tokens": firestore.Increment(output_tokens)
         })
 
-    async def get_active_game_channels(self):
-        active_map = {}
-        async for doc in self.games_collection.stream():
-            data = doc.to_dict()
-            if data.get('status') == 'active':
-                g_id = data.get('id')
-                interface = data.get('interface', {})
-                
-                if interface.get('main_channel_id'):
-                    active_map[str(interface['main_channel_id'])] = g_id
-                
-                for cid in interface.get('channels', {}).values():
-                    active_map[str(cid)] = g_id
-        return active_map
-
     async def register_channel_association(self, channel_id: str, game_id: str):
         try:
             await self.channels_collection.document(str(channel_id)).set({"game_id": game_id})
@@ -137,9 +122,6 @@ class PersistenceLayer:
             return doc.to_dict().get("game_id")
         return None
 
-    async def lock_event(self, event_id: str) -> bool:
-        return True 
-
     async def log_ai_interaction(self, entry: AILogEntry):
         await self.games_collection.document(entry.game_id).collection('logs').add(entry.model_dump())
 
@@ -151,17 +133,6 @@ class PersistenceLayer:
         return logs
 
     # --- ECONOMY / SCRATCH ---
-
-    async def get_user(self, user_id: str) -> User:
-        """Fetches a full User object. Returns None if not found."""
-        doc = await self.users_collection.document(str(user_id)).get()
-        if doc.exists:
-            # Inject ID if missing from doc body (common pattern in Firestore)
-            data = doc.to_dict()
-            if "id" not in data:
-                data["id"] = doc.id
-            return User(**data)
-        return None
 
     async def get_user_balance(self, user_id: str) -> int:
         """Lightweight helper to get just the balance."""

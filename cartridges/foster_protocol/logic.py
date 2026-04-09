@@ -3,7 +3,6 @@ import random
 import asyncio
 import logging
 import json
-import ast
 import re
 from .models import Caisson, Drone, Player
 from .board import GameConfig, GameEndState
@@ -501,21 +500,12 @@ class FosterProtocol:
 
         # 3. Chat Routing
         if channel_id == interface_channels.get('aux-comm'):
-            # MVP: Mainframe personality disabled
-            # return await self._handle_mainframe_chat(user_input, ctx, tools)
+            # Nothing here yet
             return None
             
         elif channel_id == interface_channels.get(f"nanny_{user_id}"):
             return await self._handle_drone_chat(user_input, ctx, tools, game_data, user_id)
 
-        return None
-
-    async def _handle_mainframe_chat(self, user_input, ctx, tools):
-        sys_prompt, user_msg = ai_templates.compose_mainframe_turn(user_input)
-        response = await tools.ai.generate_response(
-            sys_prompt, f"{ctx.game_id}_mainframe", user_msg, "gemini-2.5-flash", game_id=ctx.game_id
-        )
-        await ctx.reply(response)
         return None
 
     async def _handle_drone_chat(self, user_input, ctx, tools, game_data, user_id):

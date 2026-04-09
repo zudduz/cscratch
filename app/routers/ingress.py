@@ -62,8 +62,6 @@ async def handle_internal_task(cartridge_id: str, game_id: str, payload: TaskPay
 
 @router.post("/message")
 async def handle_message(payload: MessagePayload):
-    if not await persistence.db.lock_event(payload.message_id):
-        return {"status": "ignored", "reason": "already_processed"}
 
     game_id = await persistence.db.get_game_id_by_channel_index(payload.channel_id)
     if not game_id:
@@ -135,7 +133,7 @@ async def handle_interaction(payload: InteractionPayload):
                 
             lobby_name = presentation.format_lobby_title(game.story_id, game.interface.callsign or "UNK")
             await discord_interface.send_message(payload.channel_id, presentation.format_teardown(lobby_name))
-            await discord_interface.cleanup_game_channels(payload.guild_id, game.interface.model_dump())
+            await discord_interface.cleanup_game_channels(game.interface.model_dump())
             return {"status": "deleted"}
 
     return {"status": "ignored"}

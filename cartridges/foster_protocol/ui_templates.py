@@ -68,11 +68,6 @@ The game is lost if there are no active drones.
     # --- STARTUP & SETUP ---
 
     @classmethod
-    async def announce_startup(cls, ctx):
-        await ctx.send(cls.CHANNEL_AUX, "VENDETTA OS v9.0 ONLINE")
-        await ctx.send(cls.CHANNEL_BLACKBOX, "Flight recorder active")
-
-    @classmethod
     async def list_channel_ops(cls, players: List[dict], saboteur_index: int, guild_id: str = None) -> List[dict]:
         """Generates the initial channel creation operations."""
         participant_ids = [p['id'] for p in players]

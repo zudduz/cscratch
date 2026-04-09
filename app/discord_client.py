@@ -8,7 +8,6 @@ from discord.ext import commands
 
 from . import persistence
 from . import presentation
-from . import state
 from .models import GameInterface
 from .state import sys as system_state
 
@@ -338,7 +337,7 @@ class DiscordRESTInterface:
         except Exception as e:
             logging.error(f"Channel Op Error: {e}")
 
-    async def cleanup_game_channels(self, guild_id_str: str, interface_data: dict):
+    async def cleanup_game_channels(self, interface_data: dict):
         if not interface_data: return
         try:
             # We ONLY delete the generated game channels, NOT the main dispatch channel or category

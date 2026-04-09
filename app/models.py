@@ -52,9 +52,5 @@ class AILogEntry(BaseModel):
     usage: Dict[str, Any] = Field(default_factory=dict)
 
 class User(BaseModel):
-    """
-    Global user entity for cross-game progression (Economy, Stats).
-    Stored in 'users' collection in Firestore.
-    """
     id: str
     scratch_balance: int = 0

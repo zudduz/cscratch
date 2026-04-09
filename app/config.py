@@ -13,9 +13,6 @@ GCP_REGION = os.environ.get("GCP_REGION", "us-central1")
 TASK_QUEUE_NAME = os.environ.get("TASK_QUEUE_NAME", "")
 WORKER_URL = os.environ.get("WORKER_URL", "") # Public facing URL for Cloud Tasks ingress
 
-# Comma-separated list of Admin Discord IDs
-ADMIN_USER_IDS = os.environ.get("ADMIN_USER_IDS", "").split(",")
-
 # Fallback for Project ID if not injected
 if not PROJECT_ID:
     try:

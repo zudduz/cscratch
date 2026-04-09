@@ -6,7 +6,6 @@ from .models import Caisson, Drone
 
 SCHEMA_THOUGHT_CHAIN_DESC = "Room for your thoughts."
 SCHEMA_TOOL_DESC_PREFIX = "The tool to execute."
-SCHEMA_ARGS_DESC = "Arguments for the selected tool (e.g., target_id, room_id)."
 
 # --- JINJA2 SETUP ---
 _CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))

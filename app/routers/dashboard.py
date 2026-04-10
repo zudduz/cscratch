@@ -16,15 +16,22 @@ async def dashboard_index(request: Request):
     async for doc in ref.stream():
         games.append(doc.to_dict())
     
-    return templates.TemplateResponse("index.html.j2", {"request": request, "games": games})
+    return templates.TemplateResponse(
+        request=request, 
+        name="index.html.j2", 
+        context={"games": games}
+    )
 
 @router.get("/dashboard/{game_id}", response_class=HTMLResponse)
 async def dashboard_game(request: Request, game_id: str):
     game = await persistence.db.get_game_by_id(game_id)
     logs = await persistence.db.get_game_logs(game_id)
     
-    return templates.TemplateResponse("game_detail.html.j2", {
-        "request": request, 
-        "game": game.model_dump(), 
-        "logs": logs
-    })
+    return templates.TemplateResponse(
+        request=request, 
+        name="game_detail.html.j2", 
+        context={
+            "game": game.model_dump(), 
+            "logs": logs
+        }
+    )

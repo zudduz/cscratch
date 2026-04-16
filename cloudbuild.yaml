@@ -43,7 +43,7 @@ steps:
     OPS_KEY=cscratch-ops-key:latest"
 
 substitutions:
-  _MIN_INSTANCES: '1'
+  _MIN_INSTANCES: '0'
 
 images:
 - 'gcr.io/$PROJECT_ID/cscratch'

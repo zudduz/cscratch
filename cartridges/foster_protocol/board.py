@@ -2,6 +2,7 @@ from enum import Enum
 
 class GameConfig:
     MAX_PLAYERS = 8
+    AI_PARALLEL_DELAY = 1
 
     HOURS_PER_SHIFT = 8
     INITIAL_OXYGEN = 100

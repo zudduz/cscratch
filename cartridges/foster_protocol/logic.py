@@ -86,7 +86,8 @@ class FosterProtocol:
         logging.info("--- Waking up Drones for Introductions ---")
         tasks = []
         for drone in game_data.drones.values():
-            tasks.append(self._generate_intro(drone, game_data, ctx, tools))
+            tasks.append(asyncio.create_task(self._generate_intro(drone, game_data, ctx, tools)))
+            await asyncio.sleep(GameConfig.AI_PARALLEL_DELAY)
         if tasks: await asyncio.gather(*tasks)
 
     async def _generate_intro(self, drone, game_data, ctx, tools):
@@ -171,7 +172,8 @@ class FosterProtocol:
         for drone in game_data.drones.values():
             if not drone.can_talk:
                 continue
-            tasks.append(self._speak_single_drone(ctx, tools, drone, game_data))
+            tasks.append(asyncio.create_task(self._speak_single_drone(ctx, tools, drone, game_data)))
+            await asyncio.sleep(GameConfig.AI_PARALLEL_DELAY)
         if tasks: await asyncio.gather(*tasks)
 
     async def _speak_single_drone(self, ctx, tools, drone, game_data):
@@ -209,7 +211,8 @@ class FosterProtocol:
             
             # Logic for status note handled in templates
             sys_prompt, user_msg = ai_templates.compose_epilogue_turn(drone.id, game_data, game_end_state)
-            tasks.append(self._generate_epilogue_response(ctx, tools, drone, sys_prompt, user_msg))
+            tasks.append(asyncio.create_task(self._generate_epilogue_response(ctx, tools, drone, sys_prompt, user_msg)))
+            await asyncio.sleep(GameConfig.AI_PARALLEL_DELAY)
             
         if tasks:
             await asyncio.gather(*tasks)
@@ -289,7 +292,8 @@ class FosterProtocol:
         tasks = []
         for drone in game_data.drones.values():
             if drone.role == "saboteur" and (drone.daily_memory or drone.daily_event_log):
-                tasks.append(self._process_saboteur_dusk(drone, game_data, ctx, tools))
+                tasks.append(asyncio.create_task(self._process_saboteur_dusk(drone, game_data, ctx, tools)))
+                await asyncio.sleep(GameConfig.AI_PARALLEL_DELAY)
         
         if tasks:
             await asyncio.gather(*tasks)
@@ -386,7 +390,8 @@ class FosterProtocol:
         tasks = []
         for drone in game_data.drones.values():
             if drone.status == "active" and (drone.night_chat_log or drone.daily_memory):
-                tasks.append(self._process_single_dream(drone, game_data, tools))
+                tasks.append(asyncio.create_task(self._process_single_dream(drone, game_data, tools)))
+                await asyncio.sleep(GameConfig.AI_PARALLEL_DELAY)
         if tasks:
              await asyncio.gather(*tasks)
 
@@ -410,7 +415,7 @@ class FosterProtocol:
         tasks = []
         for drone in acting_drones:
             tasks.append(asyncio.create_task(process_drone(drone)))
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(GameConfig.AI_PARALLEL_DELAY)
 
         if tasks:
             results = await asyncio.gather(*tasks)

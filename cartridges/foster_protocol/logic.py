@@ -399,13 +399,22 @@ class FosterProtocol:
             d for d in game_data.drones.values() if d.status == "offline" and d.location_id == "charging_station"]
         random.shuffle(acting_drones)
         
-        for drone in acting_drones:
+        async def process_drone(drone):
             try:
                 res = await self.run_single_drone_turn(drone, game_data, hour, tools, ctx.game_id)
-                activity = await self._process_turn_result(ctx, tools, hour, game_data, res['drone'], res['action'], res['result'], res['thought'])
-                hourly_activity = hourly_activity or activity
+                return await self._process_turn_result(ctx, tools, hour, game_data, res['drone'], res['action'], res['result'], res['thought'])
             except Exception as e:
                 logging.error(f"Error running turn for drone {drone.id}: {e}", exc_info=True)
+                return False
+
+        tasks = []
+        for drone in acting_drones:
+            tasks.append(asyncio.create_task(process_drone(drone)))
+            await asyncio.sleep(0.1)
+
+        if tasks:
+            results = await asyncio.gather(*tasks)
+            hourly_activity = any(results)
 
         for drone in offline_chargeable_drones:
             result = drone_tools.execute_tool("blind_charge", {}, drone.id, game_data, system_call=True)

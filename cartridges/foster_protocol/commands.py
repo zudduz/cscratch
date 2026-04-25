@@ -96,7 +96,9 @@ class SleepCommand(BaseCommand):
                 for p in context.game_data.players.values():
                     p.requested_sleep = False
                 
-                context.ctx.schedule(context.cartridge.execute_day_simulation(context.game_data, context.ctx, context.tools))
+                # Executed directly (which buffers tasks on ctx), avoiding previous race condition 
+                # where background thread modified ctx after main thread exited.
+                await context.cartridge.execute_day_simulation(context.game_data, context.ctx, context.tools)
                 return {"metadata": context.game_data.model_dump()}
             
             return {f"players.{user_id}.requested_sleep": True}

@@ -241,7 +241,7 @@ class FosterProtocol:
         Usually called by a player command like `!sleep`.
         """
         try:
-            ctx.schedule_task("dream_phase")
+            ctx.schedule_task("dream_phase", {"cycle": game_data.cycle})
             return None
         except Exception as e:
             logging.error(f"execute_day_simulation kickoff failed: {e}", exc_info=True)
@@ -267,13 +267,23 @@ class FosterProtocol:
         return None
 
     async def _handle_dream_phase(self, game_data: Caisson, data: dict, ctx, tools) -> Dict[str, Any]:
+        target_cycle = data.get("cycle")
+        if target_cycle and game_data.cycle != target_cycle:
+            logging.warning(f"Ignoring dream_phase task: expected cycle {target_cycle}, current {game_data.cycle}")
+            return None
+
         await self._run_dream_phase(game_data, tools)
         game_data.phase = "day"
         game_data.hour = 1
-        ctx.schedule_task("tick_hour")
+        ctx.schedule_task("tick_hour", {"target_hour": 1})
         return {"metadata": game_data.model_dump()}
 
     async def _handle_tick_hour(self, game_data: Caisson, data: dict, ctx, tools) -> Dict[str, Any]:
+        target_hour = data.get("target_hour")
+        if target_hour and game_data.hour != target_hour:
+            logging.warning(f"Ignoring tick_hour task: expected hour {target_hour}, current {game_data.hour}")
+            return None
+            
         current_hour = game_data.hour
         if current_hour == 0 or current_hour > GameConfig.HOURS_PER_SHIFT:
             logging.warning(f"tick_hour called with invalid hour: {current_hour}")
@@ -283,12 +293,17 @@ class FosterProtocol:
         
         game_data.hour += 1
         if game_data.hour <= GameConfig.HOURS_PER_SHIFT:
-            ctx.schedule_task("tick_hour")
+            ctx.schedule_task("tick_hour", {"target_hour": game_data.hour})
         else:
-            ctx.schedule_task("dusk_phase")
+            ctx.schedule_task("dusk_phase", {"cycle": game_data.cycle})
         return {"metadata": game_data.model_dump()}
 
     async def _handle_dusk_phase(self, game_data: Caisson, data: dict, ctx, tools) -> Dict[str, Any]:
+        target_cycle = data.get("cycle")
+        if target_cycle and game_data.cycle != target_cycle:
+            logging.warning(f"Ignoring dusk_phase task: expected cycle {target_cycle}, current {game_data.cycle}")
+            return None
+
         tasks = []
         for drone in game_data.drones.values():
             if drone.role == "saboteur" and (drone.daily_memory or drone.daily_event_log):
@@ -298,7 +313,7 @@ class FosterProtocol:
         if tasks:
             await asyncio.gather(*tasks)
             
-        ctx.schedule_task("physics_arbitration")
+        ctx.schedule_task("physics_arbitration", {"cycle": game_data.cycle})
         return {"metadata": game_data.model_dump()}
 
     async def _process_saboteur_dusk(self, drone: Drone, game_data: Caisson, ctx, tools):
@@ -343,6 +358,11 @@ class FosterProtocol:
             logging.error(f"Dusk falsification failed for {drone.id}: {e}")
 
     async def _handle_physics_arbitration(self, game_data: Caisson, data: dict, ctx, tools) -> Dict[str, Any]:
+        target_cycle = data.get("cycle")
+        if target_cycle and game_data.cycle != target_cycle:
+            logging.warning(f"Ignoring physics_arbitration task: expected cycle {target_cycle}, current {game_data.cycle}")
+            return None
+
         physics_report = self._calculate_physics(game_data)
         game_end_state = self._evaluate_arbitration(game_data, physics_report)
         
@@ -368,7 +388,7 @@ class FosterProtocol:
                     await FosterPresenter.report_stasis_engaged(ctx)
 
                 game_data.phase = "day"
-                ctx.schedule_task("dream_phase")
+                ctx.schedule_task("dream_phase", {"cycle": game_data.cycle})
             else:
                 await self.speak_all_drones(game_data, ctx, tools)
                 game_data.phase = "night"

@@ -132,7 +132,7 @@ class GameEngine:
 
         cartridge = await self._load_cartridge(game.story_id)
             
-        # --- ECONVjOMY CHECK ---
+        # --- ECONOMY CHECK ---
         cost_func = getattr(cartridge, "calculate_start_cost", lambda n: max(4, n))
         cost = cost_func(len(game.players))
         
@@ -186,27 +186,52 @@ class GameEngine:
             trigger_data=trigger_data
         )
 
-    async def _process_cartridge_patch(self, game_id: str, patch: Optional[Dict[str, Any]], ctx: Optional[EngineContext] = None):
+    async def _process_cartridge_patch(self, game_id: str, patch: Optional[Dict[str, Any]], ctx: Optional[EngineContext] = None, expected_version: int = None):
         """Helper to process standardized cartridge returns (channel_ops & state updates) and flush tasks."""
+        success = True
+
         if patch:
-            # --- EXTRACT OPS ---
+            channel_ops = None
             if "channel_ops" in patch:
-                ops = patch.pop("channel_ops")
-                if ops:
-                    for interface in self.interfaces:
-                        if hasattr(interface, 'execute_channel_ops'):
-                            await interface.execute_channel_ops(game_id, ops)
+                channel_ops = patch.pop("channel_ops")
             
             # Check for metadata key or use root
             state_update = patch.get("metadata", patch)
             if state_update: 
-                await self._apply_state_patch(game_id, state_update)
+                # Strict OCC for Cloud Tasks to ensure double execution is dropped safely
+                if expected_version is not None and "metadata" in patch:
+                    success = await persistence.db.update_game_metadata(game_id, state_update, expected_version)
+                    if not success:
+                        logging.warning(f"Task Aborted (OCC): Game {game_id} version mismatch. Expected {expected_version}.")
+                else:
+                    await self._apply_state_patch(game_id, state_update)
 
-        # Flush pending tasks AFTER state writes
+            # Abort external side-effects if the DB commit was rejected
+            if not success:
+                return
+
+            # Apply channel operations
+            if channel_ops:
+                for interface in self.interfaces:
+                    if hasattr(interface, 'execute_channel_ops'):
+                        await interface.execute_channel_ops(game_id, channel_ops)
+
+        # Flush buffered discord messages AFTER DB state saves correctly
+        if ctx and hasattr(ctx, 'pending_messages'):
+            for channel_key, msg in ctx.pending_messages:
+                await self._dispatch_message_to_interfaces(game_id, channel_key, msg)
+            ctx.pending_messages.clear()
+
+        # Flush buffered tasks AFTER DB state saves correctly
         if ctx and hasattr(ctx, 'pending_tasks'):
             for op, data, delay in ctx.pending_tasks:
                 self._schedule_cloud_task(game_id, ctx.cartridge_id, op, data, delay)
             ctx.pending_tasks.clear()
+            
+        # Trigger ending pipeline if applicable
+        if ctx and getattr(ctx, 'game_ended', False):
+            await self.end_game(game_id)
+            ctx.game_ended = False
 
     async def trigger_post_start(self, game_id: str):
         """
@@ -276,7 +301,8 @@ class GameEngine:
             Toolbox(self.ai)
         )
 
-        await self._process_cartridge_patch(game.id, patch, ctx)
+        # Injects the expected version (OCC bounds) specifically for task updates
+        await self._process_cartridge_patch(game.id, patch, ctx, expected_version=game.version)
 
     async def dispatch_immediate_result(self, game_id: str, result: dict):
         msgs = result.get('messages', [])

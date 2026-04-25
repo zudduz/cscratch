@@ -19,25 +19,25 @@ class EngineContext:
         self._ender = _ender
         self.trigger_data = trigger_data
         
-        # Buffer for deferred task scheduling
+        # Buffers to prevent early external writes before DB commit
         self.pending_tasks = []
+        self.pending_messages = []
+        self.game_ended = False
 
     async def send(self, channel_key: str, message: str):
-        """Sends a message to a specific channel key (e.g., 'aux-comm')."""
+        """Buffers a message to a specific channel key (e.g., 'aux-comm')."""
         if self._dispatcher:
-            await self._dispatcher(self.game_id, channel_key, message)
+            self.pending_messages.append((channel_key, message))
 
     async def reply(self, message: str):
-        """Reply to the channel that triggered the input."""
+        """Buffers a reply to the channel that triggered the input."""
         channel_id = self.trigger_data.get('channel_id')
         if channel_id and self._dispatcher:
-            # We pass the raw channel ID directly
-            await self._dispatcher(self.game_id, channel_id, message)
+            self.pending_messages.append((channel_id, message))
 
     async def end(self):
-        """Ends the game."""
-        if self._ender:
-            await self._ender(self.game_id)
+        """Buffers the game termination signal."""
+        self.game_ended = True
 
     def schedule(self, coro: Any):
         """

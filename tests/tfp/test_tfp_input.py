@@ -124,7 +124,7 @@ async def test_sleep_consensus_complete(cartridge, mock_ctx, mock_tools, base_st
     mock_ctx.trigger_data["user_id"] = "u1"
     mock_ctx.trigger_data["channel_id"] = "nanny_u1_id"
     
-    with patch.object(cartridge, "execute_day_simulation", new_callable=MagicMock) as mock_sim:
+    with patch.object(cartridge, "execute_day_simulation", new_callable=AsyncMock) as mock_sim:
         result = await cartridge.handle_input({"metadata": serialized_state}, "!sleep", mock_ctx, mock_tools)
     
         assert "Sleep request logged" in mock_ctx.reply.call_args[0][0]
@@ -132,8 +132,9 @@ async def test_sleep_consensus_complete(cartridge, mock_ctx, mock_tools, base_st
         # Should return full metadata update (phase change)
         assert result["metadata"]["phase"] == "day"
         
-        # Should schedule the simulation (which is now the mock result)
-        mock_ctx.schedule.assert_called_once_with(mock_sim.return_value)
+        # Should execute the simulation directly
+        mock_sim.assert_awaited_once()
+        mock_ctx.schedule.assert_not_called()
 
 @pytest.mark.asyncio
 async def test_mainframe_chat_routing(cartridge, mock_ctx, mock_tools, base_state):
